@@ -1,0 +1,25 @@
+# Environments
+venv/
+.env
+*.env
+
+# Databases
+*.db
+*.sqlite
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Build Output
+dist/
+
+# Local Obfuscation Tools
+build_encrypted_bot.py
+compile_cython.py
+build_cython_bot.py
