@@ -1899,10 +1899,30 @@ async def process_ban_user_id(message: Message, state: FSMContext):
     await state.update_data(ban_target_id=target_id)
     await state.set_state(AdminStates.waiting_for_ban_reason)
     await message.answer(
-        f"📝 تم اختيار المستخدم `{target_id}`.\nالرجاء إدخال **سبب الحظر** (أو أرسل `تخطي` للتخطي):",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        f"📝 تم اختيار المستخدم `{target_id}`.\nالرجاء إدخال **سبب الحظر** (أو إرسال /skip أو الضغط على زر التخطي أدناه):",
+        reply_markup=keyboards.get_admin_ban_reason_keyboard(),
         parse_mode="Markdown"
     )
+
+@router.callback_query(F.data == "admin_ban_skip_reason")
+async def cb_admin_ban_skip_reason(callback: CallbackQuery, state: FSMContext):
+    if not is_user_admin(callback.from_user.id):
+        return
+    data = await state.get_data()
+    target_id = data.get("ban_target_id")
+    await state.clear()
+    if not target_id:
+        await callback.message.edit_text("❌ انتهت الجلسة أو حدث خطأ، يرجى إعادة المحاولة.", reply_markup=keyboards.get_admin_ban_menu_keyboard())
+        await callback.answer()
+        return
+    reason = "Banned by admin panel"
+    await ban_user(target_id, reason)
+    await callback.message.edit_text(
+        f"🔴 *تم حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`\n💬 السبب: {reason}",
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
 
 @router.message(AdminStates.waiting_for_ban_reason)
 async def process_ban_reason(message: Message, state: FSMContext):
@@ -1916,7 +1936,7 @@ async def process_ban_reason(message: Message, state: FSMContext):
         await message.answer("❌ حدث خطأ، يرجى إعادة المحاولة.")
         return
     reason = message.text.strip()
-    if reason.lower() in ["تخطي", "skip", "-"]:
+    if reason.lower() in ["تخطي", "skip", "/skip", "-"]:
         reason = "Banned by admin panel"
     await ban_user(target_id, reason)
     await message.answer(

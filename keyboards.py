@@ -174,6 +174,13 @@ def get_admin_ban_menu_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(2, 1, 1)
     return builder.as_markup()
 
+def get_admin_ban_reason_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="⏭️ Skip Reason / تخطي السبب", callback_data="admin_ban_skip_reason")
+    builder.button(text="🔙 Cancel / إلغاء", callback_data="admin_ban_unban_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
 def get_admin_menu_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📦 Manage Products", callback_data="admin_manage_products")
