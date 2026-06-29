@@ -77,6 +77,14 @@ async def db_init():
                 await db.execute("ALTER TABLE products ADD COLUMN provider_id INTEGER;")
             if "provider_product_id" not in columns:
                 await db.execute("ALTER TABLE products ADD COLUMN provider_product_id INTEGER;")
+                
+        # Migration: Verify expected columns in users table
+        async with db.execute("PRAGMA table_info(users);") as cursor:
+            user_columns = [row[1] for row in await cursor.fetchall()]
+            if "is_banned" not in user_columns:
+                await db.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;")
+            if "ban_reason" not in user_columns:
+                await db.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT;")
         
         # Stocks Table
         await db.execute("""
@@ -278,6 +286,22 @@ async def update_user_lang(user_id, lang):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET language = ? WHERE user_id = ?;", (lang, user_id))
         await db.commit()
+
+async def ban_user(user_id: int, reason: str = ""):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET is_banned = 1, ban_reason = ? WHERE user_id = ?;", (reason, user_id))
+        await db.commit()
+
+async def unban_user(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET is_banned = 0, ban_reason = NULL WHERE user_id = ?;", (user_id,))
+        await db.commit()
+
+async def is_user_banned(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT is_banned FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return bool(row and row[0] == 1)
 
 async def update_user_balance(user_id, amount):
     async with aiosqlite.connect(DB_NAME) as db:

@@ -53,6 +53,24 @@ class DbUserMiddleware(BaseMiddleware):
             if user_lang not in ['en', 'ar', 'ru']:
                 user_lang = 'en'
             data['lang'] = user_lang
+            
+            # Ban Check Interceptor
+            if user and dict(user).get('is_banned') == 1 and not data['is_admin']:
+                ban_msg = {
+                    'ar': "❌ *حسابك محظور من استخدام البوت.*\n💬 للتواصل مع الدعم يرجى التواصل مع المسؤول مباشرة.",
+                    'en': "❌ *Your account has been banned from using this bot.*\n💬 For support, please contact the admin.",
+                    'ru': "❌ *Ваش аккаунт заблокирован.*\n💬 Для связи с поддержкой обратитесь к администратору."
+                }
+                msg_text = ban_msg.get(user_lang, ban_msg['en'])
+                from aiogram.types import Message, CallbackQuery
+                try:
+                    if isinstance(tg_event, Message):
+                        await tg_event.answer(msg_text, parse_mode="Markdown")
+                    elif isinstance(tg_event, CallbackQuery):
+                        await tg_event.answer("❌ Your account is banned / حسابك محظور", show_alert=True)
+                except Exception:
+                    pass
+                return
         else:
             data['is_admin'] = False
             data['lang'] = 'en'

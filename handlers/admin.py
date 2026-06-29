@@ -1,4 +1,5 @@
 from aiogram import Router, F, Bot
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 from database import (
@@ -6,7 +7,7 @@ from database import (
     add_stock, bulk_add_stock, get_stock_count, get_setting, set_setting, get_all_users,
     get_user, get_referral_count, get_all_pending_payments, get_stats,
     get_stock_notification_subscribers, clear_stock_notifications, get_user_full_report,
-    get_sales_last_24h, get_button_emojis
+    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned
 )
 from localization import get_text
 from handlers.states import ProductStates, StockStates, AdminStates
@@ -27,6 +28,68 @@ def escape_md(text):
     for ch in ['\\', '_', '*', '`', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']:
         text = text.replace(ch, '\\' + ch)
     return text
+
+@router.message(Command("ban"))
+async def cmd_ban_user(message: Message, command: CommandObject):
+    if not is_user_admin(message.from_user.id):
+        return
+    if not command.args:
+        await message.answer("⚠️ Usage: `/ban <user_id> [reason]`", parse_mode="Markdown")
+        return
+    parts = command.args.strip().split(" ", 1)
+    try:
+        target_id = int(parts[0])
+    except ValueError:
+        await message.answer("❌ Invalid numeric User ID.")
+        return
+    reason = parts[1] if len(parts) > 1 else "Violation of terms"
+    await ban_user(target_id, reason)
+    await message.answer(f"🔴 User `{target_id}` has been banned successfully.\nReason: {reason}", parse_mode="Markdown")
+
+@router.message(Command("unban"))
+async def cmd_unban_user(message: Message, command: CommandObject):
+    if not is_user_admin(message.from_user.id):
+        return
+    if not command.args:
+        await message.answer("⚠️ Usage: `/unban <user_id>`", parse_mode="Markdown")
+        return
+    try:
+        target_id = int(command.args.strip().split()[0])
+    except ValueError:
+        await message.answer("❌ Invalid numeric User ID.")
+        return
+    await unban_user(target_id)
+    await message.answer(f"🟢 User `{target_id}` has been unbanned successfully.", parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("admin_ban_"))
+async def cb_admin_ban_user(callback: CallbackQuery):
+    if not is_user_admin(callback.from_user.id):
+        return
+    target_id = int(callback.data.replace("admin_ban_", ""))
+    await ban_user(target_id, "Banned by admin panel")
+    await callback.answer(f"🔴 User {target_id} banned!", show_alert=True)
+    try:
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_unban_{target_id}")
+        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+    except Exception:
+        pass
+
+@router.callback_query(F.data.startswith("admin_unban_"))
+async def cb_admin_unban_user(callback: CallbackQuery):
+    if not is_user_admin(callback.from_user.id):
+        return
+    target_id = int(callback.data.replace("admin_unban_", ""))
+    await unban_user(target_id)
+    await callback.answer(f"🟢 User {target_id} unbanned!", show_alert=True)
+    try:
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_ban_{target_id}")
+        await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+    except Exception:
+        pass
 
 @router.message(F.text.in_([
     get_text('btn_admin_panel', 'en'),
@@ -191,6 +254,9 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
     joined = u.get('joined_at', 'N/A')
     ref_by = escape_md(report['referred_by_name']) if report['referred_by_name'] else "None"
 
+    is_banned = dict(u).get('is_banned', 0) == 1
+    ban_status = f"🔴 BANNED (Reason: {u.get('ban_reason', 'N/A')})" if is_banned else "🟢 Active"
+
     # Build report text
     text = (
         f"🔍 *User Inspection Report*\n"
@@ -199,6 +265,7 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
         f"├ Name: {name}\n"
         f"├ Username: {username}\n"
         f"├ ID: `{user_id}`\n"
+        f"├ Status: {ban_status}\n"
         f"├ Balance: `${u.get('balance', 0):.2f} USD`\n"
         f"├ Discount: `{report['discount']:.0f}%`\n"
         f"├ Language: `{u.get('language', 'en')}`\n"
@@ -238,6 +305,13 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
 
     text += "\n━━━━━━━━━━━━━━━━━━━━"
 
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    if is_banned:
+        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_unban_{user_id}")
+    else:
+        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_ban_{user_id}")
+
     # Send (split if too long)
     if len(text) > 4000:
         chunks = []
@@ -250,16 +324,19 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
                 current += line + '\n'
         if current:
             chunks.append(current)
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             try:
-                await message.answer(chunk, parse_mode="Markdown")
+                if idx == len(chunks) - 1:
+                    await message.answer(chunk, parse_mode="Markdown", reply_markup=builder.as_markup())
+                else:
+                    await message.answer(chunk, parse_mode="Markdown")
             except Exception:
                 await message.answer(chunk)
     else:
         try:
-            await message.answer(text, parse_mode="Markdown")
+            await message.answer(text, parse_mode="Markdown", reply_markup=builder.as_markup())
         except Exception:
-            await message.answer(text)
+            await message.answer(text, reply_markup=builder.as_markup())
 
 @router.message(F.text == "📦 Manage Products")
 async def msg_admin_manage_products(message: Message, lang='en'):
