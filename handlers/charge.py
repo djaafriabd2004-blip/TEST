@@ -232,11 +232,12 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
         
     # Attempt instant verification
     recipient_address = await get_setting(f"crypto_addr_{coin.lower()}", "")
-    success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=start_time)
+    ts_to_pass = None if coin == "BINANCE" else start_time
+    success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=ts_to_pass)
     
     if success:
-        # Verify that verified on-chain amount matches the user's declared requested amount
-        if not is_amount_matching(amount, result_val, coin):
+        # Verify that verified on-chain amount matches requested amount (exempt Binance Pay)
+        if coin != "BINANCE" and not is_amount_matching(amount, result_val, coin):
             logger.warning(f"Instant check amount mismatch for user {user_id}: requested {amount}, on-chain {result_val}")
             await reject_payment(transaction_id)
             
