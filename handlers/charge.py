@@ -156,7 +156,8 @@ async def process_crypto_amount(message: Message, state: FSMContext, lang='en'):
         await message.answer(get_text('invalid_amount', lang))
         return
         
-    await state.update_data(crypto_amount=amount)
+    import time
+    await state.update_data(crypto_amount=amount, crypto_start_time=int(time.time()))
     await state.set_state(ChargeStates.waiting_for_crypto_txid)
     
     data = await state.get_data()
