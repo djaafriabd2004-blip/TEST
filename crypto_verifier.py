@@ -89,8 +89,8 @@ def validate_tx_age(tx_unix: int, max_age_seconds: int, min_timestamp: int = Non
         )
     if age_seconds < -300:
         return False, f"{TX_TOO_OLD_PREFIX}: Invalid transaction timestamp."
-    if min_timestamp is not None and tx_unix < (min_timestamp - 60):
-        return False, f"{TX_TOO_OLD_PREFIX}: Transaction timestamp is older than deposit request creation time."
+    if min_timestamp is not None and tx_unix < min_timestamp:
+        return False, f"{TX_TOO_OLD_PREFIX}: Transaction was executed on-chain before deposit amount entry time."
     return True, ""
 
 

@@ -273,7 +273,7 @@ async def query_binance_deposits(tx_id, coin='USDT', min_timestamp=None):
             
     cutoff_time = end_time - (hours_to_search * 60 * 60 * 1000)
     if min_timestamp is not None:
-        min_ms = (min_timestamp - 60) * 1000
+        min_ms = min_timestamp * 1000
         if min_ms > cutoff_time:
             cutoff_time = min_ms
             
@@ -425,8 +425,7 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
             if not isinstance(row, dict):
                 continue
             tx_time_ms = int(row.get('time') or row.get('transactionTime') or row.get('timestamp') or 0)
-            # Allow a 60-second window for clock sync
-            if tx_time_ms > 0 and tx_time_ms < (min_timestamp - 60) * 1000:
+            if tx_time_ms > 0 and tx_time_ms < min_timestamp * 1000:
                 continue
             filtered_data.append(row)
         data = filtered_data
