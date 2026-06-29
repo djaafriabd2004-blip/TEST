@@ -304,3 +304,42 @@ def get_provider_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
+async def get_force_sub_keyboard(bot, channels: list, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for idx, ch in enumerate(channels, 1):
+        clean_ch = ch.strip()
+        if not clean_ch:
+            continue
+        url = ""
+        title = f"📢 القناة {idx}" if lang == 'ar' else (f"📢 Канал {idx}" if lang == 'ru' else f"📢 Channel {idx}")
+        try:
+            if clean_ch.startswith("@") or clean_ch.replace("-", "").isdigit():
+                chat = await bot.get_chat(clean_ch)
+                if chat and chat.title:
+                    title = f"📢 {chat.title}"
+                if chat and chat.username:
+                    url = f"https://t.me/{chat.username}"
+                elif chat and chat.invite_link:
+                    url = chat.invite_link
+        except Exception:
+            pass
+            
+        if not url:
+            if clean_ch.startswith("https://t.me/"):
+                url = clean_ch
+            else:
+                user_part = clean_ch.replace("@", "")
+                url = f"https://t.me/{user_part}"
+                
+        builder.button(text=title, url=url)
+        
+    verify_text = {
+        'ar': "✅ تحقق من الاشتراك",
+        'en': "✅ Verify Subscription",
+        'ru': "✅ Проверить подписку"
+    }.get(lang, "✅ Verify Subscription")
+    
+    builder.button(text=verify_text, callback_data="check_subscription", style="success")
+    builder.adjust(1)
+    return builder.as_markup()
+

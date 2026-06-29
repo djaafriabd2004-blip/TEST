@@ -325,9 +325,9 @@ LOCALIZATION = {
         'ru': "Пополнение баланса магазина на ${amount:.2f} USD через Telegram Stars."
     },
     'force_join_msg': {
-        'en': "📢 You must join our channel(s) to use this bot:\n\n{channels}\n\nAfter joining, press /start again to unlock the bot.",
-        'ar': "📢 يجب عليك الانضمام إلى قنواتنا لاستخدام هذا البوت:\n\n{channels}\n\nبعد الانضمام، أرسل /start مجدداً لفتح البوت.",
-        'ru': "📢 Вы должны подписаться на наши каналы, чтобы использовать этого бота:\n\n{channels}\n\nПосле подписки отправьте /start снова."
+        'en': "📢 *Subscription Required*\n\nYou must join our official channel(s) to use this bot.\n\nPlease click the channel button(s) below to join, then press **✅ Verify Subscription** when done.",
+        'ar': "📢 *اشتراك إجباري في القنوات*\n\nعذراً، يجب عليك الانضمام إلى قنواتنا الرسمية لاستخدام البوت.\n\nيرجى الضغط على أزرار القنوات أدناه للانضمام، ثم الضغط على **✅ تحقق من الاشتراك** بعد الانضمام.",
+        'ru': "📢 *Обязательная подписка*\n\nВы должны подписаться на наши официальные каналы, чтобы использовать этого бота.\n\nПожалуйста, нажмите кнопки каналов ниже, чтобы подписаться, а затем нажмите **✅ Проверить подписку**."
     },
     'admin_panel': {
         'en': "⚙️ *Admin Panel*\nChoose an action:",

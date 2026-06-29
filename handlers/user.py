@@ -29,9 +29,11 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
                 logger.warning(f"Could not verify join for channel {channel}: {e}")
                 
         if unjoined_channels:
-            channels_list = "\n".join(unjoined_channels)
+            kb = await keyboards.get_force_sub_keyboard(bot, unjoined_channels, lang)
             await message.answer(
-                get_text('force_join_msg', lang, channels=channels_list)
+                get_text('force_join_msg', lang),
+                reply_markup=kb,
+                parse_mode="Markdown"
             )
             return
 
@@ -369,3 +371,78 @@ print(res.json())
 """
     file = BufferedInputFile(doc_content.encode('utf-8'), filename="api_documentation.txt")
     await callback.message.answer_document(file)
+
+@router.callback_query(F.data == "check_subscription")
+async def cb_check_subscription(callback: CallbackQuery, bot: Bot, db_user=None, is_admin=False, lang='en'):
+    user_id = callback.from_user.id
+    force_channels_str = await get_setting('force_join_channels', '')
+    
+    unjoined_channels = []
+    if force_channels_str:
+        force_channels = [c.strip() for c in force_channels_str.split(",") if c.strip()]
+        for channel in force_channels:
+            try:
+                member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
+                if member.status in ['left', 'kicked']:
+                    unjoined_channels.append(channel)
+            except Exception as e:
+                logger.warning(f"Could not verify join for channel {channel}: {e}")
+                
+    if unjoined_channels:
+        alert_msg = {
+            'ar': "❌ لم تقم بالانضمام إلى جميع القنوات المطلوبة بعد! يرجى الانضمام والضغط على تحقق مرة أخرى.",
+            'en': "❌ You haven't joined all required channels yet! Please join and try again.",
+            'ru': "❌ Вы еще не подписались на все необходимые каналы! Пожалуйста, подпишитесь и попробуйте снова."
+        }
+        await callback.answer(alert_msg.get(lang, alert_msg['en']), show_alert=True)
+        try:
+            kb = await keyboards.get_force_sub_keyboard(bot, unjoined_channels, lang)
+            await callback.message.edit_reply_markup(reply_markup=kb)
+        except Exception:
+            pass
+    else:
+        success_msg = {
+            'ar': "🎉 تم التأكد من اشتراكك بنجاح! مرحباً بك.",
+            'en': "🎉 Subscription verified successfully! Welcome.",
+            'ru': "🎉 Подписка успешно подтверждена! Добро пожаловать."
+        }
+        await callback.answer(success_msg.get(lang, success_msg['en']), show_alert=True)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+            
+        first_name = callback.from_user.first_name
+        ref_by_name = "None"
+        if db_user and db_user['referred_by']:
+            referrer_profile = await get_user(db_user['referred_by'])
+            if referrer_profile:
+                ref_by_name = referrer_profile['first_name']
+                
+        ref_count = await get_referral_count(user_id)
+        balance = db_user['balance'] if db_user else 0.0
+        
+        store_name = await get_setting('store_name', 'Digital Store')
+        welcome_emoji_id = await get_setting('welcome_emoji_id', '')
+        if welcome_emoji_id:
+            welcome_emoji = f'<tg-emoji emoji-id="{welcome_emoji_id}">🔷</tg-emoji>'
+        else:
+            welcome_emoji = '🔷'
+        welcome_text = get_text(
+            'welcome', 
+            lang, 
+            name=first_name, 
+            balance=balance, 
+            referred_by=ref_by_name, 
+            ref_count=ref_count,
+            store_name=store_name,
+            welcome_emoji=welcome_emoji,
+            user_id=user_id
+        )
+        
+        button_emojis = await get_button_emojis()
+        await callback.message.answer(
+            welcome_text,
+            reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis),
+            parse_mode="HTML"
+        )
