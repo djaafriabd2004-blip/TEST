@@ -61,32 +61,32 @@ async def cmd_unban_user(message: Message, command: CommandObject):
     await unban_user(target_id)
     await message.answer(f"🟢 User `{target_id}` has been unbanned successfully.", parse_mode="Markdown")
 
-@router.callback_query(F.data.startswith("admin_ban_"))
+@router.callback_query(F.data.startswith("admin_actban_"))
 async def cb_admin_ban_user(callback: CallbackQuery):
     if not is_user_admin(callback.from_user.id):
         return
-    target_id = int(callback.data.replace("admin_ban_", ""))
+    target_id = int(callback.data.replace("admin_actban_", ""))
     await ban_user(target_id, "Banned by admin panel")
     await callback.answer(f"🔴 User {target_id} banned!", show_alert=True)
     try:
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_unban_{target_id}")
+        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_actunban_{target_id}")
         await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
     except Exception:
         pass
 
-@router.callback_query(F.data.startswith("admin_unban_"))
+@router.callback_query(F.data.startswith("admin_actunban_"))
 async def cb_admin_unban_user(callback: CallbackQuery):
     if not is_user_admin(callback.from_user.id):
         return
-    target_id = int(callback.data.replace("admin_unban_", ""))
+    target_id = int(callback.data.replace("admin_actunban_", ""))
     await unban_user(target_id)
     await callback.answer(f"🟢 User {target_id} unbanned!", show_alert=True)
     try:
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_ban_{target_id}")
+        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_actban_{target_id}")
         await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
     except Exception:
         pass
@@ -308,9 +308,9 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     if is_banned:
-        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_unban_{user_id}")
+        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_actunban_{user_id}")
     else:
-        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_ban_{user_id}")
+        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_actban_{user_id}")
 
     # Send (split if too long)
     if len(text) > 4000:
@@ -1971,7 +1971,7 @@ async def cb_admin_show_banned(callback: CallbackQuery):
         u_name = escape_md(u['first_name'] or str(u_id))
         reason = u['ban_reason'] or "لا يوجد سبب"
         text += f"🔴 {u_name} (`{u_id}`) — السبب: {reason}\n"
-        builder.button(text=f"🟢 Unban {u_id}", callback_data=f"admin_unban_{u_id}")
+        builder.button(text=f"🟢 Unban {u_id}", callback_data=f"admin_actunban_{u_id}")
     builder.button(text="🔙 Back", callback_data="admin_ban_unban_menu")
     builder.adjust(2)
     
