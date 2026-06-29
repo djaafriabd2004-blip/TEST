@@ -7,7 +7,7 @@ from database import (
     add_stock, bulk_add_stock, get_stock_count, get_setting, set_setting, get_all_users,
     get_user, get_referral_count, get_all_pending_payments, get_stats,
     get_stock_notification_subscribers, clear_stock_notifications, get_user_full_report,
-    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned
+    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users
 )
 from localization import get_text
 from handlers.states import ProductStates, StockStates, AdminStates
@@ -1848,6 +1848,134 @@ async def cb_admin_manage_users(callback: CallbackQuery, state: FSMContext):
         reply_markup=keyboards.get_admin_manage_users_keyboard(),
         parse_mode="Markdown"
     )
+    await callback.answer()
+
+# --- Ban Management Menu & Handlers ---
+@router.message(F.text == "🚫 Ban / Unban System")
+async def msg_admin_ban_unban_system(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        return
+    await state.clear()
+    await message.answer(
+        "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_ban_unban_menu")
+async def cb_admin_ban_unban_menu(callback: CallbackQuery, state: FSMContext):
+    if not is_user_admin(callback.from_user.id):
+        return
+    await state.clear()
+    await callback.message.edit_text(
+        "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_ban_prompt")
+async def cb_admin_ban_prompt(callback: CallbackQuery, state: FSMContext):
+    if not is_user_admin(callback.from_user.id):
+        return
+    await state.set_state(AdminStates.waiting_for_ban_user_id)
+    await callback.message.edit_text(
+        "🔴 *حظر مستخدم جديد*\n\nالرجاء إدخال **User ID الرقمي** للمستخدم المراد حظره:",
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.message(AdminStates.waiting_for_ban_user_id)
+async def process_ban_user_id(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        await state.clear()
+        return
+    text = message.text.strip()
+    if not text.isdigit():
+        await message.answer("❌ معرف مستخدم غير صحيح. يرجى كتابة أرقام فقط (User ID):")
+        return
+    target_id = int(text)
+    await state.update_data(ban_target_id=target_id)
+    await state.set_state(AdminStates.waiting_for_ban_reason)
+    await message.answer(
+        f"📝 تم اختيار المستخدم `{target_id}`.\nالرجاء إدخال **سبب الحظر** (أو أرسل `تخطي` للتخطي):",
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@router.message(AdminStates.waiting_for_ban_reason)
+async def process_ban_reason(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        await state.clear()
+        return
+    data = await state.get_data()
+    target_id = data.get("ban_target_id")
+    await state.clear()
+    if not target_id:
+        await message.answer("❌ حدث خطأ، يرجى إعادة المحاولة.")
+        return
+    reason = message.text.strip()
+    if reason.lower() in ["تخطي", "skip", "-"]:
+        reason = "Banned by admin panel"
+    await ban_user(target_id, reason)
+    await message.answer(
+        f"🔴 *تم حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`\n💬 السبب: {reason}",
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_unban_prompt")
+async def cb_admin_unban_prompt(callback: CallbackQuery, state: FSMContext):
+    if not is_user_admin(callback.from_user.id):
+        return
+    await state.set_state(AdminStates.waiting_for_unban_user_id)
+    await callback.message.edit_text(
+        "🟢 *إلغاء حظر مستخدم*\n\nالرجاء إدخال **User ID الرقمي** للمستخدم المراد إلغاء حظره:",
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.message(AdminStates.waiting_for_unban_user_id)
+async def process_unban_user_id(message: Message, state: FSMContext):
+    if not is_user_admin(message.from_user.id):
+        await state.clear()
+        return
+    text = message.text.strip()
+    if not text.isdigit():
+        await message.answer("❌ معرف مستخدم غير صحيح. يرجى كتابة أرقام فقط (User ID):")
+        return
+    target_id = int(text)
+    await state.clear()
+    await unban_user(target_id)
+    await message.answer(
+        f"🟢 *تم إلغاء حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`",
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_show_banned")
+async def cb_admin_show_banned(callback: CallbackQuery):
+    if not is_user_admin(callback.from_user.id):
+        return
+    banned_users = await get_all_banned_users()
+    if not banned_users:
+        await callback.message.edit_text("✨ لا يوجد أي مستخدم محظور حالياً.", reply_markup=keyboards.get_admin_ban_menu_keyboard(), parse_mode="Markdown")
+        await callback.answer()
+        return
+    
+    text = "📋 *قائمة المستخدمين المحظورين حالياً:*\n━━━━━━━━━━━━━━━━━━━━\n"
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    for u in banned_users:
+        u_id = u['user_id']
+        u_name = escape_md(u['first_name'] or str(u_id))
+        reason = u['ban_reason'] or "لا يوجد سبب"
+        text += f"🔴 {u_name} (`{u_id}`) — السبب: {reason}\n"
+        builder.button(text=f"🟢 Unban {u_id}", callback_data=f"admin_unban_{u_id}")
+    builder.button(text="🔙 Back", callback_data="admin_ban_unban_menu")
+    builder.adjust(2)
+    
+    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_user_balances")

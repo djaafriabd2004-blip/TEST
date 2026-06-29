@@ -134,12 +134,13 @@ def get_admin_reply_keyboard(lang='en') -> ReplyKeyboardMarkup:
     builder.button(text="👥 Referral System")
     builder.button(text="🔑 API Keys Settings")
     builder.button(text="👥 Manage Users")
+    builder.button(text="🚫 Ban / Unban System")
     builder.button(text="📣 Broadcast")
     builder.button(text="✏️ Edit Store Name")
     builder.button(text="🎨 Button Emojis")
     builder.button(text="🔌 Pull External Product")
     builder.button(text="🔙 Back to Main Menu")
-    builder.adjust(2, 2, 2, 2, 2, 2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 2, 2, 3, 2, 1)
     return builder.as_markup(resize_keyboard=True)
 
 def get_admin_user_balance_keyboard(user_id) -> InlineKeyboardMarkup:
@@ -159,7 +160,17 @@ def get_admin_manage_users_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="👥 User Discounts", callback_data="admin_discounts_menu")
     builder.button(text="💰 Edit Balances", callback_data="admin_user_balances")
     builder.button(text="👥 Show Balances", callback_data="admin_show_balances")
+    builder.button(text="🚫 Ban / Unban System", callback_data="admin_ban_unban_menu")
     builder.button(text="🔙 Back", callback_data="admin_menu")
+    builder.adjust(2, 2, 1)
+    return builder.as_markup()
+
+def get_admin_ban_menu_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔴 Ban User", callback_data="admin_ban_prompt")
+    builder.button(text="🟢 Unban User", callback_data="admin_unban_prompt")
+    builder.button(text="📋 Show Banned Users", callback_data="admin_show_banned")
+    builder.button(text="🔙 Back", callback_data="admin_manage_users")
     builder.adjust(2, 1, 1)
     return builder.as_markup()
 

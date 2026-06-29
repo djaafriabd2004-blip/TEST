@@ -303,6 +303,12 @@ async def is_user_banned(user_id: int) -> bool:
             row = await cursor.fetchone()
             return bool(row and row[0] == 1)
 
+async def get_all_banned_users():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT user_id, username, first_name, ban_reason FROM users WHERE is_banned = 1;") as cursor:
+            return await cursor.fetchall()
+
 async def update_user_balance(user_id, amount):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (amount, user_id))

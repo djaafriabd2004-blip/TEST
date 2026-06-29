@@ -45,6 +45,9 @@ class AdminStates(StatesGroup):
     waiting_for_btn_emoji = State()
     waiting_for_restore_db = State()
     waiting_for_api_key_user_id = State()
+    waiting_for_ban_user_id = State()
+    waiting_for_ban_reason = State()
+    waiting_for_unban_user_id = State()
 
 class ProvidersStates(StatesGroup):
     waiting_for_url = State()
