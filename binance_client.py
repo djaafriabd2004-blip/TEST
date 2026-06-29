@@ -386,54 +386,41 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
             logger.error(f"Error querying Binance pay transactions: {e}")
             return None
 
+    def parse_rows(resp, min_ts):
+        rows = []
+        if isinstance(resp, dict):
+            if 'data' in resp and isinstance(resp['data'], dict) and 'rows' in resp['data']:
+                rows = resp['data']['rows']
+            elif 'rows' in resp and isinstance(resp['rows'], list):
+                rows = resp['rows']
+            elif 'data' in resp and isinstance(resp['data'], list):
+                rows = resp['data']
+        if min_ts is not None and isinstance(rows, list):
+            filtered = []
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                tx_time = int(r.get('time') or r.get('transactionTime') or r.get('timestamp') or 0)
+                if tx_time > 0 and tx_time < min_ts * 1000:
+                    continue
+                filtered.append(r)
+            rows = filtered
+        return rows
+
     decoded = await fetch_transactions(limit=50, tx_id=transaction_id)
-    if decoded is None:
-        return {
-            'success': False,
-            'error': 'API_ERROR',
-            'message': 'Unable to fetch Binance Pay transactions.'
-        }
-        
-    if isinstance(decoded, dict) and decoded.get('success') is False:
-        return {
-            'success': False,
-            'error': decoded.get('code', 'API_ERROR'),
-            'message': decoded.get('msg', 'Binance API error.')
-        }
-        
-    if isinstance(decoded, dict) and decoded.get('code') is not None and str(decoded.get('code')) != '000000':
-        return {
-            'success': False,
-            'error': decoded.get('code'),
-            'message': decoded.get('message') or decoded.get('msg') or 'Binance API error.'
-        }
-        
-    # extract rows
-    data = []
-    if isinstance(decoded, dict):
-        if 'data' in decoded and isinstance(decoded['data'], dict) and 'rows' in decoded['data']:
-            data = decoded['data']['rows']
-        elif 'rows' in decoded and isinstance(decoded['rows'], list):
-            data = decoded['rows']
-        elif 'data' in decoded and isinstance(decoded['data'], list):
-            data = decoded['data']
+    data = parse_rows(decoded, min_timestamp)
+    
+    # Fallback: If querying with direct tx_id returns 0 rows, fetch recent 100 transactions without tx_id filter
+    if not data:
+        logger.info(f"[BINANCE_USER_API] Direct tx_id query for '{transaction_id}' returned 0 items. Fetching general recent 100 transactions...")
+        gen_decoded = await fetch_transactions(limit=100)
+        if gen_decoded and isinstance(gen_decoded, dict) and str(gen_decoded.get('code', '')) == '000000':
+            data = parse_rows(gen_decoded, min_timestamp)
             
-    # Filter rows by min_timestamp if provided to prevent TxID reuse fraud
-    if min_timestamp is not None and isinstance(data, list):
-        filtered_data = []
-        for row in data:
-            if not isinstance(row, dict):
-                continue
-            tx_time_ms = int(row.get('time') or row.get('transactionTime') or row.get('timestamp') or 0)
-            if tx_time_ms > 0 and tx_time_ms < min_timestamp * 1000:
-                continue
-            filtered_data.append(row)
-        data = filtered_data
-            
-    logger.info(f"[BINANCE_USER_API] transactions_response code={decoded.get('code')} count={len(data)}")
+    logger.info(f"[BINANCE_USER_API] transactions_response evaluated count={len(data)}")
     
     if not isinstance(data, list) or not data:
-        logger.info("[BINANCE_USER_API] No transactions found in response")
+        logger.info("[BINANCE_USER_API] No matching Binance Pay transactions found in response.")
         return {
             'success': False,
             'error': 'NOT_FOUND',
@@ -441,21 +428,16 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
         }
         
     tx_id_str = str(transaction_id).strip()
-    
     matched = None
     
-    # search attempts tracking
     search_attempts = []
     for idx, row in enumerate(data):
         if not isinstance(row, dict):
             continue
         candidates = []
-        if 'transactionId' in row:
-            candidates.append({'key': 'transactionId', 'value': row['transactionId']})
-        if 'transId' in row:
-            candidates.append({'key': 'transId', 'value': row['transId']})
-        if 'orderId' in row:
-            candidates.append({'key': 'orderId', 'value': row['orderId']})
+        for k in ['transactionId', 'transId', 'orderId', 'payId', 'merchantTradeNo', 'bizId']:
+            if k in row and row[k]:
+                candidates.append({'key': k, 'value': row[k]})
             
         for cand in candidates:
             cand_val = str(cand['value']).strip()
@@ -478,13 +460,14 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
         for row in data:
             if not isinstance(row, dict):
                 continue
-            candidate = row.get('transactionId') or row.get('transId')
-            if candidate is not None:
-                cand_str = str(candidate).strip()
-                if tx_id_str in cand_str or cand_str in tx_id_str:
+            for k in ['transactionId', 'transId', 'orderId', 'payId', 'merchantTradeNo', 'bizId']:
+                cand_val = str(row.get(k, '')).strip()
+                if cand_val and (tx_id_str in cand_val or cand_str in tx_id_str if 'cand_str' in locals() else tx_id_str in cand_val):
                     matched = row
-                    logger.info(f"[BINANCE_USER_API] partial_match txId={tx_id_str} candidate={candidate}")
+                    logger.info(f"[BINANCE_USER_API] partial_match txId={tx_id_str} key={k} candidate={cand_val}")
                     break
+            if matched:
+                break
                     
     # Fallback 2: Case insensitive match
     if not matched:
@@ -492,8 +475,8 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
         for row in data:
             if not isinstance(row, dict):
                 continue
-            for key in ['transactionId', 'transId', 'orderId']:
-                if key in row:
+            for key in ['transactionId', 'transId', 'orderId', 'payId', 'merchantTradeNo', 'bizId']:
+                if key in row and row[key]:
                     cand_val = str(row[key]).strip()
                     if cand_val.lower() == tx_id_lower:
                         matched = row
