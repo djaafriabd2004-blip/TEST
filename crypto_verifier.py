@@ -20,6 +20,30 @@ def is_tx_too_old_error(message) -> bool:
     return isinstance(message, str) and message.startswith(TX_TOO_OLD_PREFIX)
 
 
+def is_amount_matching(requested_amount: float, actual_amount: float, coin: str) -> bool:
+    """
+    Checks if the actual on-chain amount matches the user's requested deposit amount.
+    Allows small tolerances for exchange rate fluctuations or network gas fees.
+    """
+    try:
+        req = float(requested_amount)
+        act = float(actual_amount)
+    except (TypeError, ValueError):
+        return False
+        
+    if req <= 0 or act <= 0:
+        return False
+        
+    diff = abs(act - req)
+    
+    if coin in ["USDT", "BINANCE"]:
+        # Strict tolerance for USDT and Binance Pay (max $1.00 USD or 5% difference)
+        return diff <= 1.0 or (diff / req) <= 0.05
+    else:
+        # Flexible tolerance for LTC/TON due to price fluctuations (max $3.00 USD or 15% difference)
+        return diff <= 3.0 or (diff / req) <= 0.15
+
+
 async def get_max_tx_age_seconds() -> int:
     raw = await get_setting("max_tx_age_hours", "24")
     try:
@@ -528,6 +552,26 @@ async def start_auto_verification_loop(bot):
                     min_timestamp = int(created_dt.timestamp()) if age_seconds > 0 else None
                     success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=min_timestamp)
                     if success:
+                        requested_amount = payment["amount"]
+                        if not is_amount_matching(requested_amount, result_val, coin):
+                            logger.warning(f"Background check amount mismatch for payment {transaction_id}: requested {requested_amount}, on-chain {result_val}")
+                            await reject_payment(transaction_id)
+                            admin_alert = (
+                                f"🚨 *SUSPICIOUS DEPOSIT (Background): Amount Mismatch!*\n\n"
+                                f"👤 *User ID:* `{user_id}`\n"
+                                f"🪙 *Coin:* `{coin}`\n"
+                                f"🔗 *TxID:* `{txid}`\n"
+                                f"📥 *Entered Amount:* `${requested_amount:.2f} USD`\n"
+                                f"🔗 *Actual On-Chain:* `${result_val:.2f} USD`\n"
+                                f"⚠️ *Status:* Automatically Rejected."
+                            )
+                            for admin_id in config.ADMIN_IDS:
+                                try:
+                                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                                except Exception:
+                                    pass
+                            continue
+
                         async with aiosqlite.connect(DB_NAME) as db:
                             await db.execute(
                                 "UPDATE payments SET amount = ? WHERE transaction_id = ?;", 

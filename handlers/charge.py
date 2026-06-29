@@ -5,7 +5,7 @@ from database import (
     get_user, create_payment, get_payment, complete_payment, get_setting,
     is_payment_processed, get_payment_by_method, reject_payment, get_button_emojis
 )
-from crypto_verifier import verify_crypto_transaction, is_tx_too_old_error, get_max_tx_age_seconds
+from crypto_verifier import verify_crypto_transaction, is_tx_too_old_error, get_max_tx_age_seconds, is_amount_matching
 from localization import get_text
 from handlers.states import ChargeStates
 from cryptobot_client import create_cryptobot_invoice, get_cryptobot_invoice
@@ -234,6 +234,35 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
     success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=start_time)
     
     if success:
+        # Verify that verified on-chain amount matches the user's declared requested amount
+        if not is_amount_matching(amount, result_val, coin):
+            logger.warning(f"Instant check amount mismatch for user {user_id}: requested {amount}, on-chain {result_val}")
+            await reject_payment(transaction_id)
+            
+            err_text = {
+                "ar": f"❌ *خطأ في تطابق المبلغ!*\n\nالمبلغ الفعلي في المعاملة (`${result_val:.2f} USD`) لا يتطابق مع المبلغ الذي طلبته (`${amount:.2f} USD`). تم رفض العملية لأسباب أمنية.",
+                "en": f"❌ *Amount Mismatch Error!*\n\nThe actual transaction amount (`${result_val:.2f} USD`) does not match your declared deposit amount (`${amount:.2f} USD`). Transaction rejected for security reasons.",
+                "ru": f"❌ *Ошибка совпадения суммы!*\n\nФактическая сумма транзакции (`${result_val:.2f} USD`) не совпадает с заявленной (`${amount:.2f} USD`). Транзакция отклонена из соображений безопасности."
+            }
+            await message.answer(err_text.get(lang, err_text['en']), parse_mode="Markdown")
+            
+            # Send high-priority alert to admins about suspicious TxID submission
+            admin_alert = (
+                f"🚨 *SUSPICIOUS DEPOSIT: Amount Mismatch! (TxID Reuse/Theft Attempt)*\n\n"
+                f"👤 *User:* {user_info} (`{user_id}`)\n"
+                f"🪙 *Coin:* `{coin_label}`\n"
+                f"🔗 *TxID:* `{txid}`\n"
+                f"📥 *User Entered:* `${amount:.2f} USD`\n"
+                f"🔗 *Actual On-Chain:* `${result_val:.2f} USD`\n"
+                f"⚠️ *Status:* Automatically Rejected."
+            )
+            for admin_id in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                except Exception:
+                    pass
+            return
+
         # Update payment amount in DB to the actual verified amount on-chain
         import aiosqlite
         from config import DB_NAME
