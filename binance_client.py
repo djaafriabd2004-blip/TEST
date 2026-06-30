@@ -557,16 +557,29 @@ async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
     res_pay = await query_binance_pay_transactions(tx_id, min_timestamp=min_timestamp)
     if res_pay.get('success'):
         tx = res_pay['transaction']
-        amount = float(tx.get('amount') or tx.get('totalAmount') or 0)
-        # Verify status is successful if present
-        # Status "P" or similar is sometimes returned, but if we found it under transactions, it's credited.
+        # Extract the amount properly from various possible keys
+        raw_amount = (
+            tx.get('amount') or 
+            tx.get('totalAmount') or 
+            tx.get('orderAmount') or 
+            tx.get('transAmount') or 
+            0
+        )
+        try:
+            amount = float(raw_amount)
+        except (ValueError, TypeError):
+            amount = 0.0
         return True, amount
 
     # 2. Try querying Spot deposit history
     res_dep = await query_binance_deposits(tx_id, coin=coin, min_timestamp=min_timestamp)
     if res_dep.get('success'):
         tx = res_dep['transaction']
-        amount = float(tx.get('amount') or 0)
+        raw_amount = tx.get('amount') or 0
+        try:
+            amount = float(raw_amount)
+        except (ValueError, TypeError):
+            amount = 0.0
         status = int(tx.get('status', 0))
         if status == 1:
             return True, amount
