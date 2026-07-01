@@ -260,9 +260,9 @@ LOCALIZATION = {
         'ru': "❌ *Транзакция отклонена!*\n\nЭта транзакция старше {hours} часов и не может быть принята. Отправьте новый платеж и укажите новый TxID."
     },
     'enter_amount_usd': {
-        'en': "💵 Enter the amount you want to deposit in USD (Minimum $1.00):",
-        'ar': "💵 أدخل المبلغ الذي تريد شحنه بالدولار (الحد الأدنى $1.00):",
-        'ru': "💵 Введите сумму пополнения в USD (Минимум $1.00):"
+        'en': "💵 *Deposit Amount Request*\n\n⚠️ *IMPORTANT:* Please enter the amount you want to deposit in USD (Minimum $1.00) *BEFORE* making any transfer or sending payment.\n\n✍️ Enter the USD amount now:",
+        'ar': "💵 *طلب تحديد مبلغ الشحن*\n\n⚠️ *تنبيه هام:* يرجى إدخال وتحديد المبلغ الذي تريد شحنه بالدولار (الحد الأدنى $1.00) *قَبْلَ* القيام بأي عملية تحويل أو إرسال أموال.\n\n✍️ أدخل قيمة المبلغ بالدولار الآن:",
+        'ru': "💵 *Сумма пополнения баланса*\n\n⚠️ *ВАЖНО:* Пожалуйста, укажите сумму, которую хотите внести в USD (Минимум $1.00) *ДО* совершения платежа или перевода.\n\n✍️ Введите сумму в USD сейчас:"
     },
     'invalid_amount': {
         'en': "❌ Invalid amount. Please enter a positive number greater than or equal to 1.",
