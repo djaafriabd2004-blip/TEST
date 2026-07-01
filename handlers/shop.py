@@ -196,7 +196,7 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
     except Exception as e:
         logger.error(f"Failed to check/notify out-of-stock for product {product_id}: {e}")
         
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = dict(product).get(f'name_{lang}') or dict(product).get('name_en')
     
     # Split stock_data_list into chunks of text, each having length <= 3000 to be safe
     chunks = []
@@ -267,7 +267,7 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             bot_info = await bot.get_me()
             bot_username = bot_info.username
-            prod_name_en = html.escape(product['name_en'])
+            prod_name_en = html.escape(dict(product).get('name_en', ''))
             sale_text = (
                 f"⚡️ <b>NEW PURCHASE</b> ⚡️\n"
                 f"──────────────────\n"
