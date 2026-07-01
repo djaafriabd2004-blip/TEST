@@ -451,10 +451,22 @@ async def msg_admin_settings_menu(message: Message):
     if menu == "admin_channels":
         force_join = await get_setting("force_join_channels", "None")
         news_ch = await get_setting("news_channel", "None")
+        
+        # Present channels as a clean list for the admin
+        channels_list = ""
+        if force_join and force_join != "None":
+            ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
+            for idx, c in enumerate(ch_parts, 1):
+                channels_list += f"   {idx}. `{c}`\n"
+        else:
+            channels_list = "   (No channels set)\n"
+            
         text = (
             f"📢 *Channel Settings*\n\n"
-            f"🔗 *Force Join:* `{force_join}`\n"
-            f"📣 *News Channel:* `{news_ch}`"
+            f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
+            f"📣 *News Channel:* `{news_ch}`\n\n"
+            f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
+            f"The bot will check them and display each channel as an individual button to the user!"
         )
         builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
         builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
@@ -1159,10 +1171,22 @@ async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None):
     if menu == "admin_channels":
         force_join = await get_setting("force_join_channels", "None")
         news_ch = await get_setting("news_channel", "None")
+        
+        # Present channels as a clean list for the admin
+        channels_list = ""
+        if force_join and force_join != "None":
+            ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
+            for idx, c in enumerate(ch_parts, 1):
+                channels_list += f"   {idx}. `{c}`\n"
+        else:
+            channels_list = "   (No channels set)\n"
+            
         text = (
             f"📢 *Channel Settings*\n\n"
-            f"🔗 *Force Join:* `{force_join}`\n"
-            f"📣 *News Channel:* `{news_ch}`"
+            f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
+            f"📣 *News Channel:* `{news_ch}`\n\n"
+            f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
+            f"The bot will check them and display each channel as an individual button to the user!"
         )
         builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
         builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
