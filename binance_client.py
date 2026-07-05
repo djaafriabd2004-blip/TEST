@@ -11,37 +11,44 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://bpay.binanceapi.com"
 
+async def get_binance_keys():
+    """Get Binance API keys from database first, then fallback to .env config."""
+    api_key = BINANCE_API_KEY
+    secret_key = BINANCE_SECRET_KEY
+    
+    try:
+        from database import get_setting
+        db_api_key = await get_setting("binance_api_key", "")
+        db_secret_key = await get_setting("binance_secret_key", "")
+        if db_api_key:
+            api_key = db_api_key
+        if db_secret_key:
+            secret_key = db_secret_key
+    except Exception as e:
+        logger.error(f"Error loading Binance keys from database: {e}")
+    
+    return api_key, secret_key
+
 async def get_binance_configs():
     import os
-    # Default values from environment or defaults
-    default_proxy = os.getenv("BINANCE_API_PROXY", "")
-    default_api_url = os.getenv("BINANCE_API_BASE_URL", "https://api.binance.com")
-    default_pay_url = os.getenv("BINANCE_PAY_API_BASE_URL", "https://bpay.binanceapi.com")
+    # Hardcoded default URLs - not configurable by admin to prevent mistakes
+    api_url = "https://api.binance.com"
+    pay_url = "https://bpay.binanceapi.com"
     
-    proxy = default_proxy
-    api_url = default_api_url
-    pay_url = default_pay_url
+    proxy = os.getenv("BINANCE_API_PROXY", "")
     
     try:
         from database import get_setting
         db_proxy = await get_setting("binance_api_proxy", "")
         if db_proxy:
             proxy = db_proxy
-            
-        db_api_url = await get_setting("binance_api_base_url", "")
-        if db_api_url:
-            api_url = db_api_url
-            
-        db_pay_url = await get_setting("binance_pay_base_url", "")
-        if db_pay_url:
-            pay_url = db_pay_url
     except Exception as e:
         logger.error(f"Error loading Binance configurations from database: {e}")
         
     return {
         "proxy": proxy if proxy else None,
-        "api_base_url": api_url.rstrip("/"),
-        "pay_base_url": pay_url.rstrip("/")
+        "api_base_url": api_url,
+        "pay_base_url": pay_url
     }
 
 def generate_nonce(length=32):
@@ -92,8 +99,7 @@ async def create_binance_order(amount, description="Deposit Balance", order_id=N
     nonce = generate_nonce()
     
     # Generate signature using the local secret key or fallback
-    api_key = BINANCE_API_KEY
-    secret_key = BINANCE_SECRET_KEY
+    api_key, secret_key = await get_binance_keys()
     
     # If the user hasn't set keys, return a dummy payment flow for testing
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
@@ -157,8 +163,7 @@ async def check_binance_order_status(merchant_trade_no):
     timestamp = int(time.time() * 1000) - 2000
     nonce = generate_nonce()
     
-    api_key = BINANCE_API_KEY
-    secret_key = BINANCE_SECRET_KEY
+    api_key, secret_key = await get_binance_keys()
     
     # Simulate payment verification if keys are dummy
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
@@ -204,8 +209,7 @@ async def query_binance_deposits(tx_id, coin='USDT', min_timestamp=None):
     Queries the Binance Spot API capital deposit history endpoint /sapi/v1/capital/deposit/hisrec
     for a matching transaction ID (txId) within the last 24 hours.
     """
-    api_key = BINANCE_API_KEY
-    secret_key = BINANCE_SECRET_KEY
+    api_key, secret_key = await get_binance_keys()
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
         return {
             'success': False,
@@ -338,8 +342,7 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
     Queries the Binance Pay transaction endpoint /sapi/v1/pay/transactions
     and searches for a matching transaction identifier using fallback rules.
     """
-    api_key = BINANCE_API_KEY
-    secret_key = BINANCE_SECRET_KEY
+    api_key, secret_key = await get_binance_keys()
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
         return {
             'success': False,

@@ -530,8 +530,11 @@ async def msg_admin_settings_menu(message: Message):
         cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
         
         binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
-        binance_api_url = await get_setting("binance_api_base_url", "https://api.binance.com")
-        binance_pay_url = await get_setting("binance_pay_base_url", "https://bpay.binanceapi.com")
+        binance_api_key = (await get_setting("binance_api_key", "")) or "None"
+        binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
+        # Mask keys for display
+        b_api_display = f"{binance_api_key[:8]}...{binance_api_key[-4:]}" if binance_api_key and binance_api_key != "None" and len(binance_api_key) > 12 else binance_api_key
+        b_secret_display = f"{binance_secret_key[:8]}...{binance_secret_key[-4:]}" if binance_secret_key and binance_secret_key != "None" and len(binance_secret_key) > 12 else binance_secret_key
         
         text = (
             f"🔑 *API Keys & Proxy Configuration*\n\n"
@@ -544,18 +547,19 @@ async def msg_admin_settings_menu(message: Message):
             f"🤖 *Crypto Bot Token:* `{cryptobot_key}`\n"
             f"⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n"
             f"🔗 [Get Crypto Bot Token](https://t.me/CryptoPayTestVar) (Testnet) or [@CryptoBot](https://t.me/CryptoBot?start=pay) (Mainnet)\n\n"
-            f"🌐 *Binance Proxy:* `{binance_proxy}`\n"
-            f"🔗 *Binance API URL:* `{binance_api_url}`\n"
-            f"🔗 *Binance Pay URL:* `{binance_pay_url}`"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🔶 *Binance API Key:* `{b_api_display}`\n"
+            f"🔶 *Binance Secret Key:* `{b_secret_display}`\n"
+            f"🌐 *Binance Proxy:* `{binance_proxy}`"
         )
         builder.button(text="✍️ Set BscScan API Key", callback_data="admin_set_bscscan_api_key")
         builder.button(text="✍️ Set Blockcypher API Token", callback_data="admin_set_blockcypher_api_key")
         builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
         builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
         builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
+        builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
+        builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
         builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
-        builder.button(text="🔗 Set Binance API Base URL", callback_data="admin_set_binance_api_base_url")
-        builder.button(text="🔗 Set Binance Pay Base URL", callback_data="admin_set_binance_pay_base_url")
         
     elif menu == "admin_emoji_settings":
         emojis = await get_button_emojis()
@@ -1250,8 +1254,11 @@ async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None):
         cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
         
         binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
-        binance_api_url = await get_setting("binance_api_base_url", "https://api.binance.com")
-        binance_pay_url = await get_setting("binance_pay_base_url", "https://bpay.binanceapi.com")
+        binance_api_key = (await get_setting("binance_api_key", "")) or "None"
+        binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
+        # Mask keys for display
+        b_api_display = f"{binance_api_key[:8]}...{binance_api_key[-4:]}" if binance_api_key and binance_api_key != "None" and len(binance_api_key) > 12 else binance_api_key
+        b_secret_display = f"{binance_secret_key[:8]}...{binance_secret_key[-4:]}" if binance_secret_key and binance_secret_key != "None" and len(binance_secret_key) > 12 else binance_secret_key
         
         text = (
             f"🔑 *API Keys & Proxy Configuration*\n\n"
@@ -1264,18 +1271,19 @@ async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None):
             f"🤖 *Crypto Bot Token:* `{cryptobot_key}`\n"
             f"⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n"
             f"🔗 [Get Crypto Bot Token](https://t.me/CryptoPayTestVar) (Testnet) or [@CryptoBot](https://t.me/CryptoBot?start=pay) (Mainnet)\n\n"
-            f"🌐 *Binance Proxy:* `{binance_proxy}`\n"
-            f"🔗 *Binance API URL:* `{binance_api_url}`\n"
-            f"🔗 *Binance Pay URL:* `{binance_pay_url}`"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🔶 *Binance API Key:* `{b_api_display}`\n"
+            f"🔶 *Binance Secret Key:* `{b_secret_display}`\n"
+            f"🌐 *Binance Proxy:* `{binance_proxy}`"
         )
         builder.button(text="✍️ Set BscScan API Key", callback_data="admin_set_bscscan_api_key")
         builder.button(text="✍️ Set Blockcypher API Token", callback_data="admin_set_blockcypher_api_key")
         builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
         builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
         builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
+        builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
+        builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
         builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
-        builder.button(text="🔗 Set Binance API Base URL", callback_data="admin_set_binance_api_base_url")
-        builder.button(text="🔗 Set Binance Pay Base URL", callback_data="admin_set_binance_pay_base_url")
         
     elif menu == "admin_emoji_settings":
         emojis = await get_button_emojis()
@@ -1389,8 +1397,8 @@ async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext):
         "toncenter_api_key": "💎 Enter Toncenter API Key (get from @toncenter bot: https://t.me/toncenter):",
         "cryptobot_api_key": "🤖 Enter Crypto Bot API token (get from @CryptoPayTestVar or @CryptoBot):",
         "binance_api_proxy": "🌐 Enter Binance API Proxy (e.g. `http://user:pass@ip:port` or `socks5://ip:port`, or leave blank to disable):",
-        "binance_api_base_url": "🔗 Enter Binance API Base URL (e.g. `https://api1.binance.com` or `https://api.binance.com`):",
-        "binance_pay_base_url": "🔗 Enter Binance Pay Base URL (e.g. `https://bpay.binanceapi.com` or custom proxy endpoint):"
+        "binance_api_key": "🔶 Enter your Binance API Key (get from https://www.binance.com/en/my/settings/api-management):",
+        "binance_secret_key": "🔶 Enter your Binance Secret Key:"
     }
     
     prompt = prompts.get(setting_key, "Enter new value:")
@@ -1421,8 +1429,8 @@ async def process_setting_value(message: Message, state: FSMContext):
         "toncenter_api_key": "toncenter_api_key",
         "cryptobot_api_key": "cryptobot_token",
         "binance_api_proxy": "binance_api_proxy",
-        "binance_api_base_url": "binance_api_base_url",
-        "binance_pay_base_url": "binance_pay_base_url"
+        "binance_api_key": "binance_api_key",
+        "binance_secret_key": "binance_secret_key"
     }
     
     db_key = db_keys.get(setting_key)
