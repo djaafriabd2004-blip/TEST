@@ -90,6 +90,29 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
     builder.adjust(1)
     return builder.as_markup()
 
+def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    
+    # 1. Pay with Balance (if user balance is enough)
+    if round(balance, 2) >= price_to_pay:
+        builder.button(text=get_text('btn_pay_balance', lang, balance=balance), callback_data=f"chk_bal_{product_id}_{qty}")
+        
+    # 2. Pay with Binance Pay
+    builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
+    
+    # Back button
+    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_binance_pay_checkout_keyboard(checkout_url, product_id, qty, merchant_trade_no, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=get_text('btn_pay_now', lang), url=checkout_url)
+    builder.button(text=get_text('btn_check_payment', lang), callback_data=f"chk_verify_bin_{product_id}_{qty}_{merchant_trade_no}")
+    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
+    builder.adjust(1)
+    return builder.as_markup()
+
 def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled=True, cryptotransfer_enabled=True) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if stars_enabled:

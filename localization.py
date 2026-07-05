@@ -199,6 +199,36 @@ LOCALIZATION = {
         'ar': "📦 *بيانات المنتج (تابع):* \n\n`{data}`",
         'ru': "📦 *Ваши данные (Продолжение):* \n\n`{data}`"
     },
+    'checkout_payment_prompt': {
+        'en': "🛒 *Checkout* ({name} x{qty})\n💵 *Total Price:* `${price:.2f} USD`\n\n👇 Choose your preferred payment method below to complete the purchase:",
+        'ar': "🛒 *الدفع لشراء:* {name} (الكمية {qty})\n💵 *السعر الإجمالي:* `${price:.2f} USD`\n\n👇 اختر طريقة الدفع المفضلة لديك لإتمام عملية الشراء:",
+        'ru': "🛒 *Оплата заказа* ({name} x{qty})\n💵 *Итого:* `${price:.2f} USD`\n\n👇 Выберите способ оплаты для завершения покупки:"
+    },
+    'btn_pay_balance': {
+        'en': "💰 Pay with Wallet Balance (${balance:.2f})",
+        'ar': "💰 الدفع من رصيد المحفظة (${balance:.2f})",
+        'ru': "💰 Оплатить с баланса кошелька (${balance:.2f})"
+    },
+    'btn_pay_binance': {
+        'en': "🔶 Pay with Binance Pay (Instant)",
+        'ar': "🔶 الدفع عبر Binance Pay (فوري)",
+        'ru': "🔶 Оплатить через Binance Pay"
+    },
+    'checkout_binance_created': {
+        'en': "🔶 *Binance Pay Order Created!*\n\n💵 *Total Amount:* `${price:.2f} USD`\n\n1. Click the button below to pay via Binance Pay.\n2. Once paid, click **Check Payment Status** to receive your product.",
+        'ar': "🔶 *تم إنشاء طلب الدفع عبر Binance Pay!*\n\n💵 *المبلغ الإجمالي:* `${price:.2f} USD`\n\n1. اضغط على الزر أدناه للدفع عبر تطبيق بايننس.\n2. بعد إتمام الدفع، اضغط على **التحقق من حالة الدفع** لاستلام منتجك فوراً.",
+        'ru': "🔶 *Счет в Binance Pay создан!*\n\n💵 *Сумма:* `${price:.2f} USD`\n\n1. Нажмите кнопку ниже для оплаты через Binance Pay.\n2. После оплаты нажмите **Проверить статус платежа**, чтобы получить товар."
+    },
+    'checkout_binance_paid': {
+        'en': "✅ *Payment Confirmed!* Processing your delivery...",
+        'ar': "✅ *تم تأكيد الدفع بنجاح!* جاري تسليم منتجك...",
+        'ru': "✅ *Оплата подтверждена!* Доставка товара..."
+    },
+    'checkout_binance_failed': {
+        'en': "❌ *Payment not found or still pending.* Please pay first and then click verify.",
+        'ar': "❌ *لم يتم العثور على الدفع أو لا يزال قيد الانتظار.* يرجى إتمام الدفع أولاً ثم الضغط على التحقق.",
+        'ru': "❌ *Платеж не найден или ожидает оплаты.* Пожалуйста, оплатите счет и нажмите кнопку проверки."
+    },
     'charge_title': {
         'en': "💳 *Charge Balance*\n\nChoose your preferred payment method below. Your current balance is `${balance:.2f} USD`.",
         'ar': "💳 *شحن الرصيد*\n\nاختر طريقة الدفع المفضلة لديك أدناه. رصيدك الحالي هو `${balance:.2f} USD`.",

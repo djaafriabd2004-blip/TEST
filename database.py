@@ -442,7 +442,7 @@ async def get_stock_count(product_id):
             return row[0] if row else 0
 
 # Purchase Helpers
-async def buy_product(user_id, product_id, quantity=1):
+async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         
@@ -466,7 +466,7 @@ async def buy_product(user_id, product_id, quantity=1):
         final_price_per_item = round(product['price'] * (1 - discount_percent / 100), 2)
         total_price = round(final_price_per_item * quantity, 2)
         
-        if round(user['balance'], 2) < total_price:
+        if not skip_balance_check and round(user['balance'], 2) < total_price:
             raise Exception("Insufficient balance")
             
         # Check if imported product
@@ -515,7 +515,8 @@ async def buy_product(user_id, product_id, quantity=1):
                 raise Exception(f"Failed to communicate with provider: {e}")
                 
             # Deduct balance locally
-            await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
+            if not skip_balance_check:
+                await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
             
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             # Create local orders for each item
@@ -536,7 +537,8 @@ async def buy_product(user_id, product_id, quantity=1):
                 
         # Begin transaction updates
         # Deduct balance
-        await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
+        if not skip_balance_check:
+            await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
         
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         stock_data_list = []
