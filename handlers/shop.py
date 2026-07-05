@@ -193,9 +193,9 @@ async def cb_checkout_balance(callback: CallbackQuery, bot: Bot, lang='en'):
     await execute_delivery(callback.message, user_id, product_id, qty, price_to_pay, skip_balance_check=False, bot=bot, lang=lang)
     await callback.answer()
 
-# Callback handler for creating Binance Pay Order
+# Callback handler for Binance Pay ID checkout instructions
 @router.callback_query(F.data.startswith("chk_bin_"))
-async def cb_checkout_binance(callback: CallbackQuery, bot: Bot, lang='en'):
+async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: Bot, lang='en'):
     user_id = callback.from_user.id
     
     parts = callback.data.replace("chk_bin_", "").split("_")
@@ -216,97 +216,112 @@ async def cb_checkout_binance(callback: CallbackQuery, bot: Bot, lang='en'):
         await callback.answer(get_text('out_of_stock', lang), show_alert=True)
         return
         
-    # Create Binance Pay Order
-    import uuid
-    import time
-    from binance_client import create_binance_order
-    from database import create_payment
+    # Get Binance address / Pay ID config
+    default_address = "Not Configured"
+    address = await get_setting("crypto_addr_binance", default_address)
     
     prod_name = product[f'name_{lang}'] or product['name_en']
-    merchant_trade_no = f"CHKP_{int(time.time())}_{uuid.uuid4().hex[:6]}"
     
-    await callback.message.edit_text("⏳ Generating Binance Pay Link...")
-    
-    res = await create_binance_order(price_to_pay, description=f"Buy {prod_name} x{qty}", order_id=merchant_trade_no)
-    if not res.get("success"):
-        logger.error(f"Binance order creation failed at checkout: {res}")
-        await callback.message.edit_text(f"❌ Failed to create payment order: {res.get('error')}", reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang))
-        await callback.answer()
-        return
-        
-    checkout_url = res["checkoutUrl"]
-    
-    # Store payment details in database
-    await create_payment(user_id, price_to_pay, f"binance_pay_direct_{product_id}_{qty}_{merchant_trade_no}", merchant_trade_no)
-    
-    text = get_text('checkout_binance_created', lang, price=price_to_pay)
-    kb = keyboards.get_binance_pay_checkout_keyboard(checkout_url, product_id, qty, merchant_trade_no, lang)
+    # Render instructions
+    text = get_text('checkout_binance_id_instructions', lang, name=prod_name, qty=qty, price=price_to_pay, address=address)
+    kb = keyboards.get_binance_id_checkout_keyboard(product_id, qty, lang)
     
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
 
-# Callback handler for verifying Binance Pay direct payment
-@router.callback_query(F.data.startswith("chk_verify_bin_"))
-async def cb_checkout_verify_binance(callback: CallbackQuery, bot: Bot, lang='en'):
-    user_id = callback.from_user.id
-    
-    parts = callback.data.replace("chk_verify_bin_", "").split("_")
+# Callback when user clicks "Done / Verify"
+@router.callback_query(F.data.startswith("chk_verify_binid_"))
+async def cb_checkout_verify_binid(callback: CallbackQuery, state: FSMContext, bot: Bot, lang='en'):
+    parts = callback.data.replace("chk_verify_binid_", "").split("_")
     product_id = int(parts[0])
     qty = int(parts[1])
-    merchant_trade_no = "_".join(parts[2:])
     
-    from database import get_payment, complete_payment
-    from binance_client import check_binance_order_status
+    await state.set_state(ShopStates.waiting_for_checkout_binance_txid)
+    await state.update_data(chk_prod_id=product_id, chk_qty=qty)
     
-    payment = await get_payment(merchant_trade_no)
-    if not payment:
-        await callback.answer("❌ Transaction record not found.", show_alert=True)
+    await callback.message.answer(get_text('checkout_binance_enter_txid', lang), parse_mode="Markdown")
+    await callback.answer()
+
+# Message handler for Binance checkout TxID input
+@router.message(ShopStates.waiting_for_checkout_binance_txid)
+async def process_checkout_binance_txid(message: Message, state: FSMContext, bot: Bot):
+    user_id = message.from_user.id
+    db_user = await get_user(user_id)
+    lang = db_user['language'] if db_user else 'en'
+    
+    txid = message.text.strip()
+    if len(txid) < 5:
+        await message.answer("❌ Invalid Transaction ID/Pay ID. Please try again:")
         return
         
-    if payment['status'] == 'completed':
-        await callback.answer("✅ Payment already processed.", show_alert=True)
+    data = await state.get_data()
+    product_id = data.get('chk_prod_id')
+    qty = data.get('chk_qty')
+    
+    if not product_id or not qty:
+        await state.clear()
         return
         
-    await callback.answer("⏳ Checking payment status...")
-    
-    status_res = await check_binance_order_status(merchant_trade_no)
-    is_paid = False
-    
-    if payment.get("payment_method", "").startswith("binance_pay_direct_") and "mock" in status_res:
-        # Mock payment verification fallback for tests
-        is_paid = True
-    elif status_res.get("status") == "PAID":
-        is_paid = True
+    product = await get_product(product_id)
+    if not product:
+        await state.clear()
+        await message.answer("Product not found.")
+        return
         
-    if is_paid:
-        # Complete payment in DB (but does not add balance as it is direct checkout)
-        # To avoid adding balance, we bypass complete_payment's balance update.
-        # We manually update payment status to completed.
+    discount_pct = await get_user_discount(user_id)
+    price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
+    prod_name = product[f'name_{lang}'] or product['name_en']
+    
+    await state.clear()
+    
+    # Check if this TxID is already in database to prevent double spending
+    payment_method = f"blockchain_BINANCE_{txid}"
+    from database import get_payment_by_method, create_payment, get_payment
+    existing_payment = await get_payment_by_method(payment_method)
+    if existing_payment:
+        status = existing_payment['status']
+        if status == 'completed':
+            await message.answer(get_text('crypto_already_processed', lang))
+            return
+        elif status == 'pending':
+            await message.answer("⏳ This transaction is already pending verification. Please wait.")
+            return
+        elif status == 'rejected':
+            await message.answer("❌ This transaction was previously rejected.")
+            return
+            
+    # Save pending direct checkout payment
+    import uuid
+    merchant_trade_no = f"CHKP_{uuid.uuid4().hex[:8].upper()}"
+    await create_payment(user_id, price_to_pay, payment_method, merchant_trade_no)
+    
+    await message.answer("⏳ Verifying your Binance transaction ID...")
+    
+    # Verify using Binance API
+    from binance_client import verify_binance_payment
+    success, result_val = await verify_binance_payment(txid, min_timestamp=None)
+    
+    if success:
+        # Complete payment in DB (Direct checkout: manually set completed to avoid adding balance)
         import aiosqlite
         from config import DB_NAME
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (merchant_trade_no,))
             await db.commit()
             
-        await callback.message.edit_text(get_text('checkout_binance_paid', lang), parse_mode="Markdown")
+        await message.answer(get_text('checkout_binance_paid', lang), parse_mode="Markdown")
+        await execute_delivery(message, user_id, product_id, qty, price_to_pay, skip_balance_check=True, bot=bot, lang=lang)
         
-        product = await get_product(product_id)
-        prod_name = product[f'name_{lang}'] or product['name_en']
-        discount_pct = await get_user_discount(user_id)
-        price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
-        
-        await execute_delivery(callback.message, user_id, product_id, qty, price_to_pay, skip_balance_check=True, bot=bot, lang=lang)
-        
-        # Notify admins of verified direct checkout
-        user_info = f"{callback.from_user.first_name}"
-        if callback.from_user.username:
-            user_info += f" (@{callback.from_user.username})"
+        # Notify admins
+        user_info = f"{message.from_user.first_name}"
+        if message.from_user.username:
+            user_info += f" (@{message.from_user.username})"
         admin_notif = (
-            f"🎯 *Direct Binance Pay Checkout Purchase!*\n\n"
+            f"🎯 *Direct Binance ID Checkout Purchase!*\n\n"
             f"👤 *User:* {user_info} (`{user_id}`)\n"
             f"🛍️ *Product:* `{prod_name} (x{qty})`\n"
             f"💵 *Amount Paid:* `${price_to_pay:.2f} USD`\n"
-            f"🆔 *Trade No:* `{merchant_trade_no}`"
+            f"🆔 *TxID/PayID:* `{txid}`"
         )
         import config
         for admin_id in config.ADMIN_IDS:
@@ -315,7 +330,27 @@ async def cb_checkout_verify_binance(callback: CallbackQuery, bot: Bot, lang='en
             except Exception:
                 pass
     else:
-        await callback.message.answer(get_text('checkout_binance_failed', lang), parse_mode="Markdown")
+        await message.answer(get_text('checkout_binance_failed', lang), parse_mode="Markdown")
+        
+        # Notify admins of pending checkout for manual review just in case
+        user_info = f"{message.from_user.first_name}"
+        if message.from_user.username:
+            user_info += f" (@{message.from_user.username})"
+        admin_notif = (
+            f"⏳ *[Pending Checkout] Binance ID Verification!*\n\n"
+            f"👤 *User:* {user_info} (`{user_id}`)\n"
+            f"🛍️ *Product:* `{prod_name} (x{qty})`\n"
+            f"💵 *Amount Required:* `${price_to_pay:.2f} USD`\n"
+            f"🔗 *TxID/PayID:* `{txid}`\n\n"
+            f"You can verify and approve this manually from the Pending Deposits section."
+        )
+        import config
+        kb = keyboards.get_admin_payment_approval_keyboard(merchant_trade_no)
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await bot.send_message(chat_id=admin_id, text=admin_notif, reply_markup=kb, parse_mode="Markdown")
+            except Exception:
+                pass
 
 async def execute_delivery(message: Message, user_id: int, product_id: int, qty: int, price_to_pay: float, skip_balance_check: bool, bot: Bot, lang: str):
     product = await get_product(product_id)

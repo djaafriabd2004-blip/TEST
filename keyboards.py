@@ -105,10 +105,9 @@ def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en') -> 
     builder.adjust(1)
     return builder.as_markup()
 
-def get_binance_pay_checkout_keyboard(checkout_url, product_id, qty, merchant_trade_no, lang='en') -> InlineKeyboardMarkup:
+def get_binance_id_checkout_keyboard(product_id, qty, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_pay_now', lang), url=checkout_url)
-    builder.button(text=get_text('btn_check_payment', lang), callback_data=f"chk_verify_bin_{product_id}_{qty}_{merchant_trade_no}")
+    builder.button(text=get_text('btn_check_payment', lang), callback_data=f"chk_verify_binid_{product_id}_{qty}")
     builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     builder.adjust(1)
     return builder.as_markup()

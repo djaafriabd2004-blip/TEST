@@ -215,9 +215,19 @@ LOCALIZATION = {
         'ru': "🔶 Оплатить через Binance Pay"
     },
     'checkout_binance_created': {
-        'en': "🔶 *Binance Pay Order Created!*\n\n💵 *Total Amount:* `${price:.2f} USD`\n\n1. Click the button below to pay via Binance Pay.\n2. Once paid, click **Check Payment Status** to receive your product.",
-        'ar': "🔶 *تم إنشاء طلب الدفع عبر Binance Pay!*\n\n💵 *المبلغ الإجمالي:* `${price:.2f} USD`\n\n1. اضغط على الزر أدناه للدفع عبر تطبيق بايننس.\n2. بعد إتمام الدفع، اضغط على **التحقق من حالة الدفع** لاستلام منتجك فوراً.",
-        'ru': "🔶 *Счет в Binance Pay создан!*\n\n💵 *Сумма:* `${price:.2f} USD`\n\n1. Нажмите кнопку ниже для оплаты через Binance Pay.\n2. После оплаты нажмите **Проверить статус платежа**, чтобы получить товар."
+        'en': "🔶 *Binance Pay Order Created!*\n\n1. Click the button below to pay via Binance Pay.\n2. Once paid, click **Check Payment Status** to receive your product.",
+        'ar': "🔶 *تم إنشاء طلب الدفع عبر Binance Pay!*\n\n1. اضغط على الزر أدناه للدفع عبر تطبيق بايننس.\n2. بعد إتمام الدفع، اضغط على **التحقق من حالة الدفع** لاستلام منتجك فوراً.",
+        'ru': "🔶 *Счет в Binance Pay создан!*\n\n1. Нажмите кнопку ниже для оплаты через Binance Pay.\n2. После оплаты нажмите **Проверить статус платежа**, чтобы получить товар."
+    },
+    'checkout_binance_id_instructions': {
+        'en': "🔶 *Binance Pay / ID Purchase*\n\n🛒 *Product:* {name} (x{qty})\n💵 *Total Price:* `${price:.2f} USD`\n\nSend payment to our Binance Pay ID or Email below:\n\n*Binance ID/Pay/Email:* `{address}`\n\n⚠️ *IMPORTANT:* Send the payment *AFTER* opening this menu. If you pay first and then click buy, verification may fail.\n\n👉 Press **Done / Verify** below to enter your transaction ID and claim your product:",
+        'ar': "🔶 *شراء مباشر عبر معرف بايننس / Binance ID*\n\n🛒 *المنتج:* {name} (الكمية {qty})\n💵 *السعر الإجمالي:* `${price:.2f} USD`\n\nأرسل المبلغ المطلوب إلى معرف بايننس أو البريد التالي:\n\n*معرف بايننس/البريد:* `{address}`\n\n⚠️ *تنبيه هام:* يجب عليك إرسال الأموال *بَعْدَ* فتح هذه القائمة. إذا قمت بالتحويل أولاً ثم طلبت الشراء، فقد تفشل العملية تلقائياً.\n\n👉 اضغط على **تم التحويل / التحقق** أدناه لإدخال معرف المعاملة واستلام منتجك:",
+        'ru': "🔶 *Покупка через Binance ID / Pay*\n\n🛒 *Товар:* {name} (x{qty})\n💵 *Итого:* `${price:.2f} USD`\n\nОтправьте USDT на Binance Pay ID или Email ниже:\n\n*Binance ID/Pay/Email:* `{address}`\n\n⚠️ *ВАЖНО:* Отправляйте платеж только *ПОСЛЕ* открытия этого меню.\n\n👉 Нажмите кнопку ниже, чтобы ввести ID транзакции:"
+    },
+    'checkout_binance_enter_txid': {
+        'en': "✍️ Please enter the Binance Transaction ID / Pay ID / Order ID for this purchase:",
+        'ar': "✍️ يرجى إدخال معرف المعاملة / معرف الدفع (Pay ID / Transaction ID) الخاص بهذه العملية:",
+        'ru': "✍️ Пожалуйста, введите ID транзакции / Pay ID / Order ID для этой покупки:"
     },
     'checkout_binance_paid': {
         'en': "✅ *Payment Confirmed!* Processing your delivery...",
