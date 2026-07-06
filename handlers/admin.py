@@ -2377,15 +2377,11 @@ async def cb_admin_pull_external(callback: CallbackQuery, state: FSMContext, lan
         await callback.answer("❌ Unauthorized", show_alert=True)
         return
         
-    from database import get_saved_provider
-    prov = await get_saved_provider()
+    from database import get_providers
+    providers = await get_providers()
     
-    if prov:
-        text = get_text('prov_use_saved', lang, url=prov['base_url'])
-        await callback.message.edit_text(text, reply_markup=keyboards.get_provider_setup_keyboard(lang), parse_mode="Markdown")
-    else:
-        await state.set_state(ProvidersStates.waiting_for_url)
-        await callback.message.edit_text(get_text('prov_url_prompt', lang), parse_mode="Markdown")
+    text = get_text('prov_list_title', lang)
+    await callback.message.edit_text(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_prov_setup_new")
@@ -2398,14 +2394,47 @@ async def cb_admin_prov_setup_new(callback: CallbackQuery, state: FSMContext, la
     await callback.message.edit_text(get_text('prov_url_prompt', lang), parse_mode="Markdown")
     await callback.answer()
 
-@router.callback_query(F.data == "admin_prov_use_saved")
-async def cb_admin_prov_use_saved(callback: CallbackQuery, state: FSMContext, lang='en'):
+@router.callback_query(F.data.startswith("admin_prov_manage_"))
+async def cb_admin_prov_manage(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("❌ Unauthorized", show_alert=True)
         return
         
-    from database import get_saved_provider
-    prov = await get_saved_provider()
+    provider_id = int(callback.data.replace("admin_prov_manage_", ""))
+    from database import get_provider
+    prov = await get_provider(provider_id)
+    if not prov:
+        await callback.answer("❌ Provider not found", show_alert=True)
+        return
+        
+    text = get_text('prov_manage_title', lang, url=prov['base_url'])
+    await callback.message.edit_text(text, reply_markup=keyboards.get_provider_manage_keyboard(provider_id, lang), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_prov_delete_"))
+async def cb_admin_prov_delete(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    provider_id = int(callback.data.replace("admin_prov_delete_", ""))
+    from database import delete_provider, get_providers
+    await delete_provider(provider_id)
+    await callback.answer("✅ Provider deleted successfully!", show_alert=True)
+    
+    providers = await get_providers()
+    text = get_text('prov_list_title', lang)
+    await callback.message.edit_text(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("admin_prov_pull_"))
+async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    provider_id = int(callback.data.replace("admin_prov_pull_", ""))
+    from database import get_provider
+    prov = await get_provider(provider_id)
     if not prov:
         await callback.answer("❌ Provider not found", show_alert=True)
         return

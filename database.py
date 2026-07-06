@@ -358,18 +358,38 @@ async def save_provider(base_url, api_key):
         base_url = 'https://' + base_url
     
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("DELETE FROM providers;")
-        await db.execute(
-            "INSERT INTO providers (base_url, api_key) VALUES (?, ?);",
-            (base_url, api_key)
-        )
+        # Check if base_url exists
+        async with db.execute("SELECT id FROM providers WHERE base_url = ?;", (base_url,)) as cursor:
+            row = await cursor.fetchone()
+            
+        if row:
+            await db.execute(
+                "UPDATE providers SET api_key = ? WHERE id = ?;",
+                (api_key, row[0])
+            )
+        else:
+            await db.execute(
+                "INSERT INTO providers (base_url, api_key) VALUES (?, ?);",
+                (base_url, api_key)
+            )
         await db.commit()
 
-async def get_saved_provider():
+async def get_providers():
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM providers LIMIT 1;") as cursor:
+        async with db.execute("SELECT * FROM providers ORDER BY id ASC;") as cursor:
+            return await cursor.fetchall()
+
+async def get_provider(provider_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM providers WHERE id = ?;", (provider_id,)) as cursor:
             return await cursor.fetchone()
+
+async def delete_provider(provider_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM providers WHERE id = ?;", (provider_id,))
+        await db.commit()
 
 async def add_imported_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id):
     async with aiosqlite.connect(DB_NAME) as db:

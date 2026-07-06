@@ -308,11 +308,22 @@ def get_user_api_key_keyboard(has_key=False, lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_provider_setup_keyboard(lang='en') -> InlineKeyboardMarkup:
+def get_providers_list_keyboard(providers, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_use_saved', lang), callback_data="admin_prov_use_saved")
-    builder.button(text=get_text('btn_setup_new_prov', lang), callback_data="admin_prov_setup_new")
+    for prov in providers:
+        # Display the base URL of each provider
+        url_display = prov['base_url'].replace("https://", "").replace("http://", "")
+        builder.button(text=f"🔌 {url_display}", callback_data=f"admin_prov_manage_{prov['id']}")
+    builder.button(text=get_text('btn_setup_new_prov', lang) or "➕ Add New Provider", callback_data="admin_prov_setup_new")
     builder.button(text="🔙 Back", callback_data="admin_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_provider_manage_keyboard(provider_id, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="📥 Pull/Import Products", callback_data=f"admin_prov_pull_{provider_id}")
+    builder.button(text="❌ Delete Provider", callback_data=f"admin_prov_delete_{provider_id}")
+    builder.button(text="🔙 Back", callback_data="admin_pull_external")
     builder.adjust(1)
     return builder.as_markup()
 

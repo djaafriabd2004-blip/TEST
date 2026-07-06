@@ -469,6 +469,16 @@ LOCALIZATION = {
         'ar': "✅ تم سحب واستيراد المنتج *{name}* بنجاح! السعر المحلي: `{price:.2f}`",
         'ru': "✅ Товар *{name}* успешно импортирован! Локальная цена: `{price:.2f}`"
     },
+    'prov_list_title': {
+        'en': "🔌 *API Providers Management*\n\nSelect a provider from the list to pull products or delete them, or configure a new provider bot:",
+        'ar': "🔌 *إدارة موزعي الـ API*\n\nاختر أحد الموزعين من القائمة لسحب المنتجات أو حذفه، أو قم بإعداد بوت موزع جديد:",
+        'ru': "🔌 *Управление API провайдерами*\n\nВыберите провайдера для импорта или удаления, или настройте нового:"
+    },
+    'prov_manage_title': {
+        'en': "🔌 *Manage Provider:* `{url}`\n\nChoose an action below for this provider bot:",
+        'ar': "🔌 *إدارة الموزع:* `{url}`\n\nاختر أحد الإجراءات لهذا الموزع:",
+        'ru': "🔌 *Управление провайдером:* `{url}`\n\nВыберите действие:"
+    },
     'prov_use_saved': {
         'en': "🔌 Saved Provider bot found: `{url}`\n\nDo you want to use the saved provider or set up a new one?",
         'ar': "🔌 تم العثور على موزع محفوظ: `{url}`\n\nهل تريد استخدامه أم إعداد موزع جديد؟",
