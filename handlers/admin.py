@@ -2475,11 +2475,20 @@ async def process_provider_key(message: Message, state: FSMContext, lang='en'):
         await message.answer("❌ Failed to connect to provider bot. Please verify the URL and Reseller API key, and try again by clicking 'Pull External Product'.")
         await state.clear()
     else:
-        from database import save_provider, get_saved_provider
+        from database import save_provider, get_providers
         await save_provider(url, key)
-        prov = await get_saved_provider()
         
-        await state.update_data(prov_products=products, prov_id=prov['id'])
+        # Get the ID of the newly saved provider
+        providers = await get_providers()
+        prov_id = 1
+        for p in providers:
+            p_url = p['base_url'].strip().rstrip('/')
+            clean_url = url.strip().rstrip('/')
+            if p_url == clean_url or p_url.replace("https://", "").replace("http://", "") == clean_url.replace("https://", "").replace("http://", ""):
+                prov_id = p['id']
+                break
+                
+        await state.update_data(prov_products=products, prov_id=prov_id)
         await message.answer(get_text('prov_select_product', lang), reply_markup=keyboards.get_provider_products_keyboard(products, lang))
 
 @router.callback_query(F.data.startswith("admin_prov_sel_"))
