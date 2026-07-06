@@ -2555,13 +2555,9 @@ async def msg_admin_pull_external(message: Message, state: FSMContext, lang='en'
     if not is_user_admin(message.from_user.id):
         return
         
-    from database import get_saved_provider
-    prov = await get_saved_provider()
+    from database import get_providers
+    providers = await get_providers()
     
-    if prov:
-        text = get_text('prov_use_saved', lang, url=prov['base_url'])
-        await message.answer(text, reply_markup=keyboards.get_provider_setup_keyboard(lang), parse_mode="Markdown")
-    else:
-        await state.set_state(ProvidersStates.waiting_for_url)
-        await message.answer(get_text('prov_url_prompt', lang), parse_mode="Markdown")
+    text = get_text('prov_list_title', lang)
+    await message.answer(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
 
