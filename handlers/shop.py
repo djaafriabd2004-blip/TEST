@@ -379,10 +379,30 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                     reply_markup=keyboards.get_product_view_keyboard(product_id, False, lang)
                 )
         else:
-            await message.answer(
-                f"❌ Error occurred: {err_msg}",
-                reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang)
-            )
+            # Obfuscate reseller API provider balance errors to protect admin privacy
+            if "insufficient balance" in err_msg.lower() or "provider error" in err_msg.lower() or "insufficient items" in err_msg.lower():
+                import config
+                admin_username = "admin"
+                # Query database for the first admin username if configured
+                import aiosqlite
+                from config import DB_NAME
+                async with aiosqlite.connect(DB_NAME) as db:
+                    db.row_factory = aiosqlite.Row
+                    if config.ADMIN_IDS:
+                        async with db.execute("SELECT username FROM users WHERE user_id = ? LIMIT 1;", (config.ADMIN_IDS[0],)) as u_cur:
+                            u_row = await u_cur.fetchone()
+                            if u_row and u_row['username']:
+                                admin_username = u_row['username']
+                
+                await message.answer(
+                    get_text('provider_insufficient_balance', lang, admin_username=admin_username),
+                    parse_mode="Markdown"
+                )
+            else:
+                await message.answer(
+                    f"❌ Error occurred: {err_msg}",
+                    reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang)
+                )
         return
 
     # 2. Check if product is out of stock and notify admins

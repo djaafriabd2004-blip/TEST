@@ -249,6 +249,11 @@ LOCALIZATION = {
         'ar': "⚠️ *تسليم جزئي وتعويض الرصيد المتبقي*\n\n🛒 *المُسلّم:* تم تسليم {actual} من أصل {qty} قطع متوفرة.\n📦 *غير متوفر:* {diff} قطع لم تكن متاحة في المخزون.\n\n💰 تم إرجاع قيمة القطع الناقصة **`${refund:.2f} USD`** وتلقائياً إيداعها في رصيد محفظتك بالبوت.",
         'ru': "⚠️ *Частичная доставка и возврат средств*\n\n🛒 *Доставлено:* {actual} из {qty} шт.\n📦 *Нет в наличии:* {diff} шт. недоступны.\n\n💰 **`${refund:.2f} USD`** были возвращены и добавлены на баланс вашего кошелька за недостающие товары."
     },
+    'provider_insufficient_balance': {
+        'en': "❌ *Delivery Error!*\n\nWe apologize, but we are currently facing a technical issue delivering this product. Please contact the administrator at @{admin_username} to receive your product manually.",
+        'ar': "❌ *خطأ في تسليم المنتج!*\n\nنعتذر منك، نواجه حالياً مشكلة تقنية في تسليم هذا المنتج. يرجى التواصل مع إدارة البوت عبر الحساب التالي: @{admin_username} ليتم تسليمك منتجك يدوياً فوراً.",
+        'ru': "❌ *Ошибка доставки!*\n\nПриносим извинения, возникла техническая проблема с выдачей товара. Пожалуйста, свяжитесь с администратором @{admin_username} для ручной выдачи."
+    },
     'charge_title': {
         'en': "💳 *Charge Balance*\n\nChoose your preferred payment method below. Your current balance is `${balance:.2f} USD`.",
         'ar': "💳 *شحن الرصيد*\n\nاختر طريقة الدفع المفضلة لديك أدناه. رصيدك الحالي هو `${balance:.2f} USD`.",
