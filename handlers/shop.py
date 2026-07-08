@@ -383,6 +383,15 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             if "insufficient balance" in err_msg.lower() or "provider error" in err_msg.lower() or "insufficient items" in err_msg.lower():
                 import config
                 admin_username = "admin"
+                
+                # Direct checkout payment failed due to provider error. Refund the payment to user's wallet!
+                if skip_balance_check:
+                    import aiosqlite
+                    from config import DB_NAME
+                    async with aiosqlite.connect(DB_NAME) as db:
+                        await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
+                        await db.commit()
+                
                 # Query database for the first admin username if configured
                 import aiosqlite
                 from config import DB_NAME
@@ -394,8 +403,17 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                             if u_row and u_row['username']:
                                 admin_username = u_row['username']
                 
+                refund_note = ""
+                if skip_balance_check:
+                    refund_note_dict = {
+                        "ar": f"\n\n💰 وحفاظاً على أموالك، تم تلقائياً شحن وإيداع مبلغ **`${price_to_pay:.2f} USD`** في محفظتك بالبوت.",
+                        "en": f"\n\n💰 To secure your funds, **`${price_to_pay:.2f} USD`** has been automatically credited to your wallet balance.",
+                        "ru": f"\n\n💰 Для безопасности ваших средств **`${price_to_pay:.2f} USD`** автоматически зачислены на баланс вашего кошелька."
+                    }
+                    refund_note = refund_note_dict.get(lang, refund_note_dict['en'])
+                
                 await message.answer(
-                    get_text('provider_insufficient_balance', lang, admin_username=admin_username),
+                    get_text('provider_insufficient_balance', lang, admin_username=admin_username) + refund_note,
                     parse_mode="Markdown"
                 )
             else:
