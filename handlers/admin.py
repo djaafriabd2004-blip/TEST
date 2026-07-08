@@ -2359,27 +2359,18 @@ from handlers.states import ProvidersStates
 
 async def fetch_provider_store_name(base_url, api_key):
     import aiohttp
-    # The reseller bot me endpoint is /api/me which returns reseller info and the store name in index/health or database.
-    # Actually, we can fetch /api/me and get user details, or query settings of that bot if exposed.
-    # In api.py, get_me_api returns: {"ok": True, "user": {...}} but not the store name.
-    # Let's get the store name from the database settings, or simply get the website title or custom store name.
-    # We can add a fallback to extract the domain as bot name if we can't query it.
-    url = f"{base_url}/api/products" # Getting products API is authorized and has header. We can query index or custom setting if we want.
-    # But since /api/me returns partner details, let's fetch the index '/' or '/api/health'
-    # Actually, we can fetch health or me. Let's fetch /api/me to verify credentials and extract user or bot info.
-    # If the provider app exposes setting, we can fetch it. Let's just fetch index '/' to see if it has welcome or store title.
-    # A cleaner way: query /api/me which returns reseller details.
-    # If not found, fallback to parsed domain.
-    # Let's try to query the index '/' of the provider bot and check if we can query health or customized header.
-    # Actually, let's query base_url + '/api/me' to check reseller first_name (which represents the reseller partner name).
     headers = {"X-API-Key": api_key}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{base_url}/api/me", headers=headers, timeout=5) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if data.get('ok') and 'user' in data:
-                        return f"Reseller Partner: {data['user']['first_name']}"
+                    # Prioritize the actual remote store name exposed in API
+                    if data.get('ok') and data.get('store_name'):
+                        return data['store_name']
+                    # Fallback to partner user first_name
+                    elif data.get('ok') and 'user' in data:
+                        return f"Partner: {data['user']['first_name']}"
     except Exception:
         pass
     

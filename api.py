@@ -30,15 +30,22 @@ async def api_key_auth_middleware(request, handler):
 
 # Endpoints
 async def health_api(request):
-    return web.json_response({"ok": True, "status": "healthy"})
+    from database import get_setting
+    store_name = await get_setting("store_name", "Digital Store")
+    return web.json_response({"ok": True, "status": "healthy", "store_name": store_name})
 
 async def index_api(request):
-    return web.Response(text="Welcome to the Digital Store API server!")
+    from database import get_setting
+    store_name = await get_setting("store_name", "Digital Store")
+    return web.Response(text=f"Welcome to the {store_name} API server!")
 
 async def get_me_api(request):
     user = request["user"]
+    from database import get_setting
+    store_name = await get_setting("store_name", "Digital Store")
     return web.json_response({
         "ok": True,
+        "store_name": store_name,
         "user": {
             "user_id": user["user_id"],
             "username": user["username"],
