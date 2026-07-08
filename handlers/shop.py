@@ -357,15 +357,27 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     
     # 1. Perform DB buy transaction
     try:
-        stock_data_list, price_paid, purchase_time = await buy_product(user_id, product_id, qty, skip_balance_check=skip_balance_check)
+        stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(user_id, product_id, qty, skip_balance_check=skip_balance_check, allow_partial=True)
     except Exception as e:
         logger.error(f"Purchase failed in DB: {e}")
         err_msg = str(e)
         if "Out of stock" in err_msg:
-            await message.answer(
-                get_text('out_of_stock', lang),
-                reply_markup=keyboards.get_product_view_keyboard(product_id, False, lang)
-            )
+            if skip_balance_check:
+                # Direct checkout payment went out of stock. Refund the full price_to_pay to user's wallet!
+                import aiosqlite
+                from config import DB_NAME
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
+                    await db.commit()
+                await message.answer(
+                    get_text('checkout_refund_out_of_stock', lang, amount=price_to_pay),
+                    parse_mode="Markdown"
+                )
+            else:
+                await message.answer(
+                    get_text('out_of_stock', lang),
+                    reply_markup=keyboards.get_product_view_keyboard(product_id, False, lang)
+                )
         else:
             await message.answer(
                 f"❌ Error occurred: {err_msg}",
@@ -384,6 +396,22 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         
     prod_name = dict(product).get(f'name_{lang}') or dict(product).get('name_en')
     
+    # 3. Check for partial delivery refund
+    refund_amount = 0.0
+    if actual_qty < qty:
+        # Calculate refund for undelivered items
+        discount_pct = await get_user_discount(user_id)
+        price_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+        diff_qty = qty - actual_qty
+        refund_amount = round(price_per_item * diff_qty, 2)
+        
+        # Credit user wallet with the difference
+        import aiosqlite
+        from config import DB_NAME
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
+            await db.commit()
+            
     # Split stock_data_list into chunks of text, each having length <= 3000 to be safe
     chunks = []
     current_chunk = []
@@ -406,13 +434,13 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
     builder.adjust(1)
     
-    # 3. Deliver products via Telegram with retry logic
+    # 4. Deliver products via Telegram with retry logic
     try:
         first_chunk = chunks[0] if chunks else ""
         success_text = get_text(
             'purchase_success',
             lang,
-            name=f"{prod_name} (x{qty})",
+            name=f"{prod_name} (x{actual_qty})",
             price=price_paid,
             data=first_chunk
         )
@@ -433,19 +461,27 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                     await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown", reply_markup=builder.as_markup())
                 else:
                     await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown")
+                    
+        # Send partial delivery warning and refund notification
+        if refund_amount > 0:
+            await message.answer(
+                get_text('checkout_partial_delivery_refund', lang, actual=actual_qty, qty=qty, diff=(qty - actual_qty), refund=refund_amount),
+                parse_mode="Markdown"
+            )
+            
     except Exception as deliv_err:
         logger.error(f"Error during product delivery to chat for user {user_id}: {deliv_err}")
         fallback_msg = {
-            "ar": f"🎉 *تمت عملية الشراء بنجاح!* ({prod_name} x{qty})\n\n⚠️ بسبب ضغط الاتصال في شبكة التليجرام، تعذر عرض جميع المنتجات في المحادثة مباشرة. يمكنك تحميل كافة المنتجات/الروابط الآن كملف TXT بالضغط على الزر أدناه أو مراجعة قائمة 'طلباتي'.",
-            "en": f"🎉 *Purchase Successful!* ({prod_name} x{qty})\n\n⚠️ Due to network connection issues, some items could not be displayed in chat. You can download all your items right now using the button below as a TXT file or view 'My Orders'.",
-            "ru": f"🎉 *Покупка успешно совершена!* ({prod_name} x{qty})\n\n⚠️ Из-за сетевых задержек часть товаров не удалось отобразить в чате. Вы можете скачать все товары по кнопке ниже в формате TXT или в меню 'Мои заказы'."
+            "ar": f"🎉 *تمت عملية الشراء بنجاح!* ({prod_name} x{actual_qty})\n\n⚠️ بسبب ضغط الاتصال في شبكة التليجرام، تعذر عرض جميع المنتجات في المحادثة مباشرة. يمكنك تحميل كافة المنتجات/الروابط الآن كملف TXT بالضغط على الزر أدناه أو مراجعة قائمة 'طلباتي'.",
+            "en": f"🎉 *Purchase Successful!* ({prod_name} x{actual_qty})\n\n⚠️ Due to network connection issues, some items could not be displayed in chat. You can download all your items right now using the button below as a TXT file or view 'My Orders'.",
+            "ru": f"🎉 *Покупка успешно совершена!* ({prod_name} x{actual_qty})\n\n⚠️ Из-за сетевых задержек часть товаров не удалось отобразить в чате. Вы можете скачать все товары по кнопке ниже в формате TXT или в меню 'Мои заказы'."
         }
         try:
             await send_message_with_retry(message.answer, fallback_msg.get(lang, fallback_msg['en']), parse_mode="Markdown", reply_markup=builder.as_markup())
         except Exception:
             pass
             
-    # 4. Publish sale to news_channel if set
+    # 5. Publish sale to news_channel if set
     news_channel = await get_setting('news_channel', '')
     if news_channel:
         try:
@@ -457,7 +493,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             sale_text = (
                 f"⚡️ <b>NEW PURCHASE</b> ⚡️\n"
                 f"──────────────────\n"
-                f"🛍 <b>Product:</b> <code>{prod_name_en} (x{qty})</code>\n"
+                f"🛍 <b>Product:</b> <code>{prod_name_en} (x{actual_qty})</code>\n"
                 f"💵 <b>Amount Paid:</b> <code>${price_paid:.2f} USD</code>\n"
                 f"📅 <b>Status:</b> <code>Delivered Successfully</code>\n"
                 f"──────────────────\n"

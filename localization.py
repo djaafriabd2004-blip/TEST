@@ -239,6 +239,16 @@ LOCALIZATION = {
         'ar': "❌ *لم يتم العثور على الدفع أو لا يزال قيد الانتظار.* يرجى إتمام الدفع أولاً ثم الضغط على التحقق.",
         'ru': "❌ *Платеж не найден или ожидает оплаты.* Пожалуйста, оплатите счет и нажмите кнопку проверки."
     },
+    'checkout_refund_out_of_stock': {
+        'en': "❌ *Product Out of Stock!*\n\nWe apologize, but this product went out of stock right during payment processing. To secure your money, **`${amount:.2f} USD`** has been automatically credited to your wallet balance.",
+        'ar': "❌ *نفد المنتج من المخزون!*\n\nنعتذر منك، لقد نفد هذا المنتج تماماً أثناء معالجة الدفع. وحفاظاً على أموالك، تم تلقائياً شحن وإيداع مبلغ **`${amount:.2f} USD`** في رصيد محفظتك بالبوت للاستخدام لاحقاً.",
+        'ru': "❌ *Товара нет в наличии!*\n\nПриносим извинения, товар закончился во время обработки платежа. Для безопасности ваших средств **`${amount:.2f} USD`** автоматически зачислены на баланс вашего кошелька."
+    },
+    'checkout_partial_delivery_refund': {
+        'en': "⚠️ *Partial Delivery & Refund*\n\n🛒 *Fitted:* {actual} of {qty} items delivered.\n📦 *Out of Stock:* {diff} items are unavailable.\n\n💰 **`${refund:.2f} USD`** has been refunded and added to your wallet balance for the missing items.",
+        'ar': "⚠️ *تسليم جزئي وتعويض الرصيد المتبقي*\n\n🛒 *المُسلّم:* تم تسليم {actual} من أصل {qty} قطع متوفرة.\n📦 *غير متوفر:* {diff} قطع لم تكن متاحة في المخزون.\n\n💰 تم إرجاع قيمة القطع الناقصة **`${refund:.2f} USD`** وتلقائياً إيداعها في رصيد محفظتك بالبوت.",
+        'ru': "⚠️ *Частичная доставка и возврат средств*\n\n🛒 *Доставлено:* {actual} из {qty} шт.\n📦 *Нет в наличии:* {diff} шт. недоступны.\n\n💰 **`${refund:.2f} USD`** были возвращены и добавлены на баланс вашего кошелька за недостающие товары."
+    },
     'charge_title': {
         'en': "💳 *Charge Balance*\n\nChoose your preferred payment method below. Your current balance is `${balance:.2f} USD`.",
         'ar': "💳 *شحن الرصيد*\n\nاختر طريقة الدفع المفضلة لديك أدناه. رصيدك الحالي هو `${balance:.2f} USD`.",

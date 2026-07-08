@@ -462,7 +462,7 @@ async def get_stock_count(product_id):
             return row[0] if row else 0
 
 # Purchase Helpers
-async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False):
+async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         
@@ -547,12 +547,25 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False)
                     (user_id, product['id'], 0, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
                 )
             await db.commit()
-            return stock_data_list, total_price, now
+            return stock_data_list, total_price, now, quantity
 
         # Get unsold stock items for local products
-        async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, quantity)) as cursor:
+        # If allow_partial is True, we first check how many items are available.
+        # If available items is less than requested, we buy the available amount.
+        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as count_cursor:
+            available_count = (await count_cursor.fetchone())[0]
+            
+        if available_count == 0:
+            raise Exception("Out of stock")
+            
+        actual_qty = quantity
+        if allow_partial and available_count < quantity:
+            actual_qty = available_count
+            total_price = round(final_price_per_item * actual_qty, 2)
+            
+        async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, actual_qty)) as cursor:
             stocks = await cursor.fetchall()
-            if len(stocks) < quantity:
+            if len(stocks) < actual_qty:
                 raise Exception("Out of stock")
                 
         # Begin transaction updates
@@ -578,7 +591,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False)
             )
             
         await db.commit()
-        return stock_data_list, total_price, now
+        return stock_data_list, total_price, now, actual_qty
 
 async def get_orders(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
