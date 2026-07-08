@@ -174,7 +174,8 @@ async def db_init():
         CREATE TABLE IF NOT EXISTS providers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             base_url TEXT NOT NULL,
-            api_key TEXT NOT NULL
+            api_key TEXT NOT NULL,
+            store_name TEXT
         );
         """)
         
@@ -208,6 +209,13 @@ async def db_init():
             
         # Clean up any invalid language codes in users table
         await db.execute("UPDATE users SET language = 'en' WHERE language NOT IN ('en', 'ar', 'ru');")
+        
+        # Try adding store_name to providers table in case it was created without it
+        try:
+            await db.execute("ALTER TABLE providers ADD COLUMN store_name TEXT;")
+        except Exception:
+            pass
+            
         await db.commit()
 
 # Setting Helpers
@@ -352,7 +360,7 @@ async def delete_product(product_id):
         await db.commit()
 
 # Provider Integration Helpers
-async def save_provider(base_url, api_key):
+async def save_provider(base_url, api_key, store_name=None):
     base_url = base_url.strip().rstrip('/')
     if not base_url.startswith('http'):
         base_url = 'https://' + base_url
@@ -364,13 +372,13 @@ async def save_provider(base_url, api_key):
             
         if row:
             await db.execute(
-                "UPDATE providers SET api_key = ? WHERE id = ?;",
-                (api_key, row[0])
+                "UPDATE providers SET api_key = ?, store_name = ? WHERE id = ?;",
+                (api_key, store_name, row[0])
             )
         else:
             await db.execute(
-                "INSERT INTO providers (base_url, api_key) VALUES (?, ?);",
-                (base_url, api_key)
+                "INSERT INTO providers (base_url, api_key, store_name) VALUES (?, ?, ?);",
+                (base_url, api_key, store_name)
             )
         await db.commit()
 
@@ -388,6 +396,9 @@ async def get_provider(provider_id):
 
 async def delete_provider(provider_id):
     async with aiosqlite.connect(DB_NAME) as db:
+        # Delete all imported products from this provider
+        await db.execute("DELETE FROM products WHERE provider_id = ?;", (provider_id,))
+        # Delete the provider configuration
         await db.execute("DELETE FROM providers WHERE id = ?;", (provider_id,))
         await db.commit()
 
