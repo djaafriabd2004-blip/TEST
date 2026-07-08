@@ -428,6 +428,12 @@ async def bulk_add_stock(product_id, items):
 async def get_stock_count(product_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
+        
+        # Get local stock count first
+        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as local_cursor:
+            local_row = await local_cursor.fetchone()
+            local_count = local_row[0] if local_row else 0
+            
         async with db.execute("SELECT provider_id, provider_product_id FROM products WHERE id = ?;", (product_id,)) as cursor:
             prod = await cursor.fetchone()
             if prod and prod['provider_id'] is not None:
@@ -437,7 +443,7 @@ async def get_stock_count(product_id):
                 async with db.execute("SELECT base_url, api_key FROM providers WHERE id = ?;", (provider_id,)) as prov_cursor:
                     prov = await prov_cursor.fetchone()
                     if not prov:
-                        return 0
+                        return local_count
                     base_url = prov['base_url']
                     api_key = prov['api_key']
                 
@@ -452,14 +458,12 @@ async def get_stock_count(product_id):
                                 if data.get('ok') and 'products' in data:
                                     for p in data['products']:
                                         if p['id'] == provider_prod_id:
-                                            return p.get('stock_count', 0)
+                                            return local_count + p.get('stock_count', 0)
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
-                return 0
-
-        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
+                return local_count
+                
+        return local_count
 
 # Purchase Helpers
 async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True):
@@ -489,8 +493,28 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
         if not skip_balance_check and round(user['balance'], 2) < total_price:
             raise Exception("Insufficient balance")
             
-        # Check if imported product
-        if product['provider_id'] is not None:
+        # Check local stock count first
+        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as local_cursor:
+            local_count = (await local_cursor.fetchone())[0]
+            
+        local_stock_data = []
+        local_stock_ids = []
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Deduct from local stock as much as possible first
+        local_to_take = min(quantity, local_count)
+        if local_to_take > 0:
+            async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, local_to_take)) as cursor:
+                local_items = await cursor.fetchall()
+                for item in local_items:
+                    local_stock_data.append(item['data'])
+                    local_stock_ids.append(item['id'])
+                    
+        remaining_qty = quantity - len(local_stock_data)
+        
+        # Check if imported product and we still need items from provider
+        provider_stock_data = []
+        if remaining_qty > 0 and product['provider_id'] is not None:
             # Fetch provider credentials
             async with db.execute("SELECT base_url, api_key FROM providers WHERE id = ?;", (product['provider_id'],)) as prov_cursor:
                 prov = await prov_cursor.fetchone()
@@ -509,7 +533,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
             }
             buy_payload = {
                 "product_id": product['provider_product_id'],
-                "quantity": quantity
+                "quantity": remaining_qty
             }
             
             try:
@@ -529,9 +553,9 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                         if not buy_data.get('ok') or 'items' not in buy_data:
                             raise Exception("Provider purchase response invalid")
                         
-                        stock_data_list = buy_data['items']
-                        if len(stock_data_list) < quantity:
-                            raise Exception(f"Provider returned insufficient items ({len(stock_data_list)} received, {quantity} requested)")
+                        provider_stock_data = buy_data['items']
+                        if len(provider_stock_data) < remaining_qty:
+                            raise Exception(f"Provider returned insufficient items ({len(provider_stock_data)} received, {remaining_qty} requested)")
             except asyncio.TimeoutError:
                 raise Exception("Provider request timed out. Please check if the purchase was debited before trying again.")
             except Exception as e:
@@ -539,64 +563,45 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                     raise e
                 raise Exception(f"Failed to communicate with provider: {e}")
                 
-            # Deduct balance locally
-            if not skip_balance_check:
-                await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
-            
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Create local orders for each item
-            for item_data in stock_data_list:
-                await db.execute(
-                    """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-                    (user_id, product['id'], 0, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
-                )
-            await db.commit()
-            return stock_data_list, total_price, now, quantity
-
-        # Get unsold stock items for local products
-        # If allow_partial is True, we first check how many items are available.
-        # If available items is less than requested, we buy the available amount.
-        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as count_cursor:
-            available_count = (await count_cursor.fetchone())[0]
-            
-        if available_count == 0:
+        # Calculate actual purchased quantity and final price
+        actual_qty = len(local_stock_data) + len(provider_stock_data)
+        if actual_qty == 0:
             raise Exception("Out of stock")
             
-        actual_qty = quantity
-        if allow_partial and available_count < quantity:
-            actual_qty = available_count
-            total_price = round(final_price_per_item * actual_qty, 2)
-            
-        async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, actual_qty)) as cursor:
-            stocks = await cursor.fetchall()
-            if len(stocks) < actual_qty:
-                raise Exception("Out of stock")
-                
-        # Begin transaction updates
-        # Deduct balance
-        if not skip_balance_check:
-            await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
+        actual_price = round(final_price_per_item * actual_qty, 2)
         
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        stock_data_list = []
-        for stock in stocks:
-            stock_data_list.append(stock['data'])
-            # Mark stock as sold
+        # Check balance limit again for actual price
+        if not skip_balance_check and round(user['balance'], 2) < actual_price:
+            raise Exception("Insufficient balance")
+            
+        # Complete transaction
+        # Deduct balance locally
+        if not skip_balance_check:
+            await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (actual_price, user_id))
+            
+        # Process local stock mark as sold
+        for stock_id, item_data in zip(local_stock_ids, local_stock_data):
             await db.execute(
                 "UPDATE stocks SET is_sold = 1, sold_to = ?, sold_at = ? WHERE id = ?;",
-                (user_id, now, stock['id'])
+                (user_id, now, stock_id)
             )
-            
-            # Create order
             await db.execute(
                 """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-                (user_id, product['id'], stock['id'], final_price_per_item, now, stock['data'], product['name_ar'], product['name_en'], product['name_ru'])
+                (user_id, product['id'], stock_id, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
+            )
+            
+        # Process provider items
+        for item_data in provider_stock_data:
+            await db.execute(
+                """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                (user_id, product['id'], 0, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
             )
             
         await db.commit()
-        return stock_data_list, total_price, now, actual_qty
+        all_stock_data = local_stock_data + provider_stock_data
+        return all_stock_data, actual_price, now, actual_qty
 
 async def get_orders(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
