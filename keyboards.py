@@ -311,12 +311,13 @@ def get_user_api_key_keyboard(has_key=False, lang='en') -> InlineKeyboardMarkup:
 def get_providers_list_keyboard(providers, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for prov in providers:
+        prov_dict = dict(prov)
         # Display the store name if available, otherwise fallback to domain URL
-        if prov.get('store_name'):
-            display = prov['store_name']
+        if prov_dict.get('store_name'):
+            display = prov_dict['store_name']
         else:
-            display = prov['base_url'].replace("https://", "").replace("http://", "")
-        builder.button(text=f"🔌 {display}", callback_data=f"admin_prov_manage_{prov['id']}")
+            display = prov_dict['base_url'].replace("https://", "").replace("http://", "")
+        builder.button(text=f"🔌 {display}", callback_data=f"admin_prov_manage_{prov_dict['id']}")
     builder.button(text=get_text('btn_setup_new_prov', lang) or "➕ Add New Provider", callback_data="admin_prov_setup_new")
     builder.button(text="🔙 Back", callback_data="admin_menu")
     builder.adjust(1)

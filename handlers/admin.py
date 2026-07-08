@@ -2442,7 +2442,8 @@ async def cb_admin_prov_manage(callback: CallbackQuery, lang='en'):
         await callback.answer("❌ Provider not found", show_alert=True)
         return
         
-    display_name = prov['store_name'] if prov.get('store_name') else prov['base_url']
+    prov_dict = dict(prov)
+    display_name = prov_dict['store_name'] if prov_dict.get('store_name') else prov_dict['base_url']
     text = get_text('prov_manage_title', lang, url=display_name)
     await callback.message.edit_text(text, reply_markup=keyboards.get_provider_manage_keyboard(provider_id, lang), parse_mode="Markdown")
     await callback.answer()
