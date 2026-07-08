@@ -99,7 +99,7 @@ async def buy_api(request):
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
     try:
-        stock_data_list, price_paid, purchase_time = await buy_product(user_id, product_id, quantity)
+        stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(user_id, product_id, quantity)
         
         # Log/Broadcast sale to news channel if set
         bot = request.app["bot"]
@@ -133,7 +133,7 @@ async def buy_api(request):
                 get_text(
                     'purchase_success',
                     lang,
-                    name=f"{prod_name} (x{quantity})",
+                    name=f"{prod_name} (x{actual_qty})",
                     price=price_paid,
                     data=first_chunk
                 )
@@ -160,6 +160,28 @@ async def buy_api(request):
                         await send_message_with_retry(bot.send_message, chat_id=user_id, text=cont_text, parse_mode="Markdown", reply_markup=builder.as_markup())
                     else:
                         await send_message_with_retry(bot.send_message, chat_id=user_id, text=cont_text, parse_mode="Markdown")
+                        
+            # If partial delivery occurred, notify reseller/user as well
+            if actual_qty < quantity:
+                from database import get_user_discount
+                discount_pct = await get_user_discount(user_id)
+                price_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+                diff_qty = quantity - actual_qty
+                refund_amount = round(price_per_item * diff_qty, 2)
+                
+                # Refund user wallet locally since API purchase is using local balance logic
+                import aiosqlite
+                from config import DB_NAME
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
+                    await db.commit()
+                
+                await send_message_with_retry(
+                    bot.send_message,
+                    chat_id=user_id,
+                    text=get_text('checkout_partial_delivery_refund', lang, actual=actual_qty, qty=quantity, diff=diff_qty, refund=refund_amount),
+                    parse_mode="Markdown"
+                )
         except Exception as pm_err:
             logger.error(f"Failed to send private Telegram notification for API purchase: {pm_err}")
         
@@ -183,7 +205,7 @@ async def buy_api(request):
                 sale_text = (
                     f"⚡️ <b>NEW API PURCHASE</b> ⚡️\n"
                     f"──────────────────\n"
-                    f"🛍 <b>Product:</b> <code>{prod_name_en} (x{quantity})</code>\n"
+                    f"🛍 <b>Product:</b> <code>{prod_name_en} (x{actual_qty})</code>\n"
                     f"💵 <b>Amount Paid:</b> <code>${price_paid:.2f} USD</code>\n"
                     f"👤 <b>Partner:</b> <code>{user['first_name']}</code>\n"
                     f"📅 <b>Status:</b> <code>Delivered Successfully</code>\n"
@@ -201,7 +223,7 @@ async def buy_api(request):
             "ok": True,
             "product_id": product_id,
             "product_name": product["name_en"],
-            "quantity": quantity,
+            "quantity": actual_qty,
             "price_paid": price_paid,
             "purchase_time": purchase_time,
             "items": stock_data_list
