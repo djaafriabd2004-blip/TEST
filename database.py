@@ -501,6 +501,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                 
             # Perform external purchase via provider API
             import aiohttp
+            import asyncio
             url = f"{base_url}/api/buy"
             headers = {
                 "X-API-Key": api_key,
@@ -512,8 +513,10 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
             }
             
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url, headers=headers, json=buy_payload, timeout=10) as resp:
+                # Set a strict 30 second timeout on client session to avoid disconnections
+                timeout_cfg = aiohttp.ClientTimeout(total=30)
+                async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
+                    async with session.post(url, headers=headers, json=buy_payload) as resp:
                         if resp.status != 200:
                             try:
                                 err_data = await resp.json()
@@ -529,6 +532,8 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                         stock_data_list = buy_data['items']
                         if len(stock_data_list) < quantity:
                             raise Exception(f"Provider returned insufficient items ({len(stock_data_list)} received, {quantity} requested)")
+            except asyncio.TimeoutError:
+                raise Exception("Provider request timed out. Please check if the purchase was debited before trying again.")
             except Exception as e:
                 if "Provider error" in str(e) or "Provider purchase response invalid" in str(e) or "Provider returned insufficient items" in str(e):
                     raise e
