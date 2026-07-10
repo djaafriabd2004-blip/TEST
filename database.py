@@ -274,6 +274,18 @@ async def create_user(user_id, username, first_name, referred_by=None):
             "INSERT INTO users (user_id, username, first_name, referred_by, referral_code) VALUES (?, ?, ?, ?, ?);",
             (user_id, username, first_name, ref_by_id, ref_code)
         )
+        
+        # Award fixed referral bonus to referrer immediately if referee signed up via ref link
+        if ref_by_id:
+            async with db.execute("SELECT value FROM settings WHERE key = 'referral_bonus_percent';") as cursor:
+                sett_row = await cursor.fetchone()
+                fixed_bonus = float(sett_row[0]) if sett_row else 1.0  # default to 1.0 USD if not set
+                
+            if fixed_bonus > 0:
+                await db.execute(
+                    "UPDATE users SET balance = balance + ?, referral_balance_earned = referral_balance_earned + ? WHERE user_id = ?;",
+                    (fixed_bonus, fixed_bonus, ref_by_id)
+                )
         await db.commit()
 
 async def get_user_by_ref_code(ref_code):
@@ -675,35 +687,11 @@ async def complete_payment(transaction_id):
         # Credit user balance
         await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (amount, user_id))
         
-        # Check if user has a referrer to award bonus
-        async with db.execute("SELECT referred_by FROM users WHERE user_id = ?;", (user_id,)) as cursor:
-            user_row = await cursor.fetchone()
-            referrer_id = user_row['referred_by'] if user_row else None
-            
-        referrer_notification = None
-        if referrer_id:
-            # Read referral bonus percent
-            async with db.execute("SELECT value FROM settings WHERE key = 'referral_bonus_percent';") as cursor:
-                sett_row = await cursor.fetchone()
-                bonus_pct = float(sett_row[0]) if sett_row else 10.0
-                
-            bonus_amount = amount * (bonus_pct / 100.0)
-            if bonus_amount > 0:
-                await db.execute(
-                    "UPDATE users SET balance = balance + ?, referral_balance_earned = referral_balance_earned + ? WHERE user_id = ?;",
-                    (bonus_amount, bonus_amount, referrer_id)
-                )
-                referrer_notification = {
-                    'referrer_id': referrer_id,
-                    'bonus': bonus_amount,
-                    'referee_id': user_id
-                }
-                
         await db.commit()
         return {
             'user_id': user_id,
             'amount': amount,
-            'referrer_notif': referrer_notification
+            'referrer_notif': None
         }
 
 async def reject_payment(transaction_id):

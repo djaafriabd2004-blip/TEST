@@ -40,8 +40,10 @@ class DbUserMiddleware(BaseMiddleware):
                 bot = data.get("bot")
                 if referred_by and bot:
                     from localization import get_text
+                    from database import get_setting
                     try:
-                        msg_text = get_text('referral_new_user_joined', referrer_lang, name=first_name)
+                        fixed_bonus = await get_setting('referral_bonus_percent', '1.0')
+                        msg_text = get_text('referral_new_user_joined', referrer_lang, name=first_name, bonus=fixed_bonus)
                         await bot.send_message(chat_id=referred_by, text=msg_text, parse_mode="Markdown")
                     except Exception as e:
                         import logging

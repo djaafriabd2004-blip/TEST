@@ -120,14 +120,14 @@ LOCALIZATION = {
         'ru': "🎧 *Ответ поддержки:* {reply}"
     },
     'referral_msg': {
-        'en': "🔗 *Referral System*\n\nShare your referral link with friends. When they top up their balance, you receive *{bonus}%* of their charge amount!\n\n👥 *Your Referrals:* `{count}`\n💰 *Total Earned:* `${earned:.2f} USD`\n\n📋 *Your Link:* `{link}`",
-        'ar': "🔗 *نظام الإحالات*\n\nشارك رابط الإحالة الخاص بك مع أصدقائك. عندما يقومون بشحن رصيدهم، ستحصل على *{bonus}%* من قيمة شحنهم!\n\n👥 *عدد إحالاتك:* `{count}`\n💰 *إجمالي الأرباح:* `${earned:.2f} USD`\n\n📋 *رابطك:* `{link}`",
-        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Когда ваши рефералы пополняют баланс, вы получаете *{bonus}%* от суммы их пополнения!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`"
+        'en': "🔗 *Referral System*\n\nShare your referral link with friends. You will receive a fixed reward of **`${bonus} USD`** immediately when a new user registers using your link!\n\n👥 *Your Referrals:* `{count}`\n💰 *Total Earned:* `${earned:.2f} USD`\n\n📋 *Your Link:* `{link}`",
+        'ar': "🔗 *نظام الإحالات*\n\nشارك رابط الإحالة الخاص بك مع أصدقائك. ستحصل على مكافأة ثابتة بقيمة **`{bonus} USD`** في حسابك مباشرة بمجرد انضمام مستخدم جديد عن طريق رابطك!\n\n👥 *عدد إحالاتك:* `{count}`\n💰 *إجمالي الأرباح:* `${earned:.2f} USD`\n\n📋 *رابطك:* `{link}`",
+        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Вы получите фиксированное вознаграждение в размере **`${bonus} USD`** сразу после регистрации нового пользователя по вашей ссылке!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`"
     },
     'referral_new_user_joined': {
-        'en': "🎉 *New Referral!*\n\nUser *{name}* has joined the bot using your referral link! You will earn a bonus when they top up their balance.",
-        'ar': "🎉 *إحالة جديدة!*\n\nانضم المستخدم *{name}* إلى البوت عن طريق رابط الإحالة الخاص بك! ستحصل على مكافأة عندما يقوم بشحن رصيده.",
-        'ru': "🎉 *Новый реферал!*\n\nПользователь *{name}* присоединился к боту по вашей реферальной ссылке! Вы получите бонус, когда он пополнит свой баланс."
+        'en': "🎉 *New Referral & Reward!*\n\nUser *{name}* has joined the bot using your referral link! A fixed bonus of **`${bonus} USD`** has been immediately added to your wallet balance.",
+        'ar': "🎉 *إحالة جديدة ومكافأة!*\n\nانضم المستخدم *{name}* إلى البوت عن طريق رابط الإحالة الخاص بك! تم إضافة مكافأة ثابتة بقيمة **`{bonus} USD`** تلقائياً إلى محفظتك بالبوت.",
+        'ru': "🎉 *Новый реферал и бонус!*\n\nПользователь *{name}* присоединился к боту по вашей реферальной ссылке! Фиксированный бонус в размере **`${bonus} USD`** был мгновенно зачислен на баланс вашего кошелька."
     },
     'my_orders_title': {
         'en': "📦 *Your Purchase History:*",

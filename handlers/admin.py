@@ -514,12 +514,12 @@ async def msg_admin_settings_menu(message: Message):
         builder.button(text="✍️ Set Binance ID/Email/Phone", callback_data="admin_set_crypto_addr_binance")
         
     elif menu == "admin_referral_settings":
-        pct = await get_setting("referral_bonus_percent", "10")
+        fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
         text = (
             f"👥 *Referral System Settings*\n\n"
-            f"💰 *Bonus Percentage:* `{pct}%` of referral deposits"
+            f"💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration"
         )
-        builder.button(text="✍️ Edit Bonus Percentage", callback_data="admin_set_ref_pct")
+        builder.button(text="✍️ Edit Fixed Bonus Reward", callback_data="admin_set_ref_pct")
         
     elif menu == "admin_api_keys_settings":
         bscscan_key = (await get_setting("bscscan_api_key", "")) or "None"
@@ -1238,12 +1238,12 @@ async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None):
         builder.button(text="✍️ Set Binance ID/Email/Phone", callback_data="admin_set_crypto_addr_binance")
         
     elif menu == "admin_referral_settings":
-        pct = await get_setting("referral_bonus_percent", "10")
+        fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
         text = (
             f"👥 *Referral System Settings*\n\n"
-            f"💰 *Bonus Percentage:* `{pct}%` of referral deposits"
+            f"💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration"
         )
-        builder.button(text="✍️ Edit Bonus Percentage", callback_data="admin_set_ref_pct")
+        builder.button(text="✍️ Edit Fixed Bonus Reward", callback_data="admin_set_ref_pct")
         
     elif menu == "admin_api_keys_settings":
         bscscan_key = (await get_setting("bscscan_api_key", "")) or "None"
@@ -1387,7 +1387,7 @@ async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext):
         "news_ch": "📣 Enter news channel username or ID (e.g. `@my_news_channel` or `-10012345678`):",
         "support": "🎧 Enter support handler username (e.g. `@support_username`):",
         "stars_rate": "💱 Enter exchange rate (USD value per 1 Star, e.g. `0.02`):",
-        "ref_pct": "👥 Enter referral bonus percentage (e.g. `10` for 10%):",
+        "ref_pct": "👥 Enter fixed referral bonus in USD (awarded instantly on sign up, e.g. `1.50`):",
         "crypto_addr_usdt": "🪙 Enter new USDT BEP20 address:",
         "crypto_addr_ltc": "🪙 Enter new Litecoin (LTC) address:",
         "crypto_addr_ton": "🪙 Enter new TON address:",
