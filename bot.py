@@ -47,6 +47,10 @@ async def main():
     # Start background auto-verification loop
     asyncio.create_task(start_auto_verification_loop(bot))
     
+    # Start background reseller API pre-order verification loop
+    from database import start_api_preorder_auto_verification_loop
+    asyncio.create_task(start_api_preorder_auto_verification_loop(bot))
+    
     # Start the REST API web server in background
     from api import create_api_app
     from aiohttp import web

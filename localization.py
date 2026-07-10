@@ -79,6 +79,46 @@ LOCALIZATION = {
         'ar': "⚙️ لوحة التحكم",
         'ru': "⚙️ Админ-панель"
     },
+    'btn_my_preorders': {
+        'en': "⏳ My Pre-orders",
+        'ar': "⏳ حجوزاتي",
+        'ru': "⏳ Мои предзаказы"
+    },
+    'btn_preorder': {
+        'en': "⏳ Reserve / Pre-order",
+        'ar': "⏳ حجز المنتج مسبقاً",
+        'ru': "⏳ Забронировать"
+    },
+    'preorder_title': {
+        'en': "⏳ *Pre-order Reservation*\n\n🛒 *Product:* {name}\n💵 *Price per item:* `${price:.2f} USD`\n\nThis product is currently out of stock. You can reserve it now, and the bot will automatically buy and deliver it to you as soon as new stock is added!\n\n✍️ Enter quantity you want to reserve:",
+        'ar': "⏳ *حجز المنتج مسبقاً*\n\n🛒 *المنتج:* {name}\n💵 *سعر القطعة:* `${price:.2f} USD`\n\nهذا المنتج غير متوفر حالياً. يمكنك حجزه الآن وسيقوم البوت تلقائياً بشرائه وتسليمه لك فور توفر مخزون جديد!\n\n✍️ أرسل الكمية التي ترغب في حجزها:",
+        'ru': "⏳ *Предзаказ товара*\n\n🛒 *Товар:* {name}\n💵 *Цена за шт:* `${price:.2f} USD`\n\nЭтого товара сейчас нет в наличии. Вы можете забронировать его, и бот автоматически выдаст его вам при пополнении!\n\n✍️ Введите количество для бронирования:"
+    },
+    'preorder_success': {
+        'en': "✅ *Product Reserved Successfully!*\n\n💰 **`${amount:.2f} USD`** has been locked from your balance. The bot will deliver the items immediately upon restock.\n\n💡 You can view or cancel your reservation in the **My Pre-orders** section.",
+        'ar': "✅ *تم حجز المنتج بنجاح!*\n\n💰 تم تعليق مبلغ **`${amount:.2f} USD`** من رصيدك. وسيقوم البوت بتسليم المنتجات لك فور توفرها بالمخزون تلقائياً.\n\n💡 يمكنك استعراض حجزك أو إلغاؤه واستعادة الرصيد من قائمة **حجوزاتي**.",
+        'ru': "✅ *Товар успешно забронирован!*\n\n💰 Сумма **`${amount:.2f} USD`** была заблокирована на вашем балансе. Бот выдаст товар сразу после пополнения.\n\n💡 Вы можете отменить предзаказ в меню **Мои предзаказы**."
+    },
+    'my_preorders_title': {
+        'en': "⏳ *Your Active Pre-orders:*",
+        'ar': "⏳ *حجوزاتك النشطة المعلقة:*",
+        'ru': "⏳ *Ваши активные предзаказы:*"
+    },
+    'my_preorders_empty': {
+        'en': "📭 You don't have any active pre-orders.",
+        'ar': "📭 ليس لديك أي حجوزات نشطة حالياً.",
+        'ru': "📭 У вас нет активных предзаказов."
+    },
+    'preorder_item': {
+        'en': "⏳ *Pre-order #{id}*\n🛍️ *Product:* {name}\n📦 *Quantity:* `{qty}`\n💰 *Locked Amount:* `${price:.2f} USD`\n📅 *Date:* {date}\n\n",
+        'ar': "⏳ *حجز #{id}*\n🛍️ *المنتج:* {name}\n📦 *الكمية:* `{qty}`\n💰 *المبلغ المعلق:* `${price:.2f} USD`\n📅 *التاريخ:* {date}\n\n",
+        'ru': "⏳ *Предзаказ #{id}*\n🛍️ *Товар:* {name}\n📦 *Количество:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n📅 *Дата:* {date}\n\n"
+    },
+    'btn_cancel_preorder': {
+        'en': "❌ Cancel Reservation & Refund",
+        'ar': "❌ إلغاء الحجز واسترداد الرصيد",
+        'ru': "❌ Отменить бронь и вернуть"
+    },
     'select_lang': {
         'en': "🌍 Please select your language / الرجاء اختيار اللغة / Пожалуйста, выберите язык:",
         'ar': "🌍 Please select your language / الرجاء اختيار اللغة / Пожалуйста, выберите язык:",

@@ -199,6 +199,60 @@ async def show_orders_menu(message: Message, lang='en'):
     info_text = {"en": "📥 Want all your products in a file?", "ar": "📥 تريد جميع منتجاتك في ملف؟", "ru": "📥 Хотите все товары в файле?"}
     await message.answer(info_text.get(lang, info_text['en']), reply_markup=builder.as_markup())
 
+@router.message(F.text.in_([
+    get_text('btn_my_preorders', 'en'),
+    get_text('btn_my_preorders', 'ar'),
+    get_text('btn_my_preorders', 'ru')
+]))
+async def show_preorders_menu(message: Message, lang='en'):
+    user_id = message.from_user.id
+    from database import get_user_pre_orders
+    preorders = await get_user_pre_orders(user_id)
+    
+    if not preorders:
+        await message.answer(get_text('my_preorders_empty', lang))
+        return
+        
+    await message.answer(get_text('my_preorders_title', lang), parse_mode="Markdown")
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    for po in preorders:
+        prod_name = po[f'name_{lang}'] or po['name_en']
+        po_text = get_text(
+            'preorder_item',
+            lang,
+            id=po['id'],
+            name=prod_name,
+            qty=po['quantity'],
+            price=po['price_paid'],
+            date=po['created_at']
+        )
+        
+        # Add cancel inline button for each active pre-order
+        builder = InlineKeyboardBuilder()
+        builder.button(text=get_text('btn_cancel_preorder', lang), callback_data=f"cancel_preorder_{po['id']}")
+        builder.adjust(1)
+        
+        await message.answer(po_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+
+@router.callback_query(F.data.startswith("cancel_preorder_"))
+async def cb_cancel_preorder(callback: CallbackQuery, lang='en'):
+    user_id = callback.from_user.id
+    pre_order_id = int(callback.data.replace("cancel_preorder_", ""))
+    
+    from database import cancel_pre_order
+    try:
+        refunded = await cancel_pre_order(pre_order_id, user_id)
+        success_msg = {
+            "ar": f"✅ تم إلغاء الحجز بنجاح! تم استرداد مبلغ **`${refunded:.2f} USD`** إلى محفظتك بالبوت.",
+            "en": f"✅ Reservation cancelled successfully! **`${refunded:.2f} USD`** has been refunded to your wallet.",
+            "ru": f"✅ Предзаказ отменен! **`${refunded:.2f} USD`** возвращены на ваш баланс."
+        }
+        await callback.message.edit_text(success_msg.get(lang, success_msg['en']), parse_mode="Markdown")
+    except Exception as e:
+        await callback.answer(f"❌ Failed to cancel: {e}", show_alert=True)
+    await callback.answer()
+
 @router.callback_query(F.data == "download_orders_txt")
 async def cb_download_orders_txt(callback: CallbackQuery, lang='en'):
     user_id = callback.from_user.id

@@ -12,6 +12,7 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
     buttons = [
         ('btn_shop', 'shop', 'success'),
         ('btn_my_orders', 'orders', 'primary'),
+        ('btn_my_preorders', 'preorders', 'primary'),
         ('btn_charge_balance', 'charge', 'primary'),
         ('btn_referral', 'referral', 'primary'),
         ('btn_support', 'support', None),
@@ -28,7 +29,7 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
             kwargs["icon_custom_emoji_id"] = emoji_id
         builder.button(**kwargs)
     
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2)
     
     if is_admin:
         # Add admin panel on its own line
@@ -82,6 +83,8 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
     if has_stock:
         builder.button(text=get_text('btn_buy', lang), callback_data=f"prod_buy_{product_id}", style="success", icon_custom_emoji_id="5368324170671202286")
     else:
+        # Out of stock: Show Pre-order reservation button AND subscribe notifications button
+        builder.button(text=get_text('btn_preorder', lang), callback_data=f"prod_preorder_{product_id}", style="success")
         if is_subscribed:
             builder.button(text=get_text('btn_cancel_notify_stock', lang), callback_data=f"notify_unsub_{product_id}")
         else:

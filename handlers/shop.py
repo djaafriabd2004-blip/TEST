@@ -622,3 +622,79 @@ async def cb_download_purchase_txt(callback: CallbackQuery, lang='en'):
     await callback.message.answer_document(file)
     await callback.answer()
 
+# --- Pre-order Interactive Handlers ---
+@router.callback_query(F.data.startswith("prod_preorder_"))
+async def cb_product_preorder(callback: CallbackQuery, state: FSMContext, lang='en'):
+    user_id = callback.from_user.id
+    db_user = await get_user(user_id)
+    product_id = int(callback.data.replace("prod_preorder_", ""))
+    
+    product = await get_product(product_id)
+    if not product:
+        await callback.answer("Product not found.")
+        return
+        
+    # Check if they already have balance
+    discount_pct = await get_user_discount(user_id)
+    price_to_pay_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+    
+    if round(db_user['balance'], 2) < price_to_pay_per_item:
+        await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay_per_item), show_alert=True)
+        return
+        
+    await state.set_state(ShopStates.waiting_for_preorder_quantity)
+    await state.update_data(preorder_product_id=product_id)
+    
+    prod_name = product[f'name_{lang}'] or product['name_en']
+    msg = get_text('preorder_title', lang, name=prod_name, price=price_to_pay_per_item)
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+    
+    await callback.message.edit_text(msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ShopStates.waiting_for_preorder_quantity)
+async def process_preorder_quantity(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    db_user = await get_user(user_id)
+    lang = db_user['language'] if db_user else 'en'
+    
+    data = await state.get_data()
+    product_id = data.get('preorder_product_id')
+    
+    if not product_id:
+        await state.clear()
+        return
+        
+    product = await get_product(product_id)
+    if not product:
+        await message.answer("Product not found.")
+        await state.clear()
+        return
+        
+    try:
+        qty = int(message.text.strip())
+        if qty < 1:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Please enter a positive integer for quantity.")
+        return
+        
+    await state.clear()
+    
+    # Calculate price
+    discount_pct = await get_user_discount(user_id)
+    price_to_pay_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+    total_price = round(price_to_pay_per_item * qty, 2)
+    
+    # Try creating pre-order
+    from database import create_pre_order
+    try:
+        await create_pre_order(user_id, product_id, qty)
+        success_text = get_text('preorder_success', lang, amount=total_price)
+        await message.answer(success_text, parse_mode="Markdown")
+    except Exception as e:
+        await message.answer(f"❌ Failed to reserve: {e}")
+

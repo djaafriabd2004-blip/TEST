@@ -1046,6 +1046,11 @@ async def process_single_stock(message: Message, state: FSMContext):
     import re
     cleaned_text = re.sub(r'^\d+[\.\-\)]?\s+', '', message.text.strip()).strip()
     await add_stock(prod_id, cleaned_text)
+    
+    # Process any pending pre-order reservations first before restock broadcast
+    from database import process_pending_pre_orders
+    await process_pending_pre_orders(message.bot, prod_id)
+    
     await message.answer("✅ Stock item added successfully!", reply_markup=keyboards.get_admin_back_keyboard())
     
     # Notify admins about restock
@@ -1116,6 +1121,10 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
         
     await bulk_add_stock(prod_id, lines)
     
+    # Process any pending pre-orders immediately
+    from database import process_pending_pre_orders
+    await process_pending_pre_orders(message.bot, prod_id)
+    
     success_msg = (
         f"✅ Bulk added {len(lines)} stock items successfully!\n"
         f"✅ تم إضافة {len(lines)} منتج (مخزون) بنجاح!"
@@ -1132,7 +1141,7 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
     
     # Broadcast restock notification to all users in private chats
     from database import broadcast_restock_to_users, clear_stock_notifications
-    await broadcast_restock_to_users(bot, prod_id, len(lines))
+    await broadcast_restock_to_users(message.bot, prod_id, len(lines))
     await clear_stock_notifications(prod_id)
             
     # Send News Channel announcement

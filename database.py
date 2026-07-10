@@ -179,6 +179,20 @@ async def db_init():
         );
         """)
         
+        # Pre-orders Table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS pre_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL,
+            price_paid REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        """)
+        
         # Seed settings if they don't exist
         default_settings = {
             'support_username': '',
@@ -625,6 +639,250 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
         await db.commit()
         all_stock_data = local_stock_data + provider_stock_data
         return all_stock_data, actual_price, now, actual_qty
+
+# --- Pre-order Reservation Helpers ---
+async def create_pre_order(user_id, product_id, quantity=1):
+    """
+    Creates a pre-order reservation for a product when it's out of stock.
+    Deducts balance immediately and registers the pre-order.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        
+        # 1. Get product info
+        async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
+            product = await cursor.fetchone()
+            if not product:
+                raise Exception("Product not found")
+                
+        # 2. Get user info and calculate user-specific price
+        async with db.execute("SELECT balance FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            if not user:
+                raise Exception("User not found")
+                
+        from database import get_user_discount
+        discount_percent = await get_user_discount(user_id)
+        final_price_per_item = round(product['price'] * (1 - discount_percent / 100), 2)
+        total_price = round(final_price_per_item * quantity, 2)
+        
+        # 3. Check user balance
+        if round(user['balance'], 2) < total_price:
+            raise Exception("Insufficient balance")
+            
+        # 4. Deduct user balance and create pre-order
+        await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?;", (total_price, user_id))
+        await db.execute(
+            "INSERT INTO pre_orders (user_id, product_id, quantity, price_paid) VALUES (?, ?, ?, ?);",
+            (user_id, product_id, quantity, total_price)
+        )
+        await db.commit()
+        return total_price
+
+async def get_user_pre_orders(user_id):
+    """Retrieves all active pre-orders for a user with product name."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT po.*, p.name_ar, p.name_en, p.name_ru 
+               FROM pre_orders po 
+               JOIN products p ON po.product_id = p.id 
+               WHERE po.user_id = ? 
+               ORDER BY po.id DESC;""", (user_id,)
+        ) as cursor:
+            return await cursor.fetchall()
+
+async def cancel_pre_order(pre_order_id, user_id):
+    """Cancels a pre-order and refunds the exact price_paid back to the user's wallet."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        
+        # 1. Fetch pre-order details
+        async with db.execute("SELECT * FROM pre_orders WHERE id = ? AND user_id = ?;", (pre_order_id, user_id)) as cursor:
+            pre_order = await cursor.fetchone()
+            if not pre_order:
+                raise Exception("Pre-order not found")
+                
+        price_paid = pre_order['price_paid']
+        
+        # 2. Refund balance and delete pre-order
+        await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_paid, user_id))
+        await db.execute("DELETE FROM pre_orders WHERE id = ?;", (pre_order_id,))
+        await db.commit()
+        return price_paid
+
+async def process_pending_pre_orders(bot, product_id):
+    """
+    Called whenever a product is restocked.
+    Processes pending pre-orders for the product one by one in FIFO order.
+    Attempts to buy the items from database using 'buy_product' with skip_balance_check=True.
+    Delivers the codes to the users via bot messages.
+    """
+    import asyncio
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        # Get all pending pre-orders for this product
+        async with db.execute("SELECT * FROM pre_orders WHERE product_id = ? ORDER BY id ASC;", (product_id,)) as cursor:
+            pre_orders = await cursor.fetchall()
+            
+        if not pre_orders:
+            return
+            
+        from localization import get_text
+        for po in pre_orders:
+            po_id = po['id']
+            po_user_id = po['user_id']
+            po_qty = po['quantity']
+            
+            # Check current stock count of the product
+            from database import get_stock_count, buy_product, get_product
+            stock_avail = await get_stock_count(product_id)
+            if stock_avail < po_qty:
+                # Not enough stock for this pre-order, skip and try next (or wait for next restock)
+                continue
+                
+            # Attempt to fulfill
+            try:
+                # Buy product (skip_balance_check = True since they already paid)
+                stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(
+                    user_id=po_user_id,
+                    product_id=product_id,
+                    quantity=po_qty,
+                    skip_balance_check=True,
+                    allow_partial=False
+                )
+                
+                # Delete pre-order record
+                await db.execute("DELETE FROM pre_orders WHERE id = ?;", (po_id,))
+                await db.commit()
+                
+                # Notify user and deliver items
+                async with db.execute("SELECT language FROM users WHERE user_id = ?;", (po_user_id,)) as cursor:
+                    u_row = await cursor.fetchone()
+                    lang = u_row['language'] if u_row else 'en'
+                    
+                product = await get_product(product_id)
+                prod_dict = dict(product) if product else {}
+                prod_name = prod_dict.get(f"name_{lang}") or prod_dict.get("name_en") or "Product"
+                
+                # Split stock_data_list into chunks of text, each having length <= 3000 to be safe (just like checkout delivery)
+                chunks = []
+                current_chunk = []
+                current_len = 0
+                for item in stock_data_list:
+                    item_len = len(item) + (2 if current_chunk else 0)
+                    if current_len + item_len > 3000:
+                        chunks.append("\n\n".join(current_chunk))
+                        current_chunk = [item]
+                        current_len = len(item)
+                    else:
+                        current_chunk.append(item)
+                        current_len += item_len
+                if current_chunk:
+                    chunks.append("\n\n".join(current_chunk))
+                
+                # Format success notifications (using exact purchase_success format styling)
+                from localization import get_text
+                first_chunk = chunks[0] if chunks else ""
+                success_text = get_text(
+                    'purchase_success',
+                    lang,
+                    name=f"{prod_name} (x{actual_qty})",
+                    price=price_paid,
+                    data=first_chunk
+                )
+                # Prefix with [Pre-order Fulfilled] tag to clarify context
+                title_prefix = {
+                    "ar": "🎉 **[تم تسليم الحجز المسبق المكتمل!]**\n\n",
+                    "en": "🎉 **[Pre-order Fulfilled!]**\n\n",
+                    "ru": "🎉 **[Предзаказ выполнен!]**\n\n"
+                }
+                success_text = title_prefix.get(lang, title_prefix['en']) + success_text
+                
+                # Send primary message text
+                try:
+                    sent_msg = await bot.send_message(chat_id=po_user_id, text=success_text, parse_mode="Markdown")
+                    
+                    # If multiple chunks, send rest
+                    for chunk in chunks[1:]:
+                        await asyncio.sleep(0.4)
+                        cont_text = get_text('purchase_success_continued', lang, data=chunk)
+                        await bot.send_message(chat_id=po_user_id, text=cont_text, parse_mode="Markdown")
+                except Exception:
+                    pass
+                
+                # Create and deliver TXT file for the user (exactly as done in download purchase callback)
+                try:
+                    from aiogram.types import BufferedInputFile
+                    lines = []
+                    store_name = await get_setting('store_name', 'Digital Store')
+                    lines.append(f"{'='*40}")
+                    lines.append(f"  {store_name} - Pre-order Delivered Items")
+                    lines.append(f"  User ID: {po_user_id}")
+                    lines.append(f"  Date: {purchase_time}")
+                    lines.append(f"{'='*40}\n")
+                    
+                    for idx, item in enumerate(stock_data_list, 1):
+                        lines.append(f"Item #{idx}: {prod_name}")
+                        lines.append(f"Data: {item}")
+                        lines.append(f"{'-'*40}")
+                        
+                    content = "\n".join(lines)
+                    file_name_time = purchase_time.replace(':', '-').replace(' ', '_')
+                    file = BufferedInputFile(content.encode('utf-8'), filename=f"preorder_{po_user_id}_{file_name_time}.txt")
+                    
+                    await bot.send_document(chat_id=po_user_id, document=file)
+                except Exception as file_err:
+                    logger.error(f"Failed to send txt file for preorder {po_id}: {file_err}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to fulfill pre-order {po_id}: {e}")
+                # Keep the pre-order and try on next restock
+                continue
+            
+            # Tiny delay between deliveries
+            await asyncio.sleep(0.5)
+
+async def start_api_preorder_auto_verification_loop(bot):
+    """
+    Background loop that runs every 5 minutes.
+    Checks all products that have pending pre-orders.
+    If the product is an imported Reseller API product, it fetches its live stock count.
+    If live stock count >= required pre-order quantity, it calls process_pending_pre_orders
+    to automatically purchase from provider API and deliver to users.
+    """
+    import asyncio
+    logger.info("Blockchain/API Pre-order auto-fulfillment loop started.")
+    while True:
+        try:
+            # 1. Fetch all product_ids with active pre-orders
+            async with aiosqlite.connect(DB_NAME) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT DISTINCT product_id FROM pre_orders;") as cursor:
+                    rows = await cursor.fetchall()
+                    product_ids = [r['product_id'] for r in rows]
+            
+            # 2. Inspect each product
+            for pid in product_ids:
+                # Check if product is imported reseller product
+                async with aiosqlite.connect(DB_NAME) as db:
+                    db.row_factory = aiosqlite.Row
+                    async with db.execute("SELECT provider_id, provider_product_id FROM products WHERE id = ?;", (pid,)) as cur:
+                        prod_row = await cur.fetchone()
+                        
+                if prod_row and prod_row['provider_id'] is not None:
+                    # Fetch live stock from provider API
+                    live_stock = await get_stock_count(pid)
+                    if live_stock > 0:
+                        # We have live stock available at provider! Let's process the pre-orders
+                        logger.info(f"API product {pid} has active stock ({live_stock}). Processing pre-orders...")
+                        await process_pending_pre_orders(bot, pid)
+                        
+        except Exception as e:
+            logger.error(f"Error in api_preorder_auto_fulfillment loop: {e}")
+            
+        # Run check every 5 minutes
+        await asyncio.sleep(300)
 
 async def get_orders(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
