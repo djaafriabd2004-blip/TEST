@@ -603,20 +603,10 @@ async def cb_download_purchase_txt(callback: CallbackQuery, lang='en'):
         return
         
     lines = []
-    store_name = await get_setting('store_name', 'Digital Store')
-    lines.append(f"{'='*40}")
-    lines.append(f"  {store_name} - Delivered Items")
-    lines.append(f"  User: {callback.from_user.first_name} (ID: {user_id})")
-    lines.append(f"  Date: {time_str}")
-    lines.append(f"{'='*40}\n")
-    
-    for idx, order in enumerate(orders, 1):
-        prod_name = order[f'product_name_{lang}'] or order['product_name_en']
-        lines.append(f"Item #{idx}: {prod_name}")
-        lines.append(f"Data: {order['stock_data']}")
-        lines.append(f"{'-'*40}")
+    for order in orders:
+        lines.append(order['stock_data'].strip())
         
-    content = "\n".join(lines)
+    content = "\n\n".join(lines)
     file = BufferedInputFile(content.encode('utf-8'), filename=f"purchase_{user_id}_{time_str.replace(':', '-').replace(' ', '_')}.txt")
     
     await callback.message.answer_document(file)

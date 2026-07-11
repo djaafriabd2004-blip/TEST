@@ -815,19 +815,10 @@ async def process_pending_pre_orders(bot, product_id):
                 try:
                     from aiogram.types import BufferedInputFile
                     lines = []
-                    store_name = await get_setting('store_name', 'Digital Store')
-                    lines.append(f"{'='*40}")
-                    lines.append(f"  {store_name} - Pre-order Delivered Items")
-                    lines.append(f"  User ID: {po_user_id}")
-                    lines.append(f"  Date: {purchase_time}")
-                    lines.append(f"{'='*40}\n")
-                    
-                    for idx, item in enumerate(stock_data_list, 1):
-                        lines.append(f"Item #{idx}: {prod_name}")
-                        lines.append(f"Data: {item}")
-                        lines.append(f"{'-'*40}")
+                    for item in stock_data_list:
+                        lines.append(item.strip())
                         
-                    content = "\n".join(lines)
+                    content = "\n\n".join(lines)
                     file_name_time = purchase_time.replace(':', '-').replace(' ', '_')
                     file = BufferedInputFile(content.encode('utf-8'), filename=f"preorder_{po_user_id}_{file_name_time}.txt")
                     
