@@ -2610,3 +2610,150 @@ async def msg_admin_pull_external(message: Message, state: FSMContext, lang='en'
     text = get_text('prov_list_title', lang)
     await message.answer(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
 
+# --- Admin Pre-orders Management Handlers ---
+@router.message(F.text == "⏳ Manage Pre-orders")
+async def msg_admin_preorders_summary(message: Message, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+        
+    from database import get_preorders_summary
+    summary = await get_preorders_summary()
+    
+    if not summary:
+        await message.answer("📭 No active pre-orders/reservations at the moment.")
+        return
+        
+    text = (
+        "⏳ *Active Pre-orders Summary*\n\n"
+        "Here you can see all products that users have reserved due to being out of stock. "
+        "Select a product to view individual reservations or cancel them:"
+    )
+    await message.answer(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary), parse_mode="Markdown")
+
+@router.callback_query(F.data == "admin_preorders_summary")
+async def cb_admin_preorders_summary(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("Not authorized.")
+        return
+        
+    from database import get_preorders_summary
+    summary = await get_preorders_summary()
+    
+    if not summary:
+        await callback.message.edit_text("📭 No active pre-orders/reservations at the moment.", reply_markup=keyboards.get_admin_back_keyboard())
+        await callback.answer()
+        return
+        
+    text = (
+        "⏳ *Active Pre-orders Summary*\n\n"
+        "Here you can see all products that users have reserved due to being out of stock. "
+        "Select a product to view individual reservations or cancel them:"
+    )
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_po_list_"))
+async def cb_admin_product_preorders(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("Not authorized.")
+        return
+        
+    product_id = int(callback.data.replace("adm_po_list_", ""))
+    from database import get_all_active_preorders_for_product, get_product
+    preorders = await get_all_active_preorders_for_product(product_id)
+    product = await get_product(product_id)
+    
+    if not preorders or not product:
+        await callback.answer("No active reservations for this product anymore.", show_alert=True)
+        # Return to summary
+        await cb_admin_preorders_summary(callback, lang)
+        return
+        
+    prod_name = product['name_en']
+    text = (
+        f"📦 *Reservations for:* `{prod_name}`\n"
+        f"Select a specific user's reservation to view actions:"
+    )
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_product_preorders_keyboard(preorders), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_po_view_"))
+async def cb_admin_preorder_detail(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("Not authorized.")
+        return
+        
+    po_id = int(callback.data.replace("adm_po_view_", ""))
+    
+    # Query database directly for pre-order details
+    import aiosqlite
+    from config import DB_NAME
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT po.*, p.name_en, u.first_name, u.username 
+               FROM pre_orders po
+               JOIN products p ON po.product_id = p.id
+               LEFT JOIN users u ON po.user_id = u.user_id
+               WHERE po.id = ?;""", (po_id,)
+        ) as cursor:
+            po = await cursor.fetchone()
+            
+    if not po:
+        await callback.answer("Pre-order not found.", show_alert=True)
+        return
+        
+    buyer_name = po['first_name'] or "Unknown"
+    buyer_uname = f"@{po['username']}" if po['username'] else "No Username"
+    
+    text = (
+        f"⏳ *Pre-order Reservation Details*\n\n"
+        f"🆔 *Pre-order ID:* `{po['id']}`\n"
+        f"📦 *Product:* `{po['name_en']}`\n"
+        f"👤 *User:* {buyer_name} ({buyer_uname}) [ID: `{po['user_id']}`]\n"
+        f"🔢 *Quantity:* `{po['quantity']}`\n"
+        f"💰 *Amount Locked:* `${po['price_paid']:.2f} USD`\n"
+        f"📅 *Created At:* `{po['created_at']}`\n\n"
+        f"⚠️ *Admin Action:* You can cancel this reservation. Doing so will immediately delete the pre-order and refund the amount back to the user's wallet."
+    )
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorder_actions_keyboard(po_id, po['product_id']), parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("adm_po_cancel_"))
+async def cb_admin_preorder_cancel(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("Not authorized.")
+        return
+        
+    po_id = int(callback.data.replace("adm_po_cancel_", ""))
+    from database import cancel_pre_order_by_admin
+    
+    try:
+        user_id, refunded = await cancel_pre_order_by_admin(po_id)
+        
+        # Send a direct notification to the user about the admin refund
+        try:
+            notification_text = {
+                "ar": f"⚠️ **[إلغاء حجز مسبق من الإدارة]**\n\nقام المسؤول بإلغاء حجزك المعلق. تم إرجاع مبلغ **`${refunded:.2f} USD`** كاملاً إلى محفظتك بالبوت.",
+                "en": f"⚠️ **[Pre-order Cancelled by Admin]**\n\nYour active pre-order has been cancelled by the administrator. **`${refunded:.2f} USD`** has been refunded back to your wallet.",
+                "ru": f"⚠️ **[Предзаказ отменен администратором]**\n\nВаш предзаказ был отменен администратором. **`${refunded:.2f} USD`** возвращены на ваш баланс."
+            }
+            # Fetch user language
+            import aiosqlite
+            from config import DB_NAME
+            async with aiosqlite.connect(DB_NAME) as db:
+                async with db.execute("SELECT language FROM users WHERE user_id = ?;", (user_id,)) as cur:
+                    row = await cur.fetchone()
+                    user_lang = row[0] if row else 'en'
+            await callback.message.bot.send_message(chat_id=user_id, text=notification_text.get(user_lang, notification_text['en']), parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Failed to notify user {user_id} of admin pre-order cancellation: {e}")
+            
+        await callback.answer(f"✅ Pre-order cancelled and ${refunded:.2f} USD refunded to user successfully!", show_alert=True)
+        
+        # Return to summary
+        await cb_admin_preorders_summary(callback, lang)
+        
+    except Exception as err:
+        await callback.answer(f"❌ Error cancelling pre-order: {err}", show_alert=True)
+

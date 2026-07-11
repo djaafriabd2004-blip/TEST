@@ -875,6 +875,60 @@ async def start_api_preorder_auto_verification_loop(bot):
         # Run check every 5 minutes
         await asyncio.sleep(300)
 
+async def get_preorders_summary():
+    """
+    Returns a list of dictionaries summarizing active pre-orders per product:
+    [ { product_id, name_en, name_ar, name_ru, total_quantity, total_preorders } ]
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        query = """
+            SELECT po.product_id, 
+                   p.name_ar, p.name_en, p.name_ru,
+                   SUM(po.quantity) as total_quantity, 
+                   COUNT(po.id) as total_preorders
+            FROM pre_orders po
+            JOIN products p ON po.product_id = p.id
+            GROUP BY po.product_id;
+        """
+        async with db.execute(query) as cursor:
+            return await cursor.fetchall()
+
+async def get_all_active_preorders_for_product(product_id):
+    """Returns a list of all individual active pre-orders for a given product with buyer information."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        query = """
+            SELECT po.*, u.first_name, u.username 
+            FROM pre_orders po
+            LEFT JOIN users u ON po.user_id = u.user_id
+            WHERE po.product_id = ?
+            ORDER BY po.id ASC;
+        """
+        async with db.execute(query, (product_id,)) as cursor:
+            return await cursor.fetchall()
+
+async def cancel_pre_order_by_admin(pre_order_id):
+    """
+    Cancels a pre-order from the admin panel.
+    Refunds the price_paid back to user's wallet and returns the refunded details.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM pre_orders WHERE id = ?;", (pre_order_id,)) as cursor:
+            po = await cursor.fetchone()
+            if not po:
+                raise Exception("Pre-order not found")
+                
+        user_id = po['user_id']
+        price_paid = po['price_paid']
+        
+        # Refund user balance
+        await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_paid, user_id))
+        await db.execute("DELETE FROM pre_orders WHERE id = ?;", (pre_order_id,))
+        await db.commit()
+        return user_id, price_paid
+
 async def get_orders(user_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row

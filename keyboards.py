@@ -153,6 +153,7 @@ def get_admin_reply_keyboard(lang='en') -> ReplyKeyboardMarkup:
     builder.button(text="📥 Add Stock")
     builder.button(text="📦 Bulk Add Stock")
     builder.button(text="⏳ Pending Deposits")
+    builder.button(text="⏳ Manage Pre-orders")
     builder.button(text="📢 Channels Settings")
     builder.button(text="🎧 Support Settings")
     builder.button(text="💳 Charge Section")
@@ -165,7 +166,7 @@ def get_admin_reply_keyboard(lang='en') -> ReplyKeyboardMarkup:
     builder.button(text="🎨 Button Emojis")
     builder.button(text="🔌 Pull External Product")
     builder.button(text="🔙 Back to Main Menu")
-    builder.adjust(2, 2, 2, 2, 2, 2, 3, 2, 1)
+    builder.adjust(2, 2, 2, 2, 2, 2, 3, 2, 2)
     return builder.as_markup(resize_keyboard=True)
 
 def get_admin_user_balance_keyboard(user_id) -> InlineKeyboardMarkup:
@@ -380,6 +381,37 @@ async def get_force_sub_keyboard(bot, channels: list, lang='en') -> InlineKeyboa
     }.get(lang, "✅ Verify Subscription")
     
     builder.button(text=verify_text, callback_data="check_subscription", style="success")
+    builder.adjust(1)
+    return builder.as_markup()
+
+# --- Admin Pre-orders Keyboard Helpers ---
+def get_admin_preorders_summary_keyboard(preorders_summary) -> InlineKeyboardMarkup:
+    """Keyboard for listing all products with active pre-orders."""
+    builder = InlineKeyboardBuilder()
+    for item in preorders_summary:
+        name = item['name_en'] or f"ID: {item['product_id']}"
+        btn_text = f"📦 {name} (Qty: {item['total_quantity']} | Users: {item['total_preorders']})"
+        builder.button(text=btn_text, callback_data=f"adm_po_list_{item['product_id']}")
+    builder.button(text="🔙 Back", callback_data="admin_menu")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_product_preorders_keyboard(preorders_list) -> InlineKeyboardMarkup:
+    """Keyboard showing individual pre-orders for a specific product."""
+    builder = InlineKeyboardBuilder()
+    for po in preorders_list:
+        buyer = po['first_name'] or f"ID: {po['user_id']}"
+        btn_text = f"👤 {buyer} (x{po['quantity']}) - ${po['price_paid']:.2f}"
+        builder.button(text=btn_text, callback_data=f"adm_po_view_{po['id']}")
+    builder.button(text="🔙 Back to Summary", callback_data="admin_preorders_summary")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_preorder_actions_keyboard(pre_order_id, product_id) -> InlineKeyboardMarkup:
+    """Keyboard for admin actions on an individual pre-order."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Cancel & Refund / إلغاء وإرجاع الرصيد", callback_data=f"adm_po_cancel_{pre_order_id}")
+    builder.button(text="🔙 Back", callback_data=f"adm_po_list_{product_id}")
     builder.adjust(1)
     return builder.as_markup()
 
