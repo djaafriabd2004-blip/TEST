@@ -160,14 +160,14 @@ LOCALIZATION = {
         'ru': "🎧 *Ответ поддержки:* {reply}"
     },
     'referral_msg': {
-        'en': "🔗 *Referral System*\n\nShare your referral link with friends. You will receive a fixed reward of **`${bonus} USD`** immediately when a new user registers using your link!\n\n👥 *Your Referrals:* `{count}`\n💰 *Total Earned:* `${earned:.2f} USD`\n\n📋 *Your Link:* `{link}`",
-        'ar': "🔗 *نظام الإحالات*\n\nشارك رابط الإحالة الخاص بك مع أصدقائك. ستحصل على مكافأة ثابتة بقيمة **`{bonus} USD`** في حسابك مباشرة بمجرد انضمام مستخدم جديد عن طريق رابطك!\n\n👥 *عدد إحالاتك:* `{count}`\n💰 *إجمالي الأرباح:* `${earned:.2f} USD`\n\n📋 *رابطك:* `{link}`",
-        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Вы получите фиксированное вознаграждение в размере **`${bonus} USD`** сразу после регистрации нового пользователя по вашей ссылке!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`"
+        'en': "🔗 *Referral System*\n\nShare your referral link with friends. You will receive a fixed reward of **`${bonus} USD`** in your balance once your invited friend makes their first purchase inside the bot!\n\n👥 *Your Referrals:* `{count}`\n💰 *Total Earned:* `${earned:.2f} USD`\n\n📋 *Your Link:* `{link}`",
+        'ar': "🔗 *نظام الإحالات*\n\nشارك رابط الإحالة الخاص بك مع أصدقائك. ستحصل على مكافأة ثابتة بقيمة **`{bonus} USD`** في محفظتك مباشرة بمجرد قيام الصديق الذي قمت بدعوته بإجراء أول عملية شراء له داخل البوت!\n\n👥 *عدد إحالاتك:* `{count}`\n💰 *إجمالي الأرباح:* `${earned:.2f} USD`\n\n📋 *رابطك:* `{link}`",
+        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Вы получите фиксированное вознаграждение в размере **`${bonus} USD`** на свой баланс, как только приглашенный вами друг совершит свою первую покупку в боте!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`"
     },
     'referral_new_user_joined': {
-        'en': "🎉 *New Referral & Reward!*\n\nUser *{name}* has joined the bot using your referral link! A fixed bonus of **`${bonus} USD`** has been immediately added to your wallet balance.",
-        'ar': "🎉 *إحالة جديدة ومكافأة!*\n\nانضم المستخدم *{name}* إلى البوت عن طريق رابط الإحالة الخاص بك! تم إضافة مكافأة ثابتة بقيمة **`{bonus} USD`** تلقائياً إلى محفظتك بالبوت.",
-        'ru': "🎉 *Новый реферал и бонус!*\n\nПользователь *{name}* присоединился к боту по вашей реферальной ссылке! Фиксированный бонус в размере **`${bonus} USD`** был мгновенно зачислен на баланс вашего кошелька."
+        'en': "🎉 *Referral First Purchase Reward!*\n\nUser *{name}* whom you invited has made their first purchase! A fixed bonus of **`${bonus} USD`** has been successfully credited to your wallet balance.",
+        'ar': "🎉 *مكافأة أول شراء للإحالة!*\n\nقام المستخدم *{name}* (الذي قمت بدعوته) بإجراء أول عملية شراء له بالبوت! تم بنجاح إضافة مكافأة ثابتة بقيمة **`{bonus} USD`** إلى محفظتك بالبوت.",
+        'ru': "🎉 *Бонус за первую покупку реферала!*\n\nПриглашенный вами пользователь *{name}* совершил свою первую покупку! Фиксированный бонус в размере **`${bonus} USD`** успешно зачислен на баланс вашего кошелька."
     },
     'my_orders_title': {
         'en': "📦 *Your Purchase History:*",
