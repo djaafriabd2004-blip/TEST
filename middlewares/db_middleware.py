@@ -37,18 +37,6 @@ class DbUserMiddleware(BaseMiddleware):
                 await create_user(user_id, username, first_name, referred_by=referred_by)
                 user = await get_user(user_id)
                 
-                bot = data.get("bot")
-                if referred_by and bot:
-                    from localization import get_text
-                    from database import get_setting
-                    try:
-                        fixed_bonus = await get_setting('referral_bonus_percent', '1.0')
-                        msg_text = get_text('referral_new_user_joined', referrer_lang, name=first_name, bonus=fixed_bonus)
-                        await bot.send_message(chat_id=referred_by, text=msg_text, parse_mode="Markdown")
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).warning(f"Could not send referral notification to {referred_by}: {e}")
-                
             data['db_user'] = user
             data['is_admin'] = user_id in config.ADMIN_IDS
             user_lang = user['language'] if (user and user['language']) else 'en'

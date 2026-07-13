@@ -36,6 +36,7 @@ async def db_init():
             referred_by INTEGER,
             referral_code TEXT UNIQUE,
             referral_balance_earned REAL DEFAULT 0.0,
+            referral_bonus_paid INTEGER DEFAULT 0,
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """)
@@ -85,6 +86,8 @@ async def db_init():
                 await db.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;")
             if "ban_reason" not in user_columns:
                 await db.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT;")
+            if "referral_bonus_paid" not in user_columns:
+                await db.execute("ALTER TABLE users ADD COLUMN referral_bonus_paid INTEGER DEFAULT 0;")
         
         # Stocks Table
         await db.execute("""
@@ -288,18 +291,6 @@ async def create_user(user_id, username, first_name, referred_by=None):
             "INSERT INTO users (user_id, username, first_name, referred_by, referral_code) VALUES (?, ?, ?, ?, ?);",
             (user_id, username, first_name, ref_by_id, ref_code)
         )
-        
-        # Award fixed referral bonus to referrer immediately if referee signed up via ref link
-        if ref_by_id:
-            async with db.execute("SELECT value FROM settings WHERE key = 'referral_bonus_percent';") as cursor:
-                sett_row = await cursor.fetchone()
-                fixed_bonus = float(sett_row[0]) if sett_row else 1.0  # default to 1.0 USD if not set
-                
-            if fixed_bonus > 0:
-                await db.execute(
-                    "UPDATE users SET balance = balance + ?, referral_balance_earned = referral_balance_earned + ? WHERE user_id = ?;",
-                    (fixed_bonus, fixed_bonus, ref_by_id)
-                )
         await db.commit()
 
 async def get_user_by_ref_code(ref_code):
@@ -638,7 +629,68 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
             
         await db.commit()
         all_stock_data = local_stock_data + provider_stock_data
+        
+        # Check and award referral bonus on first purchase
+        try:
+            await check_and_award_referral(user_id)
+        except Exception as e:
+            logger.error(f"Error checking/awarding referral for user {user_id}: {e}")
+            
         return all_stock_data, actual_price, now, actual_qty
+
+async def check_and_award_referral(user_id):
+    """
+    Checks if the user has a referrer and if their referral_bonus_paid is 0.
+    If yes, awards the fixed referral bonus to the referrer and marks referral_bonus_paid as 1.
+    """
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        
+        # 1. Fetch user details
+        async with db.execute("SELECT referred_by, referral_bonus_paid, first_name FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            if not user or not user['referred_by'] or user['referral_bonus_paid'] == 1:
+                return
+                
+        ref_by_id = user['referred_by']
+        referee_name = user['first_name'] or "User"
+        
+        # 2. Get fixed bonus settings
+        async with db.execute("SELECT value FROM settings WHERE key = 'referral_bonus_percent';") as cursor:
+            sett_row = await cursor.fetchone()
+            fixed_bonus = float(sett_row[0]) if sett_row else 1.0  # default to 1.0 USD if not configured
+            
+        if fixed_bonus <= 0:
+            return
+            
+        # 3. Credit referrer balance & update referee status
+        await db.execute(
+            "UPDATE users SET balance = balance + ?, referral_balance_earned = referral_balance_earned + ? WHERE user_id = ?;",
+            (fixed_bonus, fixed_bonus, ref_by_id)
+        )
+        await db.execute("UPDATE users SET referral_bonus_paid = 1 WHERE user_id = ?;", (user_id,))
+        await db.commit()
+        
+        # 4. Notify referrer via bot if possible
+        try:
+            # Import locally to avoid circular dependencies
+            from bot import main
+            # To notify, we can retrieve bot token and query or let middleware/handlers notify.
+            # However, since bot instance is running, we can fetch from config or pass bot
+            import config
+            from aiogram import Bot
+            bot_instance = Bot(token=config.BOT_TOKEN)
+            
+            async with db.execute("SELECT language FROM users WHERE user_id = ?;", (ref_by_id,)) as cursor:
+                ref_row = await cursor.fetchone()
+                ref_lang = ref_row['language'] if ref_row else 'en'
+                
+            from localization import get_text
+            msg_text = get_text('referral_new_user_joined', ref_lang, name=referee_name, bonus=fixed_bonus)
+            await bot_instance.send_message(chat_id=ref_by_id, text=msg_text, parse_mode="Markdown")
+            await bot_instance.session.close()
+        except Exception as notify_err:
+            logger.error(f"Failed to send referral award notification to {ref_by_id}: {notify_err}")
 
 # --- Pre-order Reservation Helpers ---
 async def create_pre_order(user_id, product_id, quantity=1):
