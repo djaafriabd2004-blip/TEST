@@ -36,7 +36,14 @@ async def show_products_list(message_or_callback, lang='en'):
     kb = keyboards.get_products_keyboard(products, stock_counts, lang)
     
     if isinstance(message_or_callback, CallbackQuery):
-        await message_or_callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+        from aiogram.exceptions import TelegramBadRequest
+        try:
+            await message_or_callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                raise e
     else:
         await message_or_callback.answer(text, reply_markup=kb, parse_mode="Markdown")
 
