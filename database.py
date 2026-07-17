@@ -88,6 +88,12 @@ async def db_init():
                 await db.execute("ALTER TABLE users ADD COLUMN ban_reason TEXT;")
             if "referral_bonus_paid" not in user_columns:
                 await db.execute("ALTER TABLE users ADD COLUMN referral_bonus_paid INTEGER DEFAULT 0;")
+                
+        # Migration: Verify expected columns in orders table
+        async with db.execute("PRAGMA table_info(orders);") as cursor:
+            order_columns = [row[1] for row in await cursor.fetchall()]
+            if "client_order_id" not in order_columns:
+                await db.execute("ALTER TABLE orders ADD COLUMN client_order_id TEXT;")
         
         # Stocks Table
         await db.execute("""
@@ -115,6 +121,7 @@ async def db_init():
             product_name_ar TEXT NOT NULL,
             product_name_en TEXT NOT NULL,
             product_name_ru TEXT NOT NULL,
+            client_order_id TEXT,
             FOREIGN KEY(user_id) REFERENCES users(user_id)
         );
         """)
@@ -494,9 +501,21 @@ async def get_stock_count(product_id):
         return local_count
 
 # Purchase Helpers
-async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True):
+async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
+        
+        # 0. Idempotency Check: if client_order_id is provided, check if we already processed it
+        if client_order_id:
+            async with db.execute("SELECT * FROM orders WHERE client_order_id = ? AND user_id = ?;", (client_order_id, user_id)) as dup_cursor:
+                existing_orders = await dup_cursor.fetchall()
+                if existing_orders:
+                    # Collect already delivered items for this order
+                    all_stock_data = [item['stock_data'] for item in existing_orders]
+                    price_paid = sum(item['price_paid'] for item in existing_orders)
+                    purchase_time = existing_orders[0]['purchased_at']
+                    actual_qty = len(existing_orders)
+                    return all_stock_data, price_paid, purchase_time, actual_qty
         
         # Get product info
         async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
@@ -614,17 +633,17 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                 (user_id, now, stock_id)
             )
             await db.execute(
-                """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-                (user_id, product['id'], stock_id, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
+                """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru, client_order_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                (user_id, product['id'], stock_id, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'], client_order_id)
             )
             
         # Process provider items
         for item_data in provider_stock_data:
             await db.execute(
-                """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);""",
-                (user_id, product['id'], 0, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'])
+                """INSERT INTO orders (user_id, product_id, stock_id, price_paid, purchased_at, stock_data, product_name_ar, product_name_en, product_name_ru, client_order_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+                (user_id, product['id'], 0, final_price_per_item, now, item_data, product['name_ar'], product['name_en'], product['name_ru'], client_order_id)
             )
             
         await db.commit()
