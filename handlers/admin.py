@@ -2368,6 +2368,9 @@ from handlers.states import ProvidersStates
 
 async def fetch_provider_store_name(base_url, api_key):
     import aiohttp
+    base_url = base_url.strip().rstrip('/')
+    if not base_url.startswith('http'):
+        base_url = 'https://' + base_url
     is_supabase = "supabase.co" in base_url
     
     headers = {}
@@ -2402,6 +2405,9 @@ async def fetch_provider_store_name(base_url, api_key):
 
 async def fetch_provider_products(base_url, api_key):
     import aiohttp
+    base_url = base_url.strip().rstrip('/')
+    if not base_url.startswith('http'):
+        base_url = 'https://' + base_url
     is_supabase = "supabase.co" in base_url
     
     headers = {}
