@@ -2368,22 +2368,30 @@ from handlers.states import ProvidersStates
 
 async def fetch_provider_store_name(base_url, api_key):
     import aiohttp
-    headers = {"X-API-Key": api_key}
+    is_supabase = "supabase.co" in base_url
+    
+    headers = {}
+    if is_supabase:
+        headers["Authorization"] = f"Bearer {api_key}"
+        url = f"{base_url}?action=balance"
+    else:
+        headers["X-API-Key"] = api_key
+        url = f"{base_url}/api/me"
+        
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{base_url}/api/me", headers=headers, timeout=5) as resp:
+            async with session.get(url, headers=headers, timeout=5) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    # Prioritize the actual remote store name exposed in API
+                    if is_supabase:
+                        return "Supabase Reseller API"
                     if data.get('ok') and data.get('store_name'):
                         return data['store_name']
-                    # Fallback to partner user first_name
                     elif data.get('ok') and 'user' in data:
                         return f"Partner: {data['user']['first_name']}"
     except Exception:
         pass
     
-    # Fallback to domain name
     try:
         from urllib.parse import urlparse
         parsed = urlparse(base_url)
@@ -2394,13 +2402,37 @@ async def fetch_provider_store_name(base_url, api_key):
 
 async def fetch_provider_products(base_url, api_key):
     import aiohttp
-    url = f"{base_url}/api/products"
-    headers = {"X-API-Key": api_key}
+    is_supabase = "supabase.co" in base_url
+    
+    headers = {}
+    if is_supabase:
+        headers["Authorization"] = f"Bearer {api_key}"
+        url = f"{base_url}?action=products"
+    else:
+        headers["X-API-Key"] = api_key
+        url = f"{base_url}/api/products"
+        
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
+                    if is_supabase:
+                        raw_list = data if isinstance(data, list) else data.get('products', [])
+                        formatted = []
+                        for p in raw_list:
+                            formatted.append({
+                                "id": p.get("id"),
+                                "name_ar": p.get("name"),
+                                "name_en": p.get("name"),
+                                "name_ru": p.get("name"),
+                                "description_ar": f"Imported Supabase Product: {p.get('name')}",
+                                "description_en": f"Imported Supabase Product: {p.get('name')}",
+                                "description_ru": f"Imported Supabase Product: {p.get('name')}",
+                                "price": float(p.get("price", 0.0)),
+                                "custom_emoji_id": None
+                            })
+                        return formatted
                     return data.get('products') if data.get('ok') else None
     except Exception as e:
         logger.error(f"Error fetching provider products: {e}")

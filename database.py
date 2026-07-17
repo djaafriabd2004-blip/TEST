@@ -483,17 +483,35 @@ async def get_stock_count(product_id):
                     api_key = prov['api_key']
                 
                 import aiohttp
-                url = f"{base_url}/api/products"
-                headers = {"X-API-Key": api_key}
+                is_supabase = "supabase.co" in base_url
+                
+                headers = {}
+                if is_supabase:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                    url = f"{base_url}?action=products"
+                else:
+                    headers["X-API-Key"] = api_key
+                    url = f"{base_url}/api/products"
+                    
                 try:
                     async with aiohttp.ClientSession() as session:
                         async with session.get(url, headers=headers, timeout=5) as resp:
                             if resp.status == 200:
                                 data = await resp.json()
-                                if data.get('ok') and 'products' in data:
-                                    for p in data['products']:
-                                        if p['id'] == provider_prod_id:
-                                            return local_count + p.get('stock_count', 0)
+                                if is_supabase:
+                                    # Parse Supabase products list directly or wrapped
+                                    raw_list = data if isinstance(data, list) else data.get('products', [])
+                                    # Find matching product by id
+                                    for p in raw_list:
+                                        # Compare strings or UUID formats
+                                        if str(p.get('id')) == str(provider_prod_id):
+                                            # "Returns active products: id, name, price, stock, manual_delivery."
+                                            return local_count + int(p.get('stock', 0))
+                                else:
+                                    if data.get('ok') and 'products' in data:
+                                        for p in data['products']:
+                                            if p['id'] == provider_prod_id:
+                                                return local_count + p.get('stock_count', 0)
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
                 return local_count
@@ -573,34 +591,72 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
             # Perform external purchase via provider API
             import aiohttp
             import asyncio
-            url = f"{base_url}/api/buy"
-            headers = {
-                "X-API-Key": api_key,
-                "Content-Type": "application/json"
-            }
-            buy_payload = {
-                "product_id": product['provider_product_id'],
-                "quantity": remaining_qty
-            }
+            import uuid
+            
+            is_supabase = "supabase.co" in base_url
+            
+            headers = {}
+            if is_supabase:
+                headers["Authorization"] = f"Bearer {api_key}"
+                headers["Content-Type"] = "application/json"
+                url = f"{base_url}?action=order"
+                # Generate a unique client side order id for idempotency
+                ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+                buy_payload = {
+                    "product_id": product['provider_product_id'], # UUID
+                    "quantity": remaining_qty,
+                    "external_order_id": ext_order_id
+                }
+            else:
+                headers["X-API-Key"] = api_key
+                headers["Content-Type"] = "application/json"
+                url = f"{base_url}/api/buy"
+                buy_payload = {
+                    "product_id": product['provider_product_id'],
+                    "quantity": remaining_qty
+                }
             
             try:
                 # Set a strict 30 second timeout on client session to avoid disconnections
                 timeout_cfg = aiohttp.ClientTimeout(total=30)
                 async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
                     async with session.post(url, headers=headers, json=buy_payload) as resp:
-                        if resp.status != 200:
+                        if resp.status not in [200, 201]:
                             try:
                                 err_data = await resp.json()
-                                err_msg = err_data.get('error', 'Unknown provider error')
+                                err_msg = err_data.get('error') or err_data.get('errorMessage') or 'Unknown provider error'
                             except:
                                 err_msg = await resp.text()
                             raise Exception(f"Provider error: {err_msg}")
                         
                         buy_data = await resp.json()
-                        if not buy_data.get('ok') or 'items' not in buy_data:
-                            raise Exception("Provider purchase response invalid")
                         
-                        provider_stock_data = buy_data['items']
+                        if is_supabase:
+                            # Supabase Response format:
+                            # { "status": "delivered", "order_id": "...", "data": "delivered_value", "amount": 1.23 }
+                            # The 'data' contains the raw codes/links. It might be single string or multiple
+                            raw_data = buy_data.get('data')
+                            if not raw_data:
+                                raise Exception("Provider returned empty delivery data")
+                            
+                            # If it's a newline separated string of codes, split it into items list
+                            if isinstance(raw_data, str):
+                                # If it's single or multiple items separated by newlines or commas
+                                if "\n" in raw_data:
+                                    provider_stock_data = [item.strip() for item in raw_data.split("\n") if item.strip()]
+                                elif "," in raw_data:
+                                    provider_stock_data = [item.strip() for item in raw_data.split(",") if item.strip()]
+                                else:
+                                    provider_stock_data = [raw_data]
+                            elif isinstance(raw_data, list):
+                                provider_stock_data = raw_data
+                            else:
+                                provider_stock_data = [str(raw_data)]
+                        else:
+                            if not buy_data.get('ok') or 'items' not in buy_data:
+                                raise Exception("Provider purchase response invalid")
+                            provider_stock_data = buy_data['items']
+                            
                         if len(provider_stock_data) < remaining_qty:
                             raise Exception(f"Provider returned insufficient items ({len(provider_stock_data)} received, {remaining_qty} requested)")
             except asyncio.TimeoutError:
