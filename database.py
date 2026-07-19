@@ -892,21 +892,21 @@ async def process_pending_pre_orders(bot, product_id):
                 prod_dict = dict(product) if product else {}
                 prod_name = prod_dict.get(f"name_{lang}") or prod_dict.get("name_en") or "Product"
                 
-                # Split stock_data_list into chunks of text, each having length <= 3000 to be safe (just like checkout delivery)
+                # Split stock_data_list into chunks of text, each having length <= 4000 to be safe (just like checkout delivery)
                 chunks = []
                 current_chunk = []
                 current_len = 0
                 for item in stock_data_list:
-                    item_len = len(item) + (2 if current_chunk else 0)
-                    if current_len + item_len > 3000:
-                        chunks.append("\n\n".join(current_chunk))
+                    item_len = len(item) + (1 if current_chunk else 0)
+                    if current_len + item_len > 4000:
+                        chunks.append("\n".join(current_chunk))
                         current_chunk = [item]
                         current_len = len(item)
                     else:
                         current_chunk.append(item)
                         current_len += item_len
                 if current_chunk:
-                    chunks.append("\n\n".join(current_chunk))
+                    chunks.append("\n".join(current_chunk))
                 
                 # Format success notifications (using exact purchase_success format styling)
                 from localization import get_text

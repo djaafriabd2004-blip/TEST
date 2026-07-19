@@ -457,21 +457,21 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
             await db.commit()
             
-    # Split stock_data_list into chunks of text, each having length <= 3000 to be safe
+    # Split stock_data_list into chunks of text, each having length <= 4000 to be safe
     chunks = []
     current_chunk = []
     current_len = 0
     for item in stock_data_list:
-        item_len = len(item) + (2 if current_chunk else 0)
-        if current_len + item_len > 3000:
-            chunks.append("\n\n".join(current_chunk))
+        item_len = len(item) + (1 if current_chunk else 0)
+        if current_len + item_len > 4000:
+            chunks.append("\n".join(current_chunk))
             current_chunk = [item]
             current_len = len(item)
         else:
             current_chunk.append(item)
             current_len += item_len
     if current_chunk:
-        chunks.append("\n\n".join(current_chunk))
+        chunks.append("\n".join(current_chunk))
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
