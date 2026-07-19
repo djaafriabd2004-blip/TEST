@@ -493,7 +493,8 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         if len(chunks) == 1:
             await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
         else:
-            await send_message_with_retry(message.answer, success_text, parse_mode="Markdown")
+            # Send the first chunk with the download TXT button attached immediately!
+            await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
             # Send remaining chunks in separate messages
             for idx, chunk in enumerate(chunks[1:], 1):
                 await asyncio.sleep(0.4)  # Small pause to avoid network resets/flooding
@@ -502,10 +503,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                     lang,
                     data=chunk
                 )
-                if idx == len(chunks) - 1:
-                    await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown", reply_markup=builder.as_markup())
-                else:
-                    await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown")
+                await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown")
                     
         # Send partial delivery warning and refund notification
         if refund_amount > 0:

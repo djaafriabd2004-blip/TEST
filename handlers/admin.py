@@ -2575,13 +2575,13 @@ async def cb_admin_prov_select_product(callback: CallbackQuery, state: FSMContex
         await callback.answer("❌ Unauthorized", show_alert=True)
         return
         
-    prod_id = int(callback.data.replace("admin_prov_sel_", ""))
+    raw_prod_id = callback.data.replace("admin_prov_sel_", "")
     data = await state.get_data()
     products = data.get('prov_products', [])
     
     selected_prod = None
     for p in products:
-        if p['id'] == prod_id:
+        if str(p['id']) == raw_prod_id:
             selected_prod = p
             break
             
