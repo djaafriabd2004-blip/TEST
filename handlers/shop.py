@@ -479,9 +479,10 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
     builder.adjust(1)
     
-    # 4. Deliver products via Telegram: Always attach TXT document directly, and send text summary
+    # 4. Deliver products via Telegram: Check text character length against Telegram limits
     from aiogram.types import BufferedInputFile
     txt_content = "\n\n".join(stock_data_list)
+    total_char_len = len(txt_content)
     file_time_str = purchase_time.replace(':', '-').replace(' ', '_')
     txt_file = BufferedInputFile(txt_content.encode('utf-8'), filename=f"purchase_{user_id}_{file_time_str}.txt")
 
@@ -505,19 +506,21 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         except Exception as doc_err:
             logger.error(f"Failed to send TXT document directly: {doc_err}")
         
-        # If large quantity (multiple chunks or >5 items), show preview and note about attached TXT file
-        if len(chunks) > 1 or actual_qty > 5:
+        # If text length exceeds Telegram single message limit (or >2500 chars / >5 items)
+        if total_char_len > 2500 or len(chunks) > 1 or actual_qty > 5:
             note_msg = {
-                "ar": f"\n\n📎 *ملاحظة:* تم إرسال كافة الـ ({actual_qty}) رابط في ملف TXT المرفق أعلاه مباشرة لسهولة التحميل والفتح.",
-                "en": f"\n\n📎 *Note:* All {actual_qty} items have been sent directly in the TXT file above.",
-                "ru": f"\n\n📎 *Примечание:* Все {actual_qty} ссылок отправлены прямо в файле TXT выше."
+                "ar": f"\n\n📎 *تنويه:* نظراً لأن حجم البيانات يتجاوز الحد المسموح به في الرسائل النصية لتليجرام، تم إرفاق جميع المنتجات/الروابط (عدد: {actual_qty}) في ملف TXT المرفق أعلاه مباشرة لسهولة الفتح والتحميل.",
+                "en": f"\n\n📎 *Note:* Since the total content exceeds Telegram message character limits, all {actual_qty} items have been sent directly in the TXT file attached above.",
+                "ru": f"\n\n📎 *Примечание:* Поскольку общая длина превышает лимит сообщений Telegram, все {actual_qty} товаров отправлены прямо в файле TXT выше."
             }
+            # Show small preview of first chunk (truncated to 500 chars max)
+            preview = first_chunk[:500] + "...\n(باقي الروابط داخل الملف المرفق)" if len(first_chunk) > 500 else first_chunk
             success_text = get_text(
                 'purchase_success',
                 lang,
                 name=f"{prod_name} (x{actual_qty})",
                 price=price_paid,
-                data=first_chunk
+                data=preview
             ) + note_msg.get(lang, note_msg['en'])
             
             await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
