@@ -479,31 +479,57 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
     builder.adjust(1)
     
-    # 4. Deliver products via Telegram with retry logic
+    # 4. Deliver products via Telegram: Always attach TXT document directly, and send text summary
+    from aiogram.types import BufferedInputFile
+    txt_content = "\n\n".join(stock_data_list)
+    file_time_str = purchase_time.replace(':', '-').replace(' ', '_')
+    txt_file = BufferedInputFile(txt_content.encode('utf-8'), filename=f"purchase_{user_id}_{file_time_str}.txt")
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    btn_text = {"en": "📥 Download as TXT", "ar": "📥 تحميل كملف TXT", "ru": "📥 Скачать как TXT"}
+    builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
+    builder.adjust(1)
+    
     try:
         first_chunk = chunks[0] if chunks else ""
-        success_text = get_text(
-            'purchase_success',
-            lang,
-            name=f"{prod_name} (x{actual_qty})",
-            price=price_paid,
-            data=first_chunk
-        )
         
-        if len(chunks) == 1:
+        # Send the TXT file directly as a document attachment!
+        doc_caption = {
+            "ar": f"📄 *ملف جميع المنتجات/الروابط (العدد: {actual_qty})*",
+            "en": f"📄 *File containing all items (Total: {actual_qty})*",
+            "ru": f"📄 *Файл со всеми товарами (Всего: {actual_qty})*"
+        }
+        try:
+            await send_message_with_retry(message.answer_document, document=txt_file, caption=doc_caption.get(lang, doc_caption['en']), parse_mode="Markdown")
+        except Exception as doc_err:
+            logger.error(f"Failed to send TXT document directly: {doc_err}")
+        
+        # If large quantity (multiple chunks or >5 items), show preview and note about attached TXT file
+        if len(chunks) > 1 or actual_qty > 5:
+            note_msg = {
+                "ar": f"\n\n📎 *ملاحظة:* تم إرسال كافة الـ ({actual_qty}) رابط في ملف TXT المرفق أعلاه مباشرة لسهولة التحميل والفتح.",
+                "en": f"\n\n📎 *Note:* All {actual_qty} items have been sent directly in the TXT file above.",
+                "ru": f"\n\n📎 *Примечание:* Все {actual_qty} ссылок отправлены прямо в файле TXT выше."
+            }
+            success_text = get_text(
+                'purchase_success',
+                lang,
+                name=f"{prod_name} (x{actual_qty})",
+                price=price_paid,
+                data=first_chunk
+            ) + note_msg.get(lang, note_msg['en'])
+            
             await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
         else:
-            # Send the first chunk with the download TXT button attached immediately!
+            success_text = get_text(
+                'purchase_success',
+                lang,
+                name=f"{prod_name} (x{actual_qty})",
+                price=price_paid,
+                data=first_chunk
+            )
             await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
-            # Send remaining chunks in separate messages
-            for idx, chunk in enumerate(chunks[1:], 1):
-                await asyncio.sleep(0.4)  # Small pause to avoid network resets/flooding
-                cont_text = get_text(
-                    'purchase_success_continued',
-                    lang,
-                    data=chunk
-                )
-                await send_message_with_retry(message.answer, cont_text, parse_mode="Markdown")
                     
         # Send partial delivery warning and refund notification
         if refund_amount > 0:
@@ -515,9 +541,9 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     except Exception as deliv_err:
         logger.error(f"Error during product delivery to chat for user {user_id}: {deliv_err}")
         fallback_msg = {
-            "ar": f"🎉 *تمت عملية الشراء بنجاح!* ({prod_name} x{actual_qty})\n\n⚠️ بسبب ضغط الاتصال في شبكة التليجرام، تعذر عرض جميع المنتجات في المحادثة مباشرة. يمكنك تحميل كافة المنتجات/الروابط الآن كملف TXT بالضغط على الزر أدناه أو مراجعة قائمة 'طلباتي'.",
-            "en": f"🎉 *Purchase Successful!* ({prod_name} x{actual_qty})\n\n⚠️ Due to network connection issues, some items could not be displayed in chat. You can download all your items right now using the button below as a TXT file or view 'My Orders'.",
-            "ru": f"🎉 *Покупка успешно совершена!* ({prod_name} x{actual_qty})\n\n⚠️ Из-за сетевых задержек часть товаров не удалось отобразить в чате. Вы можете скачать все товары по кнопке ниже в формате TXT или в меню 'Мои заказы'."
+            "ar": f"🎉 *تمت عملية الشراء بنجاح!* ({prod_name} x{actual_qty})\n\n⚠️ تم إرفاق كافة المنتجات/الروابط الآن كملف TXT المرفق أعلاه مباشرة.",
+            "en": f"🎉 *Purchase Successful!* ({prod_name} x{actual_qty})\n\n⚠️ All your items have been sent directly in the attached TXT file above.",
+            "ru": f"🎉 *Покупка успешно совершена!* ({prod_name} x{actual_qty})\n\n⚠️ Все ваши товары отправлены в прикрепленном файле TXT выше."
         }
         try:
             await send_message_with_retry(message.answer, fallback_msg.get(lang, fallback_msg['en']), parse_mode="Markdown", reply_markup=builder.as_markup())

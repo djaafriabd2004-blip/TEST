@@ -588,83 +588,102 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                 base_url = prov['base_url']
                 api_key = prov['api_key']
                 
-            # Perform external purchase via provider API
+            # Perform external purchase via provider API in batches if needed
             import aiohttp
             import asyncio
             import uuid
             
             is_supabase = "supabase.co" in base_url
+            needed_qty = remaining_qty
+            timeout_cfg = aiohttp.ClientTimeout(total=30)
             
-            headers = {}
-            if is_supabase:
-                headers["Authorization"] = f"Bearer {api_key}"
-                headers["Content-Type"] = "application/json"
-                url = f"{base_url}?action=order"
-                # Generate a unique client side order id for idempotency
-                ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
-                buy_payload = {
-                    "product_id": product['provider_product_id'], # UUID
-                    "quantity": remaining_qty,
-                    "external_order_id": ext_order_id
-                }
-            else:
-                headers["X-API-Key"] = api_key
-                headers["Content-Type"] = "application/json"
-                url = f"{base_url}/api/buy"
-                buy_payload = {
-                    "product_id": product['provider_product_id'],
-                    "quantity": remaining_qty
-                }
-            
-            try:
-                # Set a strict 30 second timeout on client session to avoid disconnections
-                timeout_cfg = aiohttp.ClientTimeout(total=30)
-                async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
-                    async with session.post(url, headers=headers, json=buy_payload) as resp:
-                        if resp.status not in [200, 201]:
-                            try:
-                                err_data = await resp.json()
-                                err_msg = err_data.get('error') or err_data.get('errorMessage') or 'Unknown provider error'
-                            except:
-                                err_msg = await resp.text()
-                            raise Exception(f"Provider error: {err_msg}")
-                        
-                        buy_data = await resp.json()
-                        
-                        if is_supabase:
-                            # Supabase Response format:
-                            # { "status": "delivered", "order_id": "...", "data": "delivered_value", "amount": 1.23 }
-                            # The 'data' contains the raw codes/links. It might be single string or multiple
-                            raw_data = buy_data.get('data')
-                            if not raw_data:
-                                raise Exception("Provider returned empty delivery data")
-                            
-                            # If it's a newline separated string of codes, split it into items list
-                            if isinstance(raw_data, str):
-                                # If it's single or multiple items separated by newlines or commas
-                                if "\n" in raw_data:
-                                    provider_stock_data = [item.strip() for item in raw_data.split("\n") if item.strip()]
-                                elif "," in raw_data:
-                                    provider_stock_data = [item.strip() for item in raw_data.split(",") if item.strip()]
+            async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
+                while needed_qty > 0:
+                    batch_qty = min(needed_qty, 50) if is_supabase else needed_qty
+                    ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+                    
+                    headers = {}
+                    if is_supabase:
+                        headers["Authorization"] = f"Bearer {api_key}"
+                        headers["Content-Type"] = "application/json"
+                        url = f"{base_url}?action=order"
+                        buy_payload = {
+                            "product_id": product['provider_product_id'], # UUID
+                            "quantity": batch_qty,
+                            "external_order_id": ext_order_id
+                        }
+                    else:
+                        headers["X-API-Key"] = api_key
+                        headers["Content-Type"] = "application/json"
+                        url = f"{base_url}/api/buy"
+                        buy_payload = {
+                            "product_id": product['provider_product_id'],
+                            "quantity": batch_qty
+                        }
+                    
+                    try:
+                        async with session.post(url, headers=headers, json=buy_payload) as resp:
+                            if resp.status not in [200, 201]:
+                                try:
+                                    err_data = await resp.json()
+                                    err_msg = err_data.get('error') or err_data.get('errorMessage') or 'Unknown provider error'
+                                except Exception:
+                                    err_msg = await resp.text()
+                                if not provider_stock_data:
+                                    raise Exception(f"Provider error: {err_msg}")
                                 else:
-                                    provider_stock_data = [raw_data]
-                            elif isinstance(raw_data, list):
-                                provider_stock_data = raw_data
-                            else:
-                                provider_stock_data = [str(raw_data)]
-                        else:
-                            if not buy_data.get('ok') or 'items' not in buy_data:
-                                raise Exception("Provider purchase response invalid")
-                            provider_stock_data = buy_data['items']
+                                    logger.warning(f"Batch provider order failed: {err_msg}")
+                                    break
                             
-                        if len(provider_stock_data) < remaining_qty:
-                            raise Exception(f"Provider returned insufficient items ({len(provider_stock_data)} received, {remaining_qty} requested)")
-            except asyncio.TimeoutError:
-                raise Exception("Provider request timed out. Please check if the purchase was debited before trying again.")
-            except Exception as e:
-                if "Provider error" in str(e) or "Provider purchase response invalid" in str(e) or "Provider returned insufficient items" in str(e):
-                    raise e
-                raise Exception(f"Failed to communicate with provider: {e}")
+                            buy_data = await resp.json()
+                            
+                            batch_items = []
+                            if is_supabase:
+                                raw_data = buy_data.get('data')
+                                if not raw_data:
+                                    if not provider_stock_data:
+                                        raise Exception("Provider returned empty delivery data")
+                                    break
+                                
+                                if isinstance(raw_data, str):
+                                    if "\n" in raw_data:
+                                        batch_items = [item.strip() for item in raw_data.split("\n") if item.strip()]
+                                    elif "," in raw_data:
+                                        batch_items = [item.strip() for item in raw_data.split(",") if item.strip()]
+                                    else:
+                                        batch_items = [raw_data]
+                                elif isinstance(raw_data, list):
+                                    batch_items = raw_data
+                                else:
+                                    batch_items = [str(raw_data)]
+                            else:
+                                if not buy_data.get('ok') or 'items' not in buy_data:
+                                    if not provider_stock_data:
+                                        raise Exception("Provider purchase response invalid")
+                                    break
+                                batch_items = buy_data['items']
+                                
+                            if not batch_items:
+                                break
+                                
+                            provider_stock_data.extend(batch_items)
+                            needed_qty -= len(batch_items)
+                            
+                            if len(batch_items) < batch_qty or not is_supabase:
+                                break
+                    except asyncio.TimeoutError:
+                        if not provider_stock_data:
+                            raise Exception("Provider request timed out. Please check if the purchase was debited before trying again.")
+                        break
+                    except Exception as e:
+                        if not provider_stock_data:
+                            if "Provider error" in str(e) or "Provider purchase response invalid" in str(e):
+                                raise e
+                            raise Exception(f"Failed to communicate with provider: {e}")
+                        break
+
+            if len(provider_stock_data) < remaining_qty and not allow_partial:
+                raise Exception(f"Provider returned insufficient items ({len(provider_stock_data)} received, {remaining_qty} requested)")
                 
         # Calculate actual purchased quantity and final price
         actual_qty = len(local_stock_data) + len(provider_stock_data)
