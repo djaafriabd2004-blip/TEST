@@ -172,7 +172,8 @@ async def show_orders_menu(message: Message, lang='en'):
         
     await message.answer(get_text('my_orders_title', lang), parse_mode="Markdown")
     
-    # Display products bought. Limit to recent 10 to keep it manageable.
+    # Display products bought. Limit to recent 10 and combine into a single message to avoid flood limit.
+    order_items_combined = []
     for order in orders[:10]:
         prod_name = order[f'product_name_{lang}'] or order['product_name_en']
         order_text = get_text(
@@ -184,10 +185,17 @@ async def show_orders_menu(message: Message, lang='en'):
             date=order['purchased_at'],
             data=order['stock_data']
         )
+        order_items_combined.append(order_text)
+        
+    if order_items_combined:
+        full_text = "\n".join(order_items_combined)
+        # Handle cases where full text exceeds max message length
+        if len(full_text) > 4000:
+            full_text = full_text[:3900] + "\n\n⚠️ (Some items truncated, please download as TXT file to view all items.)"
         try:
-            await message.answer(order_text, parse_mode="Markdown")
+            await message.answer(full_text, parse_mode="Markdown")
         except Exception:
-            await message.answer(order_text)
+            await message.answer(full_text)
     
     # Show download button
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -216,6 +224,8 @@ async def show_preorders_menu(message: Message, lang='en'):
     await message.answer(get_text('my_preorders_title', lang), parse_mode="Markdown")
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    preorder_items_combined = []
     for po in preorders:
         prod_name = po[f'name_{lang}'] or po['name_en']
         po_text = get_text(
@@ -227,13 +237,26 @@ async def show_preorders_menu(message: Message, lang='en'):
             price=po['price_paid'],
             date=po['created_at']
         )
+        preorder_items_combined.append(po_text)
         
-        # Add cancel inline button for each active pre-order
-        builder = InlineKeyboardBuilder()
-        builder.button(text=get_text('btn_cancel_preorder', lang), callback_data=f"cancel_preorder_{po['id']}")
-        builder.adjust(1)
+        # Add cancel button for this pre-order to the combined keyboard
+        cancel_text = {
+            "ar": f"❌ إلغاء حجز #{po['id']}",
+            "en": f"❌ Cancel #{po['id']}",
+            "ru": f"❌ Отмена #{po['id']}"
+        }
+        builder.button(text=cancel_text.get(lang, cancel_text['en']), callback_data=f"cancel_preorder_{po['id']}")
         
-        await message.answer(po_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    builder.adjust(1)
+    
+    if preorder_items_combined:
+        full_text = "\n".join(preorder_items_combined)
+        if len(full_text) > 4000:
+            full_text = full_text[:3900] + "\n\n⚠️ (Too many items, details truncated.)"
+        try:
+            await message.answer(full_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        except Exception:
+            await message.answer(full_text, reply_markup=builder.as_markup())
 
 @router.callback_query(F.data.startswith("cancel_preorder_"))
 async def cb_cancel_preorder(callback: CallbackQuery, lang='en'):
