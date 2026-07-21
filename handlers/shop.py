@@ -18,7 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-async def show_products_list(message_or_callback, lang='en', available_only=False):
+async def show_products_list(message_or_callback, lang='en', available_only=True):
     products = await get_products()
     if not products:
         text = get_text('shop_empty', lang)
@@ -65,11 +65,15 @@ async def show_products_list(message_or_callback, lang='en', available_only=Fals
     get_text('btn_shop', 'ru')
 ]))
 async def cmd_shop(message: Message, lang='en'):
-    await show_products_list(message, lang)
+    await show_products_list(message, lang, available_only=True)
 
 @router.callback_query(F.data == "shop_list")
+async def cb_shop_list_default(callback: CallbackQuery, lang='en'):
+    await show_products_list(callback, lang, available_only=True)
+    await callback.answer()
+
 @router.callback_query(F.data == "shop_list_all")
-async def cb_shop_list(callback: CallbackQuery, lang='en'):
+async def cb_shop_list_all(callback: CallbackQuery, lang='en'):
     await show_products_list(callback, lang, available_only=False)
     await callback.answer()
 
