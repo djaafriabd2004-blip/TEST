@@ -60,20 +60,30 @@ async def start_auto_sales_proof_loop(bot):
             if not products:
                 continue
 
-            available_products = []
+            product_candidates = []
+            weights = []
+            stock_map = {}
             for p in products:
                 try:
                     count = await get_stock_count(p['id'])
                     if count > 0:
-                        available_products.append(p)
+                        product_candidates.append(p)
+                        weights.append(count)
+                        stock_map[p['id']] = count
                 except Exception:
                     pass
 
-            if not available_products:
-                available_products = list(products)
+            if product_candidates and sum(weights) > 0:
+                selected_product = random.choices(product_candidates, weights=weights, k=1)[0]
+            elif products:
+                selected_product = random.choice(list(products))
+            else:
+                continue
 
-            selected_product = random.choice(available_products)
-            qty = random.choice([1, 1, 1, 2, 2, 3])
+            stock_available = stock_map.get(selected_product['id'], 1)
+            raw_qty = random.choice([1, 1, 1, 2, 2, 3])
+            qty = min(raw_qty, max(1, stock_available))
+            
             prod_price = float(selected_product['price'])
             price_paid = round(prod_price * qty, 2)
 
