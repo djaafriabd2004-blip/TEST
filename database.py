@@ -1,6 +1,7 @@
 import aiosqlite
 import logging
 import os
+import time
 import uuid
 from datetime import datetime
 from config import DB_NAME
@@ -591,6 +592,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
             # Perform external purchase via provider API in batches if needed
             import aiohttp
             import asyncio
+            import time
             import uuid
             
             is_supabase = "supabase.co" in base_url
