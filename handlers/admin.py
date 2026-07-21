@@ -868,7 +868,7 @@ async def cb_admin_edit_specific(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_edit_specific_value)
-async def process_edit_specific_value(message: Message, state: FSMContext):
+async def process_edit_specific_value(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     prod_id = data.get("edit_prod_id")
     field = data.get("edit_field")
@@ -951,7 +951,7 @@ async def cb_admin_edit_emoji(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_edit_custom_emoji)
-async def process_edit_emoji(message: Message, state: FSMContext):
+async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     prod_id = data.get("edit_prod_id")
     
@@ -982,7 +982,8 @@ async def process_edit_emoji(message: Message, state: FSMContext):
         description_en=product['description_en'],
         description_ru=product['description_ru'],
         price=product['price'],
-        custom_emoji_id=custom_emoji_id
+        custom_emoji_id=custom_emoji_id,
+        bot=bot
     )
     
     await state.clear()
