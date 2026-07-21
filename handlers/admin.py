@@ -921,7 +921,8 @@ async def process_edit_specific_value(message: Message, state: FSMContext):
         description_en=description_en,
         description_ru=description_ru,
         price=price,
-        custom_emoji_id=custom_emoji_id
+        custom_emoji_id=custom_emoji_id,
+        bot=bot
     )
     
     await message.answer(

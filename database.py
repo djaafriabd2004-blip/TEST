@@ -370,14 +370,70 @@ async def add_product(name_ar, name_en, name_ru, description_ar, description_en,
         await db.commit()
         return product_id
 
-async def update_product(product_id, name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None):
+async def cancel_all_pre_orders_for_product(product_id, bot=None, reason="price_changed"):
+    """
+    Cancels all active pre-orders for a specific product and refunds each user's exact price_paid back to their balance.
+    If bot instance is provided, sends a notification message to each user explaining why the pre-order was canceled.
+    """
     async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT po.*, p.name_ar, p.name_en, p.name_ru, u.language 
+            FROM pre_orders po 
+            JOIN products p ON po.product_id = p.id 
+            LEFT JOIN users u ON po.user_id = u.user_id 
+            WHERE po.product_id = ?;
+        """, (product_id,)) as cursor:
+            pre_orders = await cursor.fetchall()
+            
+        if not pre_orders:
+            return 0
+            
+        for po in pre_orders:
+            po_id = po['id']
+            po_user_id = po['user_id']
+            refund_amount = po['price_paid']
+            user_lang = po['language'] or 'en'
+            prod_name = po[f"name_{user_lang}"] or po["name_en"] or "Product"
+            
+            # Refund user balance
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, po_user_id))
+            # Delete pre-order
+            await db.execute("DELETE FROM pre_orders WHERE id = ?;", (po_id,))
+            await db.commit()
+            
+            if bot:
+                msg_text = {
+                    "ar": f"⚠️ *تم إلغاء طلب الحجز المسبق لـ ({prod_name})*\n\nتغير سعر المنتج من قِبل الإدارة. تم استرداد مبلغ **`${refund_amount:.2f} USD`** كاملاً إلى محفظتك بالبوت.",
+                    "en": f"⚠️ *Pre-order canceled for ({prod_name})*\n\nThe product price was updated by admin. Full amount **`${refund_amount:.2f} USD`** has been refunded to your wallet.",
+                    "ru": f"⚠️ *Предзаказ отменен для ({prod_name})*\n\nЦена товара была изменена. Сумма **`${refund_amount:.2f} USD`** полностью возвращена на ваш баланс."
+                }
+                try:
+                    from utils import send_message_with_retry
+                    await send_message_with_retry(bot.send_message, chat_id=po_user_id, text=msg_text.get(user_lang, msg_text['en']), parse_mode="Markdown")
+                except Exception as notify_err:
+                    logger.warning(f"Failed to notify user {po_user_id} of pre-order cancellation: {notify_err}")
+                    
+        return len(pre_orders)
+
+async def update_product(product_id, name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None, bot=None):
+    old_price = None
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT price FROM products WHERE id = ?;", (product_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                old_price = row['price']
+            
         await db.execute("""
             UPDATE products 
             SET name_ar=?, name_en=?, name_ru=?, description_ar=?, description_en=?, description_ru=?, price=?, custom_emoji_id=?
             WHERE id=?
         """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, product_id))
         await db.commit()
+        
+    if old_price is not None and abs(float(old_price) - float(price)) > 0.001:
+        await cancel_all_pre_orders_for_product(product_id, bot=bot, reason="price_changed")
 
 async def delete_product(product_id):
     async with aiosqlite.connect(DB_NAME) as db:
