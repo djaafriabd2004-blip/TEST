@@ -1395,7 +1395,7 @@ async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
         return
     current = await get_setting("auto_proofs_enabled", "0")
     new_val = "0" if current == "1" else "1"
-    await save_setting("auto_proofs_enabled", new_val)
+    await set_setting("auto_proofs_enabled", new_val)
     
     status_msg = "مفعل 🟢" if new_val == "1" else "معطل 🔴"
     await callback.answer(f"📢 النشر التلقائي للمبيعات الآن: {status_msg}", show_alert=True)
