@@ -451,6 +451,8 @@ async def msg_admin_settings_menu(message: Message):
     if menu == "admin_channels":
         force_join = await get_setting("force_join_channels", "None")
         news_ch = await get_setting("news_channel", "None")
+        auto_proofs = await get_setting("auto_proofs_enabled", "0")
+        proofs_icon = "🟢" if auto_proofs == "1" else "🔴"
         
         # Present channels as a clean list for the admin
         channels_list = ""
@@ -464,12 +466,14 @@ async def msg_admin_settings_menu(message: Message):
         text = (
             f"📢 *Channel Settings*\n\n"
             f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
-            f"📣 *News Channel:* `{news_ch}`\n\n"
+            f"📣 *News Channel:* `{news_ch}`\n"
+            f"📢 *Auto Sales Proofs:* `{'Enabled' if auto_proofs == '1' else 'Disabled'}`\n\n"
             f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
             f"The bot will check them and display each channel as an individual button to the user!"
         )
         builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
         builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
+        builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
         
     elif menu == "admin_support_settings":
         support = await get_setting("support_username", "None")
@@ -1384,6 +1388,50 @@ async def process_btn_emoji(message: Message, state: FSMContext):
             reply_markup=keyboards.get_admin_back_keyboard(),
             parse_mode="Markdown"
         )
+
+@router.callback_query(F.data == "admin_toggle_auto_proofs")
+async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
+    if not is_user_admin(callback.from_user.id):
+        return
+    current = await get_setting("auto_proofs_enabled", "0")
+    new_val = "0" if current == "1" else "1"
+    await save_setting("auto_proofs_enabled", new_val)
+    
+    status_msg = "مفعل 🟢" if new_val == "1" else "معطل 🔴"
+    await callback.answer(f"📢 النشر التلقائي للمبيعات الآن: {status_msg}", show_alert=True)
+    
+    force_join = await get_setting("force_join_channels", "None")
+    news_ch = await get_setting("news_channel", "None")
+    proofs_icon = "🟢" if new_val == "1" else "🔴"
+    
+    channels_list = ""
+    if force_join and force_join != "None":
+        ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
+        for idx, c in enumerate(ch_parts, 1):
+            channels_list += f"   {idx}. `{c}`\n"
+    else:
+        channels_list = "   (No channels set)\n"
+        
+    text = (
+        f"📢 *Channel Settings*\n\n"
+        f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
+        f"📣 *News Channel:* `{news_ch}`\n"
+        f"📢 *Auto Sales Proofs:* `{'Enabled' if new_val == '1' else 'Disabled'}`\n\n"
+        f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
+        f"The bot will check them and display each channel as an individual button to the user!"
+    )
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
+    builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
+    builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
+    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+    builder.adjust(1)
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        pass
 
 # Settings FSM triggers
 @router.callback_query(F.data.startswith("admin_set_"))

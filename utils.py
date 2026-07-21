@@ -25,3 +25,78 @@ async def send_message_with_retry(send_func, *args, retries=3, delay=1.5, **kwar
             if attempt == retries:
                 raise e
             await asyncio.sleep(delay * attempt)
+
+
+async def start_auto_sales_proof_loop(bot):
+    """
+    Background loop that periodically posts simulated sales proofs to the news_channel
+    if enabled by admin ('auto_proofs_enabled' == '1').
+    Random interval between 5 and 20 minutes (300 to 1200 seconds).
+    Uses available products in stock to build realistic proof posts.
+    """
+    import random
+    import html
+    from database import get_setting, get_products, get_stock_count
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    proof_logger = logging.getLogger("auto_sales_proof")
+    proof_logger.info("Auto sales proof loop initialized.")
+
+    while True:
+        try:
+            # Wait random interval between 5 and 20 minutes (300s to 1200s)
+            wait_seconds = random.randint(300, 1200)
+            await asyncio.sleep(wait_seconds)
+
+            enabled = await get_setting("auto_proofs_enabled", "0")
+            if enabled != "1":
+                continue
+
+            news_channel = await get_setting("news_channel", "")
+            if not news_channel or news_channel == "None":
+                continue
+
+            products = await get_products()
+            if not products:
+                continue
+
+            available_products = []
+            for p in products:
+                try:
+                    count = await get_stock_count(p['id'])
+                    if count > 0:
+                        available_products.append(p)
+                except Exception:
+                    pass
+
+            if not available_products:
+                available_products = list(products)
+
+            selected_product = random.choice(available_products)
+            qty = random.choice([1, 1, 1, 2, 2, 3])
+            prod_price = float(selected_product['price'])
+            price_paid = round(prod_price * qty, 2)
+
+            prod_name_en = html.escape(dict(selected_product).get('name_en') or dict(selected_product).get('name_ar') or 'Product')
+
+            bot_info = await bot.get_me()
+            bot_username = bot_info.username
+
+            sale_text = (
+                f"⚡️ <b>NEW PURCHASE</b> ⚡️\n"
+                f"──────────────────\n"
+                f"🛍 <b>Product:</b> <code>{prod_name_en} (x{qty})</code>\n"
+                f"💵 <b>Amount Paid:</b> <code>${price_paid:.2f} USD</code>\n"
+                f"📅 <b>Status:</b> <code>Delivered Successfully</code>\n"
+                f"──────────────────\n"
+                f"👉 <i>Want to buy? Visit our bot:</i> @{bot_username}"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛍️ Shop Now", url=f"https://t.me/{bot_username}")]
+            ])
+
+            await send_message_with_retry(bot.send_message, chat_id=news_channel, text=sale_text, parse_mode="HTML", reply_markup=kb)
+            proof_logger.info(f"Auto sales proof published for product: {prod_name_en} (x{qty}) to {news_channel}")
+        except Exception as e:
+            proof_logger.error(f"Error in auto sales proof loop: {e}")
+            await asyncio.sleep(60)
