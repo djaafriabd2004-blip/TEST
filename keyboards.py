@@ -49,7 +49,7 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_products_keyboard(products, stock_counts=None, lang='en') -> InlineKeyboardMarkup:
+def get_products_keyboard(products, stock_counts=None, lang='en', available_only=False) -> InlineKeyboardMarkup:
     if not lang or lang not in ['en', 'ar', 'ru']:
         lang = 'en'
     builder = InlineKeyboardBuilder()
@@ -75,6 +75,15 @@ def get_products_keyboard(products, stock_counts=None, lang='en') -> InlineKeybo
             kwargs["icon_custom_emoji_id"] = emoji_id
         
         builder.button(**kwargs)
+        
+    toggle_btn_text = {
+        "ar": "📋 إظهار الكل" if available_only else "🟢 إظهار المتوفر فقط",
+        "en": "📋 Show All" if available_only else "🟢 Show Available Only",
+        "ru": "📋 Показать все" if available_only else "🟢 Показать только в наличии"
+    }
+    toggle_cb = "shop_list_all" if available_only else "shop_list_avail"
+    builder.button(text=toggle_btn_text.get(lang, toggle_btn_text['en']), callback_data=toggle_cb)
+    
     builder.adjust(1)
     return builder.as_markup()
 

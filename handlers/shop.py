@@ -18,12 +18,12 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-async def show_products_list(message_or_callback, lang='en'):
+async def show_products_list(message_or_callback, lang='en', available_only=False):
     products = await get_products()
     if not products:
         text = get_text('shop_empty', lang)
         if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.edit_text(text, reply_markup=keyboards.get_products_keyboard([], {}, lang))
+            await message_or_callback.message.edit_text(text, reply_markup=keyboards.get_products_keyboard([], {}, lang, available_only))
         else:
             await message_or_callback.answer(text)
         return
@@ -32,8 +32,20 @@ async def show_products_list(message_or_callback, lang='en'):
     for p in products:
         stock_counts[p['id']] = await get_stock_count(p['id'])
         
+    filtered_products = products
+    if available_only:
+        filtered_products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
+        
     text = get_text('shop_title', lang)
-    kb = keyboards.get_products_keyboard(products, stock_counts, lang)
+    if available_only and not filtered_products:
+        no_avail_msg = {
+            "ar": "🛍 *منتجات المتجر*\n\n⚠️ لا توجد منتجات متوفرة حالياً بالمتجر. يمكنك الضغط على 'إظهار الكل' لاستعراض كافة المنتجات والحجز المسبق.",
+            "en": "🛍 *Store Products*\n\n⚠️ No products are currently in stock. Click 'Show All' to view all items and pre-orders.",
+            "ru": "🛍 *Товары магазина*\n\n⚠️ На данный момент нет товаров в наличии. Нажмите 'Показать все', чтобы просмотреть все товары."
+        }
+        text = no_avail_msg.get(lang, no_avail_msg['en'])
+
+    kb = keyboards.get_products_keyboard(filtered_products, stock_counts, lang, available_only=available_only)
     
     if isinstance(message_or_callback, CallbackQuery):
         from aiogram.exceptions import TelegramBadRequest
@@ -56,8 +68,14 @@ async def cmd_shop(message: Message, lang='en'):
     await show_products_list(message, lang)
 
 @router.callback_query(F.data == "shop_list")
+@router.callback_query(F.data == "shop_list_all")
 async def cb_shop_list(callback: CallbackQuery, lang='en'):
-    await show_products_list(callback, lang)
+    await show_products_list(callback, lang, available_only=False)
+    await callback.answer()
+
+@router.callback_query(F.data == "shop_list_avail")
+async def cb_shop_list_avail(callback: CallbackQuery, lang='en'):
+    await show_products_list(callback, lang, available_only=True)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("prod_view_"))
