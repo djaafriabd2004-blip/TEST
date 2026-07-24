@@ -907,19 +907,20 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
         await message.answer("❌ Product not found.")
         return
         
+    prod_dict = dict(product) if product else {}
     name_ar = product['name_ar']
     name_en = product['name_en']
     name_ru = product['name_ru']
     description_ar = product['description_ar']
     description_en = product['description_en']
     description_ru = product['description_ru']
-    description_entities_ar = product.get('description_entities_ar')
-    description_entities_en = product.get('description_entities_en')
-    description_entities_ru = product.get('description_entities_ru')
+    description_entities_ar = prod_dict.get('description_entities_ar')
+    description_entities_en = prod_dict.get('description_entities_en')
+    description_entities_ru = prod_dict.get('description_entities_ru')
     price = product['price']
     
     # Check if column exists in row (it should since we added it, but just in case)
-    custom_emoji_id = product['custom_emoji_id'] if 'custom_emoji_id' in product.keys() else None
+    custom_emoji_id = prod_dict.get('custom_emoji_id')
     
     if field == "name":
         name_ar = val
@@ -1006,6 +1007,7 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
                 custom_emoji_id = entity.custom_emoji_id
                 break
                 
+    prod_dict = dict(product) if product else {}
     await update_product(
         product_id=prod_id,
         name_ar=product['name_ar'],
@@ -1017,9 +1019,9 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
         price=product['price'],
         custom_emoji_id=custom_emoji_id,
         bot=bot,
-        description_entities_ar=product.get('description_entities_ar'),
-        description_entities_en=product.get('description_entities_en'),
-        description_entities_ru=product.get('description_entities_ru')
+        description_entities_ar=prod_dict.get('description_entities_ar'),
+        description_entities_en=prod_dict.get('description_entities_en'),
+        description_entities_ru=prod_dict.get('description_entities_ru')
     )
     
     await state.clear()

@@ -119,8 +119,10 @@ async def buy_api(request):
         # Send private message notification to the reseller/user on Telegram
         try:
             from localization import get_text
-            lang = user.get("language", "en")
-            prod_name = product.get(f"name_{lang}") or product.get("name_en")
+            user_dict = dict(user) if user else {}
+            prod_dict = dict(product) if product else {}
+            lang = user_dict.get("language", "en")
+            prod_name = prod_dict.get(f"name_{lang}") or prod_dict.get("name_en")
             
             # Split stock_data_list into chunks of text, each having length <= 3000 to be safe
             chunks = []
