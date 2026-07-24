@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import json
 from aiogram.types import MessageEntity
 from localization import get_text
