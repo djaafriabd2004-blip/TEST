@@ -678,22 +678,44 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
         
-    prod_id = int(callback.data.replace("admin_prod_view_", ""))
-    product = await get_product(prod_id)
-    if not product:
-        await callback.answer("Product not found.")
-        return
+    try:
+        prod_id = int(callback.data.replace("admin_prod_view_", ""))
+        product = await get_product(prod_id)
+        if not product:
+            await callback.answer("Product not found.")
+            return
+            
+        stock = await get_stock_count(prod_id)
+        from utils import format_product_message
+        text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
         
-    stock = await get_stock_count(prod_id)
-    from utils import format_product_message
-    text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
-    
-    kb = keyboards.get_admin_product_edit_keyboard(prod_id)
-    if entities:
-        await callback.message.edit_text(text, reply_markup=kb, entities=entities)
-    else:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
-    await callback.answer()
+        kb = keyboards.get_admin_product_edit_keyboard(prod_id)
+        if entities:
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, entities=entities)
+            except Exception as e:
+                logger.warning(f"admin edit_text with entities failed: {e}, falling back")
+                fallback_text = (
+                    f"📋 *Product Details (Admin)*\n\n"
+                    f"🇬🇧 *Name EN:* {product['name_en']}\n"
+                    f"🇸🇦 *Name AR:* {product['name_ar']}\n"
+                    f"🇷🇺 *Name RU:* {product['name_ru']}\n\n"
+                    f"🇬🇧 *Desc EN:* {product['description_en']}\n"
+                    f"🇸🇦 *Desc AR:* {product['description_ar']}\n"
+                    f"🇷🇺 *Desc RU:* {product['description_ru']}\n\n"
+                    f"💵 *Price:* ${product['price']:.2f} USD\n"
+                    f"📦 *Stock Count:* {stock} items available"
+                )
+                await callback.message.edit_text(fallback_text, reply_markup=kb, parse_mode="Markdown")
+        else:
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
+    except Exception as outer_err:
+        logger.error(f"Error in cb_admin_prod_view: {outer_err}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
 @router.callback_query(F.data.startswith("admin_prod_del_"))
 async def cb_admin_prod_del(callback: CallbackQuery, lang='en'):

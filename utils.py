@@ -49,6 +49,10 @@ def deserialize_entities(entities_json):
         logger.error(f"Error deserializing entities: {err}")
     return None
 
+def get_utf16_len(text: str) -> int:
+    """Returns length of text in UTF-16 code units (as required by Telegram Bot API)."""
+    return len(text.encode('utf-16-le')) // 2
+
 def format_product_message(product, lang, stock_count, discount_pct=0.0):
     """
     Constructs (text, entities, parse_mode) for displaying a product.
@@ -104,19 +108,19 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
         h_label = "🛍️ Product: "
         d_label = "\n\n📝 Description:\n"
 
-    full_entities.append(MessageEntity(type="bold", offset=0, length=len(h_label.strip())))
+    full_entities.append(MessageEntity(type="bold", offset=0, length=get_utf16_len(h_label.strip())))
     header_text = h_label + name + d_label
     
-    d_offset = len(h_label) + len(name) + 2
-    full_entities.append(MessageEntity(type="bold", offset=d_offset, length=len(d_label.strip())))
+    d_offset = get_utf16_len(h_label + name + "\n\n")
+    full_entities.append(MessageEntity(type="bold", offset=d_offset, length=get_utf16_len(d_label.strip())))
 
-    header_len = len(header_text)
+    header_utf16_len = get_utf16_len(header_text)
 
-    # Shift description entities by header_len
+    # Shift description entities by header_utf16_len
     for e in desc_entities:
         full_entities.append(MessageEntity(
             type=e.type,
-            offset=e.offset + header_len,
+            offset=e.offset + header_utf16_len,
             length=e.length,
             custom_emoji_id=e.custom_emoji_id,
             url=e.url,
@@ -138,12 +142,12 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
         p_label = "\n\n💵 Price: "
         s_label = f"\n📦 Stock: "
 
-    footer_offset = header_len + len(desc)
+    footer_offset = header_utf16_len + get_utf16_len(desc)
     
-    full_entities.append(MessageEntity(type="bold", offset=footer_offset + 2, length=len(p_label.strip())))
+    full_entities.append(MessageEntity(type="bold", offset=footer_offset + 2, length=get_utf16_len(p_label.strip())))
     
-    stock_label_offset = footer_offset + len(p_label) + len(price_str_plain) + 1
-    full_entities.append(MessageEntity(type="bold", offset=stock_label_offset, length=len(s_label.strip())))
+    stock_label_offset = footer_offset + get_utf16_len(p_label + price_str_plain + "\n")
+    full_entities.append(MessageEntity(type="bold", offset=stock_label_offset, length=get_utf16_len(s_label.strip())))
 
     full_text = header_text + desc + footer_text
 

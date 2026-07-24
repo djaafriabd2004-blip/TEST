@@ -62,32 +62,46 @@ async def cb_shop_list(callback: CallbackQuery, lang='en'):
 
 @router.callback_query(F.data.startswith("prod_view_"))
 async def cb_product_view(callback: CallbackQuery, lang='en'):
-    product_id = int(callback.data.replace("prod_view_", ""))
-    product = await get_product(product_id)
-    
-    if not product:
-        await callback.answer("Product not found.")
-        return
+    try:
+        product_id = int(callback.data.replace("prod_view_", ""))
+        product = await get_product(product_id)
         
-    stock_count = await get_stock_count(product_id)
-    has_stock = stock_count > 0
-    
-    user_id = callback.from_user.id
-    discount_pct = await get_user_discount(user_id)
-    
-    from utils import format_product_message
-    text, entities, parse_mode = format_product_message(product, lang, stock_count, discount_pct)
-    
-    is_sub = False
-    if not has_stock:
-        is_sub = await is_subscribed_stock_notification(user_id, product_id)
-    
-    kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub)
-    if entities:
-        await callback.message.edit_text(text, reply_markup=kb, entities=entities)
-    else:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
-    await callback.answer()
+        if not product:
+            await callback.answer("Product not found.")
+            return
+            
+        stock_count = await get_stock_count(product_id)
+        has_stock = stock_count > 0
+        
+        user_id = callback.from_user.id
+        discount_pct = await get_user_discount(user_id)
+        
+        from utils import format_product_message
+        text, entities, parse_mode = format_product_message(product, lang, stock_count, discount_pct)
+        
+        is_sub = False
+        if not has_stock:
+            is_sub = await is_subscribed_stock_notification(user_id, product_id)
+        
+        kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub)
+        if entities:
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, entities=entities)
+            except Exception as e:
+                logger.warning(f"edit_text with entities failed: {e}, falling back to Markdown")
+                name = product[f'name_{lang}'] or product['name_en']
+                desc = product[f'description_{lang}'] or product['description_en']
+                fallback_text = get_text('product_details', lang, name=name, desc=desc, price=f"`${product['price']:.2f} USD`", stock=stock_count)
+                await callback.message.edit_text(fallback_text, reply_markup=kb, parse_mode="Markdown")
+        else:
+            await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
+    except Exception as outer_err:
+        logger.error(f"Error in cb_product_view: {outer_err}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
 @router.callback_query(F.data.startswith("prod_buy_"))
 async def cb_product_buy(callback: CallbackQuery, state: FSMContext, lang='en'):
