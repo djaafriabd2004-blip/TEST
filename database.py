@@ -79,6 +79,12 @@ async def db_init():
                 await db.execute("ALTER TABLE products ADD COLUMN provider_id INTEGER;")
             if "provider_product_id" not in columns:
                 await db.execute("ALTER TABLE products ADD COLUMN provider_product_id INTEGER;")
+            if "description_entities_ar" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN description_entities_ar TEXT;")
+            if "description_entities_en" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN description_entities_en TEXT;")
+            if "description_entities_ru" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN description_entities_ru TEXT;")
                 
         # Migration: Verify expected columns in users table
         async with db.execute("PRAGMA table_info(users);") as cursor:
@@ -359,13 +365,13 @@ async def get_users_with_balance():
             return await cursor.fetchall()
 
 # Product Helpers
-async def add_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None):
+async def add_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None, description_entities_ar=None, description_entities_en=None, description_entities_ru=None):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
-            INSERT INTO products (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id))
+            INSERT INTO products (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, description_entities_ar, description_entities_en, description_entities_ru)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, description_entities_ar, description_entities_en, description_entities_ru))
         product_id = cursor.lastrowid
         await db.commit()
         return product_id
@@ -416,7 +422,7 @@ async def cancel_all_pre_orders_for_product(product_id, bot=None, reason="price_
                     
         return len(pre_orders)
 
-async def update_product(product_id, name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None, bot=None):
+async def update_product(product_id, name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id=None, bot=None, description_entities_ar=None, description_entities_en=None, description_entities_ru=None):
     old_price = None
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
@@ -427,9 +433,9 @@ async def update_product(product_id, name_ar, name_en, name_ru, description_ar, 
             
         await db.execute("""
             UPDATE products 
-            SET name_ar=?, name_en=?, name_ru=?, description_ar=?, description_en=?, description_ru=?, price=?, custom_emoji_id=?
+            SET name_ar=?, name_en=?, name_ru=?, description_ar=?, description_en=?, description_ru=?, price=?, custom_emoji_id=?, description_entities_ar=?, description_entities_en=?, description_entities_ru=?
             WHERE id=?
-        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, product_id))
+        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, description_entities_ar, description_entities_en, description_entities_ru, product_id))
         await db.commit()
         
     if old_price is not None and abs(float(old_price) - float(price)) > 0.001:
@@ -483,12 +489,12 @@ async def delete_provider(provider_id):
         await db.execute("DELETE FROM providers WHERE id = ?;", (provider_id,))
         await db.commit()
 
-async def add_imported_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id):
+async def add_imported_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar=None, description_entities_en=None, description_entities_ru=None):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            INSERT INTO products (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id))
+            INSERT INTO products (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar, description_entities_en, description_entities_ru)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar, description_entities_en, description_entities_ru))
         product_id = cursor.lastrowid
         await db.commit()
         return product_id

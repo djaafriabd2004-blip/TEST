@@ -72,39 +72,21 @@ async def cb_product_view(callback: CallbackQuery, lang='en'):
     stock_count = await get_stock_count(product_id)
     has_stock = stock_count > 0
     
-    name = product[f'name_{lang}'] or product['name_en']
-    desc = product[f'description_{lang}'] or product['description_en']
-    
-    # Check user discount
     user_id = callback.from_user.id
     discount_pct = await get_user_discount(user_id)
-    if discount_pct > 0:
-        price_val = product['price'] * (1 - discount_pct / 100)
-        if lang == 'ar':
-            price_str = f"~~${product['price']:.2f}~~ *${price_val:.2f} USD* (خصم {discount_pct:.0f}%)"
-        elif lang == 'ru':
-            price_str = f"~~${product['price']:.2f}~~ *${price_val:.2f} USD* (Скидка {discount_pct:.0f}%)"
-        else:
-            price_str = f"~~${product['price']:.2f}~~ *${price_val:.2f} USD* ({discount_pct:.0f}% Discount)"
-    else:
-        price_str = f"`${product['price']:.2f} USD`"
-        
-    text = get_text(
-        'product_details',
-        lang,
-        name=name,
-        desc=desc,
-        price=price_str,
-        stock=stock_count
-    )
     
-    user_id = callback.from_user.id
+    from utils import format_product_message
+    text, entities, parse_mode = format_product_message(product, lang, stock_count, discount_pct)
+    
     is_sub = False
     if not has_stock:
         is_sub = await is_subscribed_stock_notification(user_id, product_id)
     
     kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    if entities:
+        await callback.message.edit_text(text, reply_markup=kb, entities=entities)
+    else:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("prod_buy_"))

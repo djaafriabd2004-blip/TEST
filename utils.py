@@ -1,7 +1,151 @@
-import asyncio
-import logging
+import json
+from aiogram.types import MessageEntity
+from localization import get_text
 
 logger = logging.getLogger(__name__)
+
+def serialize_entities(entities):
+    """
+    Serializes a list of aiogram MessageEntity objects into a JSON string.
+    Preserves all entity types, offsets, lengths, custom_emoji_id, url, user, language, etc.
+    """
+    if not entities:
+        return None
+    try:
+        raw_list = []
+        for e in entities:
+            if hasattr(e, "model_dump"):
+                d = e.model_dump(exclude_none=True)
+            elif hasattr(e, "to_python"):
+                d = e.to_python()
+            else:
+                d = dict(e)
+            raw_list.append(d)
+        return json.dumps(raw_list, ensure_ascii=False)
+    except Exception as err:
+        logger.error(f"Error serializing entities: {err}")
+        return None
+
+def deserialize_entities(entities_json):
+    """
+    Deserializes a JSON string back into a list of aiogram MessageEntity objects.
+    """
+    if not entities_json:
+        return None
+    try:
+        if isinstance(entities_json, str):
+            raw_list = json.loads(entities_json)
+        else:
+            raw_list = entities_json
+        if isinstance(raw_list, list):
+            res = []
+            for item in raw_list:
+                if isinstance(item, dict):
+                    res.append(MessageEntity(**item))
+            return res if res else None
+    except Exception as err:
+        logger.error(f"Error deserializing entities: {err}")
+    return None
+
+def format_product_message(product, lang, stock_count, discount_pct=0.0):
+    """
+    Constructs (text, entities, parse_mode) for displaying a product.
+    If product has stored description entities (e.g. Premium Custom Emojis, bold, etc.),
+    it constructs full_text and full_entities with correct offset shifting and parse_mode=None.
+    Otherwise, returns fallback text with parse_mode="Markdown".
+    """
+    prod_dict = dict(product) if product else {}
+    name = prod_dict.get(f'name_{lang}') or prod_dict.get('name_en') or "Product"
+    desc = prod_dict.get(f'description_{lang}') or prod_dict.get('description_en') or ""
+    entities_json = prod_dict.get(f'description_entities_{lang}') or prod_dict.get('description_entities_en')
+    desc_entities = deserialize_entities(entities_json)
+
+    # Format price string
+    prod_price = float(prod_dict.get('price', 0.0))
+    if discount_pct > 0:
+        price_val = prod_price * (1 - discount_pct / 100)
+        if lang == 'ar':
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* (خصم {discount_pct:.0f}%)"
+            price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD (خصم {discount_pct:.0f}%)"
+        elif lang == 'ru':
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* (Скидка {discount_pct:.0f}%)"
+            price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD (Скидка {discount_pct:.0f}%)"
+        else:
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* ({discount_pct:.0f}% Discount)"
+            price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD ({discount_pct:.0f}% Discount)"
+    else:
+        price_str_markdown = f"`${prod_price:.2f} USD`"
+        price_str_plain = f"${prod_price:.2f} USD"
+
+    if not desc_entities:
+        text = get_text(
+            'product_details',
+            lang,
+            name=name,
+            desc=desc,
+            price=price_str_markdown,
+            stock=stock_count
+        )
+        return text, None, "Markdown"
+
+    # Rich formatting with MessageEntities (preserves Telegram Premium Custom Emojis)
+    full_entities = []
+
+    # Header section
+    if lang == 'ar':
+        h_label = "🛍️ المنتج: "
+        d_label = "\n\n📝 الوصف:\n"
+    elif lang == 'ru':
+        h_label = "🛍️ Товар: "
+        d_label = "\n\n📝 Описание:\n"
+    else:
+        h_label = "🛍️ Product: "
+        d_label = "\n\n📝 Description:\n"
+
+    full_entities.append(MessageEntity(type="bold", offset=0, length=len(h_label.strip())))
+    header_text = h_label + name + d_label
+    
+    d_offset = len(h_label) + len(name) + 2
+    full_entities.append(MessageEntity(type="bold", offset=d_offset, length=len(d_label.strip())))
+
+    header_len = len(header_text)
+
+    # Shift description entities by header_len
+    for e in desc_entities:
+        full_entities.append(MessageEntity(
+            type=e.type,
+            offset=e.offset + header_len,
+            length=e.length,
+            custom_emoji_id=e.custom_emoji_id,
+            url=e.url,
+            user=e.user,
+            language=e.language
+        ))
+
+    # Footer section
+    if lang == 'ar':
+        footer_text = f"\n\n💵 السعر: {price_str_plain}\n📦 المخزون: {stock_count} متوفر"
+        p_label = "\n\n💵 السعر: "
+        s_label = f"\n📦 المخزون: "
+    elif lang == 'ru':
+        footer_text = f"\n\n💵 Цена: {price_str_plain}\n📦 В наличии: {stock_count} шт."
+        p_label = "\n\n💵 Цена: "
+        s_label = f"\n📦 В наличии: "
+    else:
+        footer_text = f"\n\n💵 Price: {price_str_plain}\n📦 Stock: {stock_count} available"
+        p_label = "\n\n💵 Price: "
+        s_label = f"\n📦 Stock: "
+
+    footer_offset = header_len + len(desc)
+    
+    full_entities.append(MessageEntity(type="bold", offset=footer_offset + 2, length=len(p_label.strip())))
+    
+    stock_label_offset = footer_offset + len(p_label) + len(price_str_plain) + 1
+    full_entities.append(MessageEntity(type="bold", offset=stock_label_offset, length=len(s_label.strip())))
+
+    full_text = header_text + desc + footer_text
+
+    return full_text, full_entities, None
 
 async def send_message_with_retry(send_func, *args, retries=3, delay=1.5, **kwargs):
     """

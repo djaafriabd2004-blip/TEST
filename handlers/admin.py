@@ -685,24 +685,14 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
         return
         
     stock = await get_stock_count(prod_id)
+    from utils import format_product_message
+    text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
     
-    text = (
-        f"📋 *Product Details (Admin)*\n\n"
-        f"🇬🇧 *Name EN:* {product['name_en']}\n"
-        f"🇸🇦 *Name AR:* {product['name_ar']}\n"
-        f"🇷🇺 *Name RU:* {product['name_ru']}\n\n"
-        f"🇬🇧 *Desc EN:* {product['description_en']}\n"
-        f"🇸🇦 *Desc AR:* {product['description_ar']}\n"
-        f"🇷🇺 *Desc RU:* {product['description_ru']}\n\n"
-        f"💵 *Price:* ${product['price']:.2f} USD\n"
-        f"📦 *Stock Count:* {stock} items available"
-    )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=keyboards.get_admin_product_edit_keyboard(prod_id),
-        parse_mode="Markdown"
-    )
+    kb = keyboards.get_admin_product_edit_keyboard(prod_id)
+    if entities:
+        await callback.message.edit_text(text, reply_markup=kb, entities=entities)
+    else:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_prod_del_"))
@@ -731,7 +721,12 @@ async def add_prod_name(message: Message, state: FSMContext):
 
 @router.message(ProductStates.waiting_for_desc)
 async def add_prod_desc(message: Message, state: FSMContext):
-    await state.update_data(desc=message.text.strip())
+    desc_text = (message.text or message.caption or "").strip()
+    entities = message.entities or message.caption_entities
+    from utils import serialize_entities
+    entities_json = serialize_entities(entities)
+    
+    await state.update_data(desc=desc_text, desc_entities=entities_json)
     await state.set_state(ProductStates.waiting_for_price)
     await message.answer("✏️ Enter Product Price in *USD* (e.g. 5.50):")
 
@@ -766,6 +761,7 @@ async def add_prod_custom_emoji(message: Message, state: FSMContext, bot: Bot, l
     
     product_name = data.get('name')
     product_desc = data.get('desc')
+    desc_entities = data.get('desc_entities')
     price = data.get('price')
     
     if not product_name:
@@ -780,7 +776,10 @@ async def add_prod_custom_emoji(message: Message, state: FSMContext, bot: Bot, l
         description_en=product_desc,
         description_ru=product_desc,
         price=price,
-        custom_emoji_id=custom_emoji_id
+        custom_emoji_id=custom_emoji_id,
+        description_entities_ar=desc_entities,
+        description_entities_en=desc_entities,
+        description_entities_ru=desc_entities
     )
     
     await message.answer(
@@ -892,6 +891,9 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
     description_ar = product['description_ar']
     description_en = product['description_en']
     description_ru = product['description_ru']
+    description_entities_ar = product.get('description_entities_ar')
+    description_entities_en = product.get('description_entities_en')
+    description_entities_ru = product.get('description_entities_ru')
     price = product['price']
     
     # Check if column exists in row (it should since we added it, but just in case)
@@ -902,9 +904,15 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
         name_en = val
         name_ru = val
     elif field == "desc":
-        description_ar = val
-        description_en = val
-        description_ru = val
+        desc_text = (message.text or message.caption or "").strip()
+        description_ar = desc_text
+        description_en = desc_text
+        description_ru = desc_text
+        from utils import serialize_entities
+        entities_json = serialize_entities(message.entities or message.caption_entities)
+        description_entities_ar = entities_json
+        description_entities_en = entities_json
+        description_entities_ru = entities_json
     elif field == "price":
         try:
             price = float(val)
@@ -926,7 +934,10 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
         description_ru=description_ru,
         price=price,
         custom_emoji_id=custom_emoji_id,
-        bot=bot
+        bot=bot,
+        description_entities_ar=description_entities_ar,
+        description_entities_en=description_entities_en,
+        description_entities_ru=description_entities_ru
     )
     
     await message.answer(
@@ -983,7 +994,10 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
         description_ru=product['description_ru'],
         price=product['price'],
         custom_emoji_id=custom_emoji_id,
-        bot=bot
+        bot=bot,
+        description_entities_ar=product.get('description_entities_ar'),
+        description_entities_en=product.get('description_entities_en'),
+        description_entities_ru=product.get('description_entities_ru')
     )
     
     await state.clear()
