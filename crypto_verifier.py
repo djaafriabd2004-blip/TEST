@@ -24,6 +24,7 @@ def is_amount_matching(requested_amount: float, actual_amount: float, coin: str)
     """
     Checks if the actual on-chain amount matches the user's requested deposit amount.
     Allows small tolerances for exchange rate fluctuations or network gas fees.
+    Enforces that actual_amount must be at least 90% of requested_amount and > 0.
     """
     try:
         req = float(requested_amount)
@@ -31,17 +32,21 @@ def is_amount_matching(requested_amount: float, actual_amount: float, coin: str)
     except (TypeError, ValueError):
         return False
         
-    if req <= 0 or act <= 0:
+    if req <= 0 or act <= 0.0001:
+        return False
+        
+    # Actual paid amount must be at least 90% of requested amount
+    if act < req * 0.90:
         return False
         
     diff = abs(act - req)
     
     if coin in ["USDT", "BINANCE"]:
-        # Strict tolerance for USDT and Binance Pay (max $1.00 USD or 5% difference)
-        return diff <= 1.0 or (diff / req) <= 0.05
+        # Strict tolerance for USDT and Binance Pay (max $1.00 USD difference AND at least 95% of requested)
+        return (diff <= 1.0 and act >= req * 0.95) or (diff / req) <= 0.05
     else:
-        # Flexible tolerance for LTC/TON due to price fluctuations (max $3.00 USD or 15% difference)
-        return diff <= 3.0 or (diff / req) <= 0.15
+        # Flexible tolerance for LTC/TON due to price fluctuations (max 15% difference)
+        return (diff / req) <= 0.15 or (diff <= 3.0 and act >= req * 0.85)
 
 
 async def get_max_tx_age_seconds() -> int:
