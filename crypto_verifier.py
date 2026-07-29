@@ -553,7 +553,7 @@ async def start_auto_verification_loop(bot):
                     success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=min_timestamp)
                     if success:
                         requested_amount = payment["amount"]
-                        if coin != "BINANCE" and not is_amount_matching(requested_amount, result_val, coin):
+                        if not is_amount_matching(requested_amount, result_val, coin):
                             logger.warning(f"Background check amount mismatch for payment {transaction_id}: requested {requested_amount}, on-chain {result_val}")
                             await reject_payment(transaction_id)
                             admin_alert = (
