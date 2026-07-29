@@ -12,7 +12,7 @@ from localization import get_text
 from handlers.states import ShopStates
 import keyboards
 import asyncio
-from utils import send_message_with_retry
+from utils import send_message_with_retry, get_product_name, get_product_desc
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,8 +89,8 @@ async def cb_product_view(callback: CallbackQuery, lang='en'):
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)
             except Exception as e:
                 logger.warning(f"edit_text with entities failed: {e}, falling back to Markdown")
-                name = product[f'name_{lang}'] or product['name_en']
-                desc = product[f'description_{lang}'] or product['description_en']
+                name = get_product_name(product, lang)
+                desc = get_product_desc(product, lang)
                 fallback_text = get_text('product_details', lang, name=name, desc=desc, price=f"`${product['price']:.2f} USD`", stock=stock_count)
                 await callback.message.edit_text(fallback_text, reply_markup=kb, parse_mode="Markdown")
         else:
@@ -120,7 +120,7 @@ async def cb_product_buy(callback: CallbackQuery, state: FSMContext, lang='en'):
     await state.set_state(ShopStates.waiting_for_buy_quantity)
     await state.update_data(buy_product_id=product_id, buy_stock_max=stock_count)
     
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = get_product_name(product, lang)
     
     msg = get_text('buy_quantity_prompt', lang, name=prod_name, stock=stock_count)
     
@@ -162,7 +162,7 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         
     discount_pct = await get_user_discount(user_id)
     price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = get_product_name(product, lang)
     
     # Render checkout payment method prompt
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
@@ -223,7 +223,7 @@ async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: B
     default_address = "Not Configured"
     address = await get_setting("crypto_addr_binance", default_address)
     
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = get_product_name(product, lang)
     
     # Render instructions
     text = get_text('checkout_binance_id_instructions', lang, name=prod_name, qty=qty, price=price_to_pay, address=address)
@@ -273,7 +273,7 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
         
     discount_pct = await get_user_discount(user_id)
     price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = get_product_name(product, lang)
     
     await state.clear()
     
@@ -588,7 +588,7 @@ async def cb_notify_subscribe(callback: CallbackQuery, lang='en'):
     
     await subscribe_stock_notification(user_id, product_id)
     
-    name = product[f'name_{lang}'] or product['name_en']
+    name = get_product_name(product, lang)
     await callback.answer(get_text('notify_stock_subscribed', lang, name=name), show_alert=True)
     
     # Refresh the keyboard to show unsubscribe button
@@ -610,7 +610,7 @@ async def cb_notify_unsubscribe(callback: CallbackQuery, lang='en'):
     
     await unsubscribe_stock_notification(user_id, product_id)
     
-    name = product[f'name_{lang}'] or product['name_en']
+    name = get_product_name(product, lang)
     await callback.answer(get_text('notify_stock_unsubscribed', lang, name=name), show_alert=True)
     
     # Refresh the keyboard to show subscribe button
@@ -667,7 +667,7 @@ async def cb_product_preorder(callback: CallbackQuery, state: FSMContext, lang='
     await state.set_state(ShopStates.waiting_for_preorder_quantity)
     await state.update_data(preorder_product_id=product_id)
     
-    prod_name = product[f'name_{lang}'] or product['name_en']
+    prod_name = get_product_name(product, lang)
     msg = get_text('preorder_title', lang, name=prod_name, price=price_to_pay_per_item)
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder

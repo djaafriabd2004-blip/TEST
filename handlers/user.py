@@ -227,7 +227,8 @@ async def show_preorders_menu(message: Message, lang='en'):
     builder = InlineKeyboardBuilder()
     preorder_items_combined = []
     for po in preorders:
-        prod_name = po[f'name_{lang}'] or po['name_en']
+        from utils import get_product_name
+        prod_name = get_product_name(po, lang)
         po_text = get_text(
             'preorder_item',
             lang,

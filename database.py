@@ -399,8 +399,8 @@ async def cancel_all_pre_orders_for_product(product_id, bot=None, reason="price_
             po_id = po['id']
             po_user_id = po['user_id']
             refund_amount = po['price_paid']
-            user_lang = po['language'] or 'en'
-            prod_name = po[f"name_{user_lang}"] or po["name_en"] or "Product"
+            po_dict = dict(po) if po else {}
+            prod_name = po_dict.get(f"name_{user_lang}") or po_dict.get("name_en") or po_dict.get("name_ar") or "Product"
             
             # Refund user balance
             await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, po_user_id))

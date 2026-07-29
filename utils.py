@@ -6,6 +6,25 @@ from localization import get_text
 
 logger = logging.getLogger(__name__)
 
+def get_product_name(product, lang='en'):
+    """
+    Safely retrieves the localized product name from a database row or dict.
+    Falls back gracefully if f'name_{lang}' does not exist in the row.
+    """
+    if not product:
+        return "Product"
+    p = dict(product) if not isinstance(product, dict) else product
+    return p.get(f'name_{lang}') or p.get('name_en') or p.get('name_ar') or p.get('name_ru') or "Product"
+
+def get_product_desc(product, lang='en'):
+    """
+    Safely retrieves the localized product description from a database row or dict.
+    """
+    if not product:
+        return ""
+    p = dict(product) if not isinstance(product, dict) else product
+    return p.get(f'description_{lang}') or p.get('description_en') or p.get('description_ar') or p.get('description_ru') or ""
+
 def serialize_entities(entities):
     """
     Serializes a list of aiogram MessageEntity objects into a JSON string.
@@ -61,8 +80,8 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
     Otherwise, returns fallback text with parse_mode="Markdown".
     """
     prod_dict = dict(product) if product else {}
-    name = prod_dict.get(f'name_{lang}') or prod_dict.get('name_en') or "Product"
-    desc = prod_dict.get(f'description_{lang}') or prod_dict.get('description_en') or ""
+    name = get_product_name(product, lang)
+    desc = get_product_desc(product, lang)
     entities_json = prod_dict.get(f'description_entities_{lang}') or prod_dict.get('description_entities_en')
     desc_entities = deserialize_entities(entities_json)
 
