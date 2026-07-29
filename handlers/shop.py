@@ -302,9 +302,11 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     
     # Verify using Binance API
     from binance_client import verify_binance_payment
+    from crypto_verifier import is_amount_matching
     success, result_val = await verify_binance_payment(txid, min_timestamp=None)
     
-    if success:
+    # Verify both API success AND that the actual amount paid matches required price
+    if success and is_amount_matching(price_to_pay, result_val, "BINANCE"):
         # Complete payment in DB (Direct checkout: manually set completed to avoid adding balance)
         import aiosqlite
         from config import DB_NAME

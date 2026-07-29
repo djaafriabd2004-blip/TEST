@@ -555,7 +555,11 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
 async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
     """
     Unified payment verifier that queries Pay transaction history and Spot deposit history.
+    Enforces strict amount matching and transaction age validation.
     """
+    from crypto_verifier import get_max_tx_age_seconds, validate_tx_age, parse_unix_timestamp
+    max_age_seconds = await get_max_tx_age_seconds()
+
     # 1. Try querying Binance Pay transactions first
     res_pay = await query_binance_pay_transactions(tx_id, min_timestamp=min_timestamp)
     if res_pay.get('success'):
@@ -572,6 +576,18 @@ async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
             amount = float(raw_amount)
         except (ValueError, TypeError):
             amount = 0.0
+            
+        # Age validation for Binance Pay transaction
+        raw_time = tx.get('time') or tx.get('transactionTime') or tx.get('timestamp') or 0
+        tx_unix = parse_unix_timestamp(raw_time)
+        if tx_unix > 1000000000000:
+            tx_unix = tx_unix // 1000
+            
+        if tx_unix > 0:
+            is_valid_age, age_err = validate_tx_age(tx_unix, max_age_seconds, min_timestamp=min_timestamp)
+            if not is_valid_age:
+                return False, age_err
+
         return True, amount
 
     # 2. Try querying Spot deposit history
@@ -584,9 +600,19 @@ async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
         except (ValueError, TypeError):
             amount = 0.0
         status = int(tx.get('status', 0))
-        if status == 1:
-            return True, amount
-        else:
+        if status != 1:
             return False, "Transaction is pending on the blockchain."
+            
+        raw_time = tx.get('insertTime') or tx.get('time') or tx.get('timestamp') or 0
+        tx_unix = parse_unix_timestamp(raw_time)
+        if tx_unix > 1000000000000:
+            tx_unix = tx_unix // 1000
+            
+        if tx_unix > 0:
+            is_valid_age, age_err = validate_tx_age(tx_unix, max_age_seconds, min_timestamp=min_timestamp)
+            if not is_valid_age:
+                return False, age_err
+
+        return True, amount
             
     return False, "Transaction not found on Binance."
