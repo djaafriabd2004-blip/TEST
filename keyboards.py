@@ -103,6 +103,10 @@ def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en') -> 
     # 2. Pay with Binance Pay
     builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
     
+    # 3. Direct button to charge balance menu
+    charge_btn_text = get_text('btn_charge_balance', lang)
+    builder.button(text=f"💳 {charge_btn_text}", callback_data="charge_menu", style="primary")
+    
     # Back button
     builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     builder.adjust(1)
