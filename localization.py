@@ -59,6 +59,11 @@ LOCALIZATION = {
         'ar': "💳 شحن الرصيد",
         'ru': "💳 Пополнить баланс"
     },
+    'btn_other_payment_methods': {
+        'en': "💳 Other Payment Methods",
+        'ar': "💳 طرق دفع أخرى",
+        'ru': "💳 Другие способы оплаты"
+    },
     'btn_referral': {
         'en': "🔗 Referral Link",
         'ar': "🔗 رابط الإحالة",
