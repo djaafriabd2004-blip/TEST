@@ -115,6 +115,29 @@ async def cb_crypto_coin_selected(callback: CallbackQuery, state: FSMContext, la
     coin = callback.data.replace("crypto_coin_", "")
     import time
     await state.update_data(crypto_coin=coin, crypto_start_time=int(time.time()))
+    await state.set_state(ChargeStates.waiting_for_crypto_amount)
+    
+    # Prompt for deposit amount first (no address shown yet)
+    await callback.message.edit_text(get_text('enter_amount_usd', lang))
+    await callback.answer()
+
+@router.message(ChargeStates.waiting_for_crypto_amount)
+async def process_crypto_amount(message: Message, state: FSMContext, lang='en'):
+    amount_str = message.text.strip()
+    try:
+        amount = float(amount_str)
+        if amount < 1.0:
+            raise ValueError()
+    except ValueError:
+        await message.answer(get_text('invalid_amount', lang))
+        return
+        
+    import time
+    await state.update_data(crypto_amount=amount, crypto_start_time=int(time.time()))
+    await state.set_state(ChargeStates.waiting_for_crypto_txid)
+    
+    data = await state.get_data()
+    coin = data.get('crypto_coin')
     
     # Coin addresses configuration
     default_addresses = {
@@ -136,36 +159,23 @@ async def cb_crypto_coin_selected(callback: CallbackQuery, state: FSMContext, la
     }
     coin_label = coin_labels.get(coin, coin)
     
-    await state.set_state(ChargeStates.waiting_for_crypto_amount)
-    
+    # Display deposit address and instructions ONLY AFTER amount has been entered
     if coin == "BINANCE":
-        text = get_text('binance_id_instructions', lang, address=address)
+        instructions = get_text('binance_id_instructions', lang, address=address)
+        prompt = get_text('binance_enter_txid', lang)
     else:
-        text = get_text('crypto_instructions', lang, coin=coin_label, address=address)
-    await callback.message.edit_text(text, parse_mode="Markdown")
-    await callback.answer()
-
-@router.message(ChargeStates.waiting_for_crypto_amount)
-async def process_crypto_amount(message: Message, state: FSMContext, lang='en'):
-    amount_str = message.text.strip()
-    try:
-        amount = float(amount_str)
-        if amount < 1.0:
-            raise ValueError()
-    except ValueError:
-        await message.answer(get_text('invalid_amount', lang))
-        return
+        instructions = get_text('crypto_instructions', lang, coin=coin_label, address=address)
+        prompt = get_text('crypto_enter_txid', lang)
         
-    import time
-    await state.update_data(crypto_amount=amount, crypto_start_time=int(time.time()))
-    await state.set_state(ChargeStates.waiting_for_crypto_txid)
+    amount_text = {
+        "ar": f"💵 *المبلغ المطلوب إيداعه:* `${amount:.2f} USD`",
+        "en": f"💵 *Amount to deposit:* `${amount:.2f} USD`",
+        "ru": f"💵 *Сумма для пополнения:* `${amount:.2f} USD`"
+    }
+    amt_line = amount_text.get(lang, amount_text['en'])
     
-    data = await state.get_data()
-    coin = data.get('crypto_coin')
-    if coin == "BINANCE":
-        await message.answer(get_text('binance_enter_txid', lang), parse_mode="Markdown")
-    else:
-        await message.answer(get_text('crypto_enter_txid', lang), parse_mode="Markdown")
+    full_text = f"{instructions}\n\n{amt_line}\n\n{prompt}"
+    await message.answer(full_text, parse_mode="Markdown")
 
 @router.message(ChargeStates.waiting_for_crypto_txid)
 async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lang='en'):
