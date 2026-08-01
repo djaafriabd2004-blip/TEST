@@ -368,8 +368,32 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     try:
         stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(user_id, product_id, qty, skip_balance_check=skip_balance_check, allow_partial=True)
     except Exception as e:
-        logger.error(f"Purchase failed in DB: {e}")
+        logger.error(f"Purchase failed in DB for user {user_id}, product {product_id}, qty {qty}: {e}", exc_info=True)
         err_msg = str(e)
+        
+        # Send instant high-priority notification to admins about delivery error / provider failure
+        import config
+        admin_username = "admin"
+        user_info = f"{message.from_user.first_name}"
+        if message.from_user.username:
+            user_info += f" (@{message.from_user.username})"
+        prod_title = get_product_name(product, 'en')
+        
+        admin_alert = (
+            f"🚨 *DELIVERY ERROR ALERT! (Action Required)*\n\n"
+            f"👤 *User:* {user_info} (`{user_id}`)\n"
+            f"🛍️ *Product:* `{prod_title}` (ID: `{product_id}`)\n"
+            f"🔢 *Quantity Requested:* `{qty}`\n"
+            f"💵 *Total Price:* `${price_to_pay:.2f} USD`\n"
+            f"❌ *Error Details:* `{err_msg}`\n\n"
+            f"⚠️ *Note:* Please review this order and deliver manually or check stock if needed."
+        )
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+            except Exception as ae:
+                logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
+                
         if "Out of stock" in err_msg:
             if skip_balance_check:
                 # Direct checkout payment went out of stock. Refund the full price_to_pay to user's wallet!
@@ -388,69 +412,35 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                     reply_markup=keyboards.get_product_view_keyboard(product_id, False, lang)
                 )
         else:
-            # Obfuscate reseller API provider balance errors to protect admin privacy
-            import config
-            admin_username = "admin"
+            # Query database for the first admin username if configured
+            import aiosqlite
+            from config import DB_NAME
+            async with aiosqlite.connect(DB_NAME) as db:
+                db.row_factory = aiosqlite.Row
+                if config.ADMIN_IDS:
+                    async with db.execute("SELECT username FROM users WHERE user_id = ? LIMIT 1;", (config.ADMIN_IDS[0],)) as u_cur:
+                        u_row = await u_cur.fetchone()
+                        if u_row and u_row['username']:
+                            admin_username = u_row['username']
             
-            # Send instant high-priority notification to admins about delivery error / provider failure
-            user_info = f"{message.from_user.first_name}"
-            if message.from_user.username:
-                user_info += f" (@{message.from_user.username})"
-            prod_title = get_product_name(product, 'en')
-            
-            admin_alert = (
-                f"🚨 *DELIVERY ERROR ALERT! (Action Required)*\n\n"
-                f"👤 *User:* {user_info} (`{user_id}`)\n"
-                f"🛍️ *Product:* `{prod_title}` (ID: `{product_id}`)\n"
-                f"🔢 *Quantity Requested:* `{qty}`\n"
-                f"💵 *Total Price:* `${price_to_pay:.2f} USD`\n"
-                f"❌ *Error Details:* `{err_msg}`\n\n"
-                f"⚠️ *Note:* The user was shown a delivery error notice. Please check your provider API balance / stock or fulfill manually."
-            )
-            for admin_id in config.ADMIN_IDS:
-                try:
-                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
-                except Exception as ae:
-                    logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
-            
-            if "insufficient balance" in err_msg.lower() or "provider error" in err_msg.lower() or "insufficient items" in err_msg.lower() or "provider" in err_msg.lower():
-                # Direct checkout payment failed due to provider error. Refund the payment to user's wallet!
-                if skip_balance_check:
-                    import aiosqlite
-                    from config import DB_NAME
-                    async with aiosqlite.connect(DB_NAME) as db:
-                        await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
-                        await db.commit()
-                
-                # Query database for the first admin username if configured
-                import aiosqlite
-                from config import DB_NAME
+            refund_note = ""
+            if skip_balance_check:
+                # Refund the payment to user's wallet to protect funds
                 async with aiosqlite.connect(DB_NAME) as db:
-                    db.row_factory = aiosqlite.Row
-                    if config.ADMIN_IDS:
-                        async with db.execute("SELECT username FROM users WHERE user_id = ? LIMIT 1;", (config.ADMIN_IDS[0],)) as u_cur:
-                            u_row = await u_cur.fetchone()
-                            if u_row and u_row['username']:
-                                admin_username = u_row['username']
-                
-                refund_note = ""
-                if skip_balance_check:
-                    refund_note_dict = {
-                        "ar": f"\n\n💰 وحفاظاً على أموالك، تم تلقائياً شحن وإيداع مبلغ **`${price_to_pay:.2f} USD`** في محفظتك بالبوت.",
-                        "en": f"\n\n💰 To secure your funds, **`${price_to_pay:.2f} USD`** has been automatically credited to your wallet balance.",
-                        "ru": f"\n\n💰 Для безопасности ваших средств **`${price_to_pay:.2f} USD`** автоматически зачислены на баланс вашего кошелька."
-                    }
-                    refund_note = refund_note_dict.get(lang, refund_note_dict['en'])
-                
-                await message.answer(
-                    get_text('provider_insufficient_balance', lang, admin_username=admin_username) + refund_note,
-                    parse_mode="Markdown"
-                )
-            else:
-                await message.answer(
-                    f"❌ Error occurred: {err_msg}",
-                    reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang)
-                )
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
+                    await db.commit()
+                    
+                refund_note_dict = {
+                    "ar": f"\n\n💰 وحفاظاً على أموالك، تم تلقائياً شحن وإيداع مبلغ **`${price_to_pay:.2f} USD`** في محفظتك بالبوت.",
+                    "en": f"\n\n💰 To secure your funds, **`${price_to_pay:.2f} USD`** has been automatically credited to your wallet balance.",
+                    "ru": f"\n\n💰 Для безопасности ваших средств **`${price_to_pay:.2f} USD`** автоматически зачислены на баланс вашего кошелька."
+                }
+                refund_note = refund_note_dict.get(lang, refund_note_dict['en'])
+            
+            await message.answer(
+                get_text('provider_insufficient_balance', lang, admin_username=admin_username) + refund_note,
+                parse_mode="Markdown"
+            )
         return
 
     # 2. Check if product is out of stock and notify admins
@@ -467,9 +457,10 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     # 3. Check for partial delivery refund
     refund_amount = 0.0
     if actual_qty < qty:
-        # Calculate refund for undelivered items
+        # Calculate refund for undelivered items using correct tier unit price
         discount_pct = await get_user_discount(user_id)
-        price_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+        unit_price = get_product_unit_price(product, qty)
+        price_per_item = round(unit_price * (1 - discount_pct / 100), 2)
         diff_qty = qty - actual_qty
         refund_amount = round(price_per_item * diff_qty, 2)
         
