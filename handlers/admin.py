@@ -1030,6 +1030,133 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
         reply_markup=keyboards.get_admin_back_keyboard()
     )
 
+# --- Product Tier Prices Management ---
+@router.callback_query(F.data.startswith("admin_prod_tiers_"))
+async def cb_admin_prod_tiers(callback: CallbackQuery):
+    prod_id = int(callback.data.replace("admin_prod_tiers_", ""))
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.")
+        return
+        
+    from utils import format_product_tier_prices_text
+    tiers_text = format_product_tier_prices_text(product, lang='ar')
+    if not tiers_text:
+        tiers_text = "❌ لا توجد أسعار جملة مضافة لهذا المنتج حالياً."
+        
+    text = (
+        f"🏷️ *إدارة أسعار الجملة حسب الكمية للمنتج:*\n`{product['name_en']}`\n\n"
+        f"{tiers_text}\n\n"
+        f"💡 يمكن إضافة فئات أسعار ثابتة جديدة (مثلاً: عند شراء 5 قطع يصبح سعر القطعة $8.50)."
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_admin_tier_prices_keyboard(prod_id),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_add_tier_"))
+async def cb_admin_add_tier(callback: CallbackQuery, state: FSMContext):
+    prod_id = int(callback.data.replace("admin_add_tier_", ""))
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.")
+        return
+        
+    await state.set_state(ProductStates.waiting_for_tier_min_qty)
+    await state.update_data(tier_prod_id=prod_id)
+    
+    await callback.message.answer(
+        f"📥 *الخطوة 1 من 2: الكمية الدنيا*\n\n"
+        f"الرجاء إدخال الحد الأدنى للكمية المطلوبة لتطبيق السعر (مثال: `5` أو `10` أو `50`):",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.message(ProductStates.waiting_for_tier_min_qty)
+async def process_tier_min_qty(message: Message, state: FSMContext):
+    try:
+        min_qty = int(message.text.strip())
+        if min_qty <= 1:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ كمية غير صالحة. يجب أن يكون الحد الأدنى للكمية رقماً صحيحاً أكبر من 1 (مثال: `5`):")
+        return
+        
+    await state.update_data(tier_min_qty=min_qty)
+    await state.set_state(ProductStates.waiting_for_tier_unit_price)
+    
+    await message.answer(
+        f"💵 *الخطوة 2 من 2: سعر القطعة الثابت*\n\n"
+        f"الرجاء إدخال سعر القطعة الثابت للكميات ابتداءً من *{min_qty}+* قطعة بالدولار USD (مثال: `8.50`):",
+        parse_mode="Markdown"
+    )
+
+@router.message(ProductStates.waiting_for_tier_unit_price)
+async def process_tier_unit_price(message: Message, state: FSMContext):
+    try:
+        unit_price = float(message.text.strip())
+        if unit_price <= 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ سعر غير صالحة. الرجاء إدخال قيمة رقمية صحيحة أكبر من 0 (مثال: `8.50`):")
+        return
+        
+    data = await state.get_data()
+    prod_id = data.get("tier_prod_id")
+    min_qty = data.get("tier_min_qty")
+    await state.clear()
+    
+    if not prod_id or not min_qty:
+        await message.answer("❌ حدث خطأ، يرجى المحاولة مرة أخرى.")
+        return
+        
+    product = await get_product(prod_id)
+    if not product:
+        await message.answer("❌ المنتج غير موجود.")
+        return
+        
+    prod_dict = dict(product) if product else {}
+    tier_json = prod_dict.get('tier_prices')
+    import json
+    tiers = []
+    if tier_json:
+        try:
+            tiers = json.loads(tier_json)
+            if not isinstance(tiers, list):
+                tiers = []
+        except Exception:
+            tiers = []
+            
+    # Remove existing tier with same min_qty if exists, then add new tier
+    tiers = [t for t in tiers if int(t.get('min_qty', 0)) != min_qty]
+    tiers.append({"min_qty": min_qty, "unit_price": unit_price})
+    
+    from database import update_product_tier_prices
+    await update_product_tier_prices(prod_id, json.dumps(tiers))
+    
+    await message.answer(
+        f"✅ *تم حفظ سعر الجملة بنجاح!*\n\n"
+        f"🔹 عند شراء *{min_qty}+* قطعة ⬅️ السعر الثابت: `${unit_price:.2f} USD` للقطعة.",
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("admin_clear_tiers_"))
+async def cb_admin_clear_tiers(callback: CallbackQuery):
+    prod_id = int(callback.data.replace("admin_clear_tiers_", ""))
+    from database import update_product_tier_prices
+    await update_product_tier_prices(prod_id, None)
+    
+    await callback.message.edit_text(
+        "✅ *تم مسح جميع أسعار الجملة لهذا المنتج بنجاح!*",
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
 # --- Stock Settings ---
 @router.callback_query(F.data.in_(["admin_add_stock", "admin_bulk_stock"]))
 async def cb_admin_stock_select_prod(callback: CallbackQuery, state: FSMContext):

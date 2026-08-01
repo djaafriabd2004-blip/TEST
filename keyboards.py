@@ -239,9 +239,18 @@ def get_admin_products_keyboard(products) -> InlineKeyboardMarkup:
 def get_admin_product_edit_keyboard(product_id) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📝 Edit Details", callback_data=f"admin_edit_fields_{product_id}")
+    builder.button(text="🏷️ أسعار الجملة (Tier Prices)", callback_data=f"admin_prod_tiers_{product_id}")
     builder.button(text="🎨 Edit Emoji", callback_data=f"admin_edit_emoji_{product_id}")
     builder.button(text="🗑️ Delete Product", callback_data=f"admin_prod_del_{product_id}")
     builder.button(text="🔙 Back", callback_data="admin_manage_products")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_tier_prices_keyboard(product_id) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="➕ إضافة سعر كمية جديد", callback_data=f"admin_add_tier_{product_id}")
+    builder.button(text="🗑️ مسح جميع أسعار الجملة", callback_data=f"admin_clear_tiers_{product_id}")
+    builder.button(text="🔙 Back", callback_data=f"admin_prod_view_{product_id}")
     builder.adjust(1)
     return builder.as_markup()
 

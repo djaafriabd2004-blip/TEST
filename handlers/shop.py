@@ -12,7 +12,7 @@ from localization import get_text
 from handlers.states import ShopStates
 import keyboards
 import asyncio
-from utils import send_message_with_retry, get_product_name, get_product_desc
+from utils import send_message_with_retry, get_product_name, get_product_desc, get_product_unit_price
 import logging
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,8 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         return
         
     discount_pct = await get_user_discount(user_id)
-    price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
+    unit_price = get_product_unit_price(product, qty)
+    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
     prod_name = get_product_name(product, lang)
     
     # Render checkout payment method prompt
@@ -186,7 +187,8 @@ async def cb_checkout_balance(callback: CallbackQuery, bot: Bot, lang='en'):
         return
         
     discount_pct = await get_user_discount(user_id)
-    price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
+    unit_price = get_product_unit_price(product, qty)
+    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
     
     if round(db_user['balance'], 2) < price_to_pay:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay), show_alert=True)
@@ -211,7 +213,8 @@ async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: B
         return
         
     discount_pct = await get_user_discount(user_id)
-    price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
+    unit_price = get_product_unit_price(product, qty)
+    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
     
     # Verify stock availability again
     stock_count = await get_stock_count(product_id)
@@ -272,7 +275,8 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
         return
         
     discount_pct = await get_user_discount(user_id)
-    price_to_pay = round((product['price'] * (1 - discount_pct / 100)) * qty, 2)
+    unit_price = get_product_unit_price(product, qty)
+    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
     prod_name = get_product_name(product, lang)
     
     await state.clear()
@@ -658,7 +662,8 @@ async def cb_product_preorder(callback: CallbackQuery, state: FSMContext, lang='
         
     # Check if they already have balance
     discount_pct = await get_user_discount(user_id)
-    price_to_pay_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+    unit_price = get_product_unit_price(product, 1)
+    price_to_pay_per_item = round(unit_price * (1 - discount_pct / 100), 2)
     
     if round(db_user['balance'], 2) < price_to_pay_per_item:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay_per_item), show_alert=True)
@@ -708,7 +713,8 @@ async def process_preorder_quantity(message: Message, state: FSMContext):
     
     # Calculate price
     discount_pct = await get_user_discount(user_id)
-    price_to_pay_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+    unit_price = get_product_unit_price(product, qty)
+    price_to_pay_per_item = round(unit_price * (1 - discount_pct / 100), 2)
     total_price = round(price_to_pay_per_item * qty, 2)
     
     # Try creating pre-order

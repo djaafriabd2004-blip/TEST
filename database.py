@@ -85,6 +85,8 @@ async def db_init():
                 await db.execute("ALTER TABLE products ADD COLUMN description_entities_en TEXT;")
             if "description_entities_ru" not in columns:
                 await db.execute("ALTER TABLE products ADD COLUMN description_entities_ru TEXT;")
+            if "tier_prices" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN tier_prices TEXT;")
                 
         # Migration: Verify expected columns in users table
         async with db.execute("PRAGMA table_info(users);") as cursor:
@@ -440,6 +442,11 @@ async def update_product(product_id, name_ar, name_en, name_ru, description_ar, 
         
     if old_price is not None and abs(float(old_price) - float(price)) > 0.001:
         await cancel_all_pre_orders_for_product(product_id, bot=bot, reason="price_changed")
+
+async def update_product_tier_prices(product_id: int, tier_prices_json: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE products SET tier_prices = ? WHERE id = ?;", (tier_prices_json, product_id))
+        await db.commit()
 
 async def delete_product(product_id):
     async with aiosqlite.connect(DB_NAME) as db:

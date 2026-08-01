@@ -25,6 +25,64 @@ def get_product_desc(product, lang='en'):
     p = dict(product) if not isinstance(product, dict) else product
     return p.get(f'description_{lang}') or p.get('description_en') or p.get('description_ar') or p.get('description_ru') or ""
 
+def get_product_unit_price(product, qty: int) -> float:
+    """
+    Returns the fixed unit price for a given quantity based on configured tier prices.
+    Falls back to base product price if no tier matches.
+    """
+    if not product:
+        return 0.0
+    p = dict(product) if not isinstance(product, dict) else product
+    base_price = float(p.get('price', 0.0))
+    tier_json = p.get('tier_prices')
+    if not tier_json:
+        return base_price
+    try:
+        tiers = json.loads(tier_json)
+        if isinstance(tiers, list):
+            for t in sorted(tiers, key=lambda x: int(x.get('min_qty', 0)), reverse=True):
+                min_q = int(t.get('min_qty', 0))
+                if min_q > 0 and qty >= min_q:
+                    return float(t.get('unit_price', base_price))
+    except Exception as e:
+        logger.warning(f"Error parsing tier_prices JSON: {e}")
+    return base_price
+
+def format_product_tier_prices_text(product, lang='en') -> str:
+    """
+    Formats localized text showing quantity tier prices for a product.
+    """
+    if not product:
+        return ""
+    p = dict(product) if not isinstance(product, dict) else product
+    tier_json = p.get('tier_prices')
+    if not tier_json:
+        return ""
+    try:
+        tiers = json.loads(tier_json)
+        if not isinstance(tiers, list) or not tiers:
+            return ""
+        
+        sorted_tiers = sorted(tiers, key=lambda x: int(x.get('min_qty', 0)))
+        lines = []
+        header = {
+            "ar": "🏷️ *أسعار الجملة حسب الكمية:*",
+            "en": "🏷️ *Bulk Quantity Prices:*",
+            "ru": "🏷️ *Оптовые цены от количества:*"
+        }
+        lines.append(header.get(lang, header['en']))
+        
+        for t in sorted_tiers:
+            mq = int(t.get('min_qty', 0))
+            up = float(t.get('unit_price', 0.0))
+            if mq > 0 and up > 0:
+                lines.append(f"🔹 *{mq}+* ⬅️ `${up:.2f} USD`")
+        if len(lines) > 1:
+            return "\n".join(lines)
+    except Exception:
+        pass
+    return ""
+
 def serialize_entities(entities):
     """
     Serializes a list of aiogram MessageEntity objects into a JSON string.
@@ -102,6 +160,9 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
         price_str_markdown = f"`${prod_price:.2f} USD`"
         price_str_plain = f"${prod_price:.2f} USD"
 
+    tier_text = format_product_tier_prices_text(product, lang)
+    tier_str = f"\n\n{tier_text}" if tier_text else ""
+
     if not desc_entities:
         text = get_text(
             'product_details',
@@ -110,7 +171,7 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
             desc=desc,
             price=price_str_markdown,
             stock=stock_count
-        )
+        ) + tier_str
         return text, None, "Markdown"
 
     # Rich formatting with MessageEntities (preserves Telegram Premium Custom Emojis)
@@ -149,15 +210,15 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
 
     # Footer section
     if lang == 'ar':
-        footer_text = f"\n\n💵 السعر: {price_str_plain}\n📦 المخزون: {stock_count} متوفر"
+        footer_text = f"\n\n💵 السعر: {price_str_plain}\n📦 المخزون: {stock_count} متوفر" + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 السعر: "
         s_label = f"\n📦 المخزون: "
     elif lang == 'ru':
-        footer_text = f"\n\n💵 Цена: {price_str_plain}\n📦 В наличии: {stock_count} шт."
+        footer_text = f"\n\n💵 Цена: {price_str_plain}\n📦 В наличии: {stock_count} шт." + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 Цена: "
         s_label = f"\n📦 В наличии: "
     else:
-        footer_text = f"\n\n💵 Price: {price_str_plain}\n📦 Stock: {stock_count} available"
+        footer_text = f"\n\n💵 Price: {price_str_plain}\n📦 Stock: {stock_count} available" + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 Price: "
         s_label = f"\n📦 Stock: "
 

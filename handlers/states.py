@@ -22,6 +22,10 @@ class ProductStates(StatesGroup):
     waiting_for_edit_price = State()
     waiting_for_edit_specific_value = State()
     waiting_for_edit_custom_emoji = State()
+    
+    # Tier Prices
+    waiting_for_tier_min_qty = State()
+    waiting_for_tier_unit_price = State()
 
 class ShopStates(StatesGroup):
     waiting_for_buy_quantity = State()
