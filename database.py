@@ -1566,14 +1566,38 @@ async def get_all_api_keys():
         async with db.execute(query) as cursor:
             return await cursor.fetchall()
 
-async def notify_admins_stock_change(bot, product_id, event_type, quantity=0):
+async def get_admin_ids() -> list:
     """
-    event_type can be:
-      - 'refill' (when stock is added)
-      - 'empty' (when stock is depleted)
+    Returns list of admin user IDs from config.ADMIN_IDS or stored in settings table.
     """
     import config
-    if not config.ADMIN_IDS:
+    admin_list = list(config.ADMIN_IDS)
+    try:
+        db_admin_str = await get_setting('admin_ids', '')
+        if db_admin_str:
+            for item in db_admin_str.split(','):
+                item = item.strip()
+                if item.isdigit():
+                    uid = int(item)
+                    if uid not in admin_list:
+                        admin_list.append(uid)
+    except Exception as e:
+        logger.warning(f"Error reading admin_ids from setting: {e}")
+    return admin_list
+
+async def add_admin_id(user_id: int):
+    """
+    Adds an admin user ID to database settings.
+    """
+    current_ids = await get_admin_ids()
+    if user_id not in current_ids:
+        current_ids.append(user_id)
+        str_val = ",".join(str(i) for i in current_ids)
+        await set_setting('admin_ids', str_val)
+
+async def notify_admins_stock_change(bot, product_id, event_type, quantity=1):
+    admin_ids = await get_admin_ids()
+    if not admin_ids:
         return
         
     product = await get_product(product_id)
@@ -1605,7 +1629,7 @@ async def notify_admins_stock_change(bot, product_id, event_type, quantity=0):
     else:
         return
         
-    for admin_id in config.ADMIN_IDS:
+    for admin_id in admin_ids:
         try:
             await bot.send_message(chat_id=admin_id, text=msg, parse_mode="Markdown")
         except Exception as e:
@@ -1618,40 +1642,28 @@ async def broadcast_restock_to_users(bot, product_id, added_qty):
         product = await get_product(product_id)
         if not product:
             return
-            
-        stock_count = await get_stock_count(product_id)
-        
-        # Fetch all users
-        async with aiosqlite.connect(DB_NAME) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT user_id, language FROM users;") as cursor:
-                users = await cursor.fetchall()
-                
-        from localization import get_text
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
-        
+        users = await get_stock_notification_subscribers(product_id)
+        if not users:
+            return
+        prod_name_ar = product['name_ar']
+        prod_name_en = product['name_en']
+        price = product['price']
         for u in users:
-            user_id = u['user_id']
-            lang = 'en'  # Force English for all restock announcements
-            
-            prod_name = product['name_en']
-            msg = get_text('notify_stock_available', lang, name=prod_name, stock=stock_count, price=product['price'])
-            
-            builder = InlineKeyboardBuilder()
-            builder.button(text=get_text('btn_buy', lang), callback_data=f"prod_view_{product_id}")
-            builder.adjust(1)
-            
+            uid = u['user_id']
+            lang = u['language'] or 'en'
+            name = prod_name_ar if lang == 'ar' else prod_name_en
+            text_dict = {
+                'ar': f"🎉 *توفر منتج مفضل لديك!*\n\n🛍 *المنتج:* `{name}`\n📦 *الكمية المضافة:* `{added_qty}` قطع\n💵 *السعر:* `${price:.2f} USD`\n\nسارع بالشراء الآن قبل نفاد الكمية! 🚀",
+                'en': f"🎉 *Restock Alert!*\n\n🛍 *Product:* `{name}`\n📦 *Added Quantity:* `{added_qty}` items\n💵 *Price:* `${price:.2f} USD`\n\nHurry up and shop before it runs out! 🚀",
+                'ru': f"🎉 *Пополнение товара!*\n\n🛍 *Товар:* `{name}`\n📦 *Добавлено:* `{added_qty}` шт.\n💵 *Цена:* `${price:.2f} USD`\n\nУспейте купить! 🚀"
+            }
             try:
-                await bot.send_message(chat_id=user_id, text=msg, parse_mode="Markdown", reply_markup=builder.as_markup())
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                builder.button(text="🛍️ Shop Now", callback_data=f"prod_view_{product_id}")
+                await bot.send_message(chat_id=uid, text=text_dict.get(lang, text_dict['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
             except Exception:
-                # Ignore blocked/deleted chats
                 pass
-            # Avoid hitting Telegram rate limits (30 msgs/sec -> ~0.05s delay)
-            await asyncio.sleep(0.05)
-            
-    # Start broadcast in the background so it doesn't block the admin's UI
+        await clear_stock_notifications(product_id)
     import asyncio
     asyncio.create_task(_run_broadcast())
-
-
-

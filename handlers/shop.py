@@ -388,7 +388,9 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             f"❌ *Error Details:* `{err_msg}`\n\n"
             f"⚠️ *Note:* Please review this order and deliver manually or check stock if needed."
         )
-        for admin_id in config.ADMIN_IDS:
+        from database import get_admin_ids
+        admin_ids = await get_admin_ids()
+        for admin_id in admin_ids:
             try:
                 await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
             except Exception as ae:
