@@ -21,10 +21,11 @@ async def db_init():
         os.makedirs(parent, exist_ok=True)
     logger.info("Opening database at %s", DB_NAME)
 
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
         await db.execute("PRAGMA foreign_keys = ON;")
         await db.execute("PRAGMA journal_mode = WAL;")
         await db.execute("PRAGMA synchronous = NORMAL;")
+        await db.execute("PRAGMA busy_timeout = 30000;")
         
         # Users Table
         await db.execute("""
@@ -590,7 +591,19 @@ async def get_stock_count(product_id):
 
 # Purchase Helpers
 async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
-    async with aiosqlite.connect(DB_NAME) as db:
+    for attempt in range(3):
+        try:
+            return await _buy_product_internal(user_id, product_id, quantity=quantity, skip_balance_check=skip_balance_check, allow_partial=allow_partial, client_order_id=client_order_id)
+        except Exception as e:
+            if ("locked" in str(e).lower() or "busy" in str(e).lower()) and attempt < 2:
+                logger.warning(f"Database locked in buy_product (attempt {attempt+1}/3). Retrying in 0.3s...")
+                await asyncio.sleep(0.3 * (attempt + 1))
+                continue
+            raise e
+
+async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
         
         # 0. Idempotency Check: if client_order_id is provided, check if we already processed it
