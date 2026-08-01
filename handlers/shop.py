@@ -389,10 +389,31 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 )
         else:
             # Obfuscate reseller API provider balance errors to protect admin privacy
-            if "insufficient balance" in err_msg.lower() or "provider error" in err_msg.lower() or "insufficient items" in err_msg.lower():
-                import config
-                admin_username = "admin"
-                
+            import config
+            admin_username = "admin"
+            
+            # Send instant high-priority notification to admins about delivery error / provider failure
+            user_info = f"{message.from_user.first_name}"
+            if message.from_user.username:
+                user_info += f" (@{message.from_user.username})"
+            prod_title = get_product_name(product, 'en')
+            
+            admin_alert = (
+                f"🚨 *DELIVERY ERROR ALERT! (Action Required)*\n\n"
+                f"👤 *User:* {user_info} (`{user_id}`)\n"
+                f"🛍️ *Product:* `{prod_title}` (ID: `{product_id}`)\n"
+                f"🔢 *Quantity Requested:* `{qty}`\n"
+                f"💵 *Total Price:* `${price_to_pay:.2f} USD`\n"
+                f"❌ *Error Details:* `{err_msg}`\n\n"
+                f"⚠️ *Note:* The user was shown a delivery error notice. Please check your provider API balance / stock or fulfill manually."
+            )
+            for admin_id in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                except Exception as ae:
+                    logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
+            
+            if "insufficient balance" in err_msg.lower() or "provider error" in err_msg.lower() or "insufficient items" in err_msg.lower() or "provider" in err_msg.lower():
                 # Direct checkout payment failed due to provider error. Refund the payment to user's wallet!
                 if skip_balance_check:
                     import aiosqlite
