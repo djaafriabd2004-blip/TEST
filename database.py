@@ -635,7 +635,9 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             discount_row = await cursor.fetchone()
             discount_percent = discount_row[0] if discount_row else 0.0
             
-        final_price_per_item = round(product['price'] * (1 - discount_percent / 100), 2)
+        from utils import get_product_unit_price
+        unit_price = get_product_unit_price(product, quantity)
+        final_price_per_item = round(unit_price * (1 - discount_percent / 100), 2)
         total_price = round(final_price_per_item * quantity, 2)
         
         if not skip_balance_check and round(user['balance'], 2) < total_price:
@@ -893,7 +895,9 @@ async def create_pre_order(user_id, product_id, quantity=1):
                 
         from database import get_user_discount
         discount_percent = await get_user_discount(user_id)
-        final_price_per_item = round(product['price'] * (1 - discount_percent / 100), 2)
+        from utils import get_product_unit_price
+        unit_price = get_product_unit_price(product, quantity)
+        final_price_per_item = round(unit_price * (1 - discount_percent / 100), 2)
         total_price = round(final_price_per_item * quantity, 2)
         
         # 3. Check user balance

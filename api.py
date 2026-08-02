@@ -179,7 +179,9 @@ async def buy_api(request):
             if actual_qty < quantity:
                 from database import get_user_discount
                 discount_pct = await get_user_discount(user_id)
-                price_per_item = round(product['price'] * (1 - discount_pct / 100), 2)
+                from utils import get_product_unit_price
+                unit_price = get_product_unit_price(product, quantity)
+                price_per_item = round(unit_price * (1 - discount_pct / 100), 2)
                 diff_qty = quantity - actual_qty
                 refund_amount = round(price_per_item * diff_qty, 2)
                 
