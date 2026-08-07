@@ -2625,36 +2625,42 @@ async def fetch_provider_products(base_url, api_key):
         base_url = 'https://' + base_url
     is_supabase = "supabase.co" in base_url
     
-    headers = {}
-    if is_supabase:
-        headers["Authorization"] = f"Bearer {api_key}"
-        url = f"{base_url}?action=products"
-    else:
-        headers["X-API-Key"] = api_key
-        url = f"{base_url}/api/products"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "X-API-Key": api_key,
+        "Content-Type": "application/json"
+    }
+    url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
         
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if is_supabase:
-                        raw_list = data if isinstance(data, list) else data.get('products', [])
-                        formatted = []
-                        for p in raw_list:
+                    raw_list = []
+                    if isinstance(data, list):
+                        raw_list = data
+                    elif isinstance(data, dict):
+                        raw_list = data.get('products') or data.get('data') or []
+                        
+                    formatted = []
+                    for p in raw_list:
+                        if isinstance(p, dict) and p.get("id"):
+                            p_name = p.get("name") or p.get("name_en") or p.get("title") or f"Product {p.get('id')}"
                             formatted.append({
                                 "id": p.get("id"),
-                                "name_ar": p.get("name"),
-                                "name_en": p.get("name"),
-                                "name_ru": p.get("name"),
-                                "description_ar": f"Imported Supabase Product: {p.get('name')}",
-                                "description_en": f"Imported Supabase Product: {p.get('name')}",
-                                "description_ru": f"Imported Supabase Product: {p.get('name')}",
+                                "name_ar": p_name,
+                                "name_en": p_name,
+                                "name_ru": p_name,
+                                "description_ar": f"Imported Product: {p_name}",
+                                "description_en": f"Imported Product: {p_name}",
+                                "description_ru": f"Imported Product: {p_name}",
                                 "price": float(p.get("price", 0.0)),
                                 "custom_emoji_id": None
                             })
-                        return formatted
-                    return data.get('products') if data.get('ok') else None
+                    return formatted
+                else:
+                    logger.error(f"Error fetching provider products HTTP {resp.status}")
     except Exception as e:
         logger.error(f"Error fetching provider products: {e}")
     return None

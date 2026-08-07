@@ -553,39 +553,34 @@ async def get_stock_count(product_id):
                     base_url = prov['base_url']
                     api_key = prov['api_key']
                 
-                import aiohttp
-                is_supabase = "supabase.co" in base_url
+            import aiohttp
+            is_supabase = "supabase.co" in base_url
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "X-API-Key": api_key,
+                "Content-Type": "application/json"
+            }
+            url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
                 
-                headers = {}
-                if is_supabase:
-                    headers["Authorization"] = f"Bearer {api_key}"
-                    url = f"{base_url}?action=products"
-                else:
-                    headers["X-API-Key"] = api_key
-                    url = f"{base_url}/api/products"
-                    
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(url, headers=headers, timeout=5) as resp:
-                            if resp.status == 200:
-                                data = await resp.json()
-                                if is_supabase:
-                                    # Parse Supabase products list directly or wrapped
-                                    raw_list = data if isinstance(data, list) else data.get('products', [])
-                                    # Find matching product by id
-                                    for p in raw_list:
-                                        # Compare strings or UUID formats
-                                        if str(p.get('id')) == str(provider_prod_id):
-                                            # "Returns active products: id, name, price, stock, manual_delivery."
-                                            return local_count + int(p.get('stock', 0))
-                                else:
-                                    if data.get('ok') and 'products' in data:
-                                        for p in data['products']:
-                                            if p['id'] == provider_prod_id:
-                                                return local_count + p.get('stock_count', 0)
-                except Exception as e:
-                    logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
-                return local_count
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers, timeout=5) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            raw_list = []
+                            if isinstance(data, list):
+                                raw_list = data
+                            elif isinstance(data, dict):
+                                raw_list = data.get('products') or data.get('data') or []
+                                
+                            for p in raw_list:
+                                if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
+                                    stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count', 0)
+                                    return local_count + int(stock_val)
+            except Exception as e:
+                logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
+            return local_count
                 
         return local_count
 
@@ -688,31 +683,34 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     batch_qty = min(needed_qty, 50) if is_supabase else needed_qty
                     ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
                     
-                    headers = {}
-                    if is_supabase:
-                        headers["Authorization"] = f"Bearer {api_key}"
-                        headers["Content-Type"] = "application/json"
-                        url = f"{base_url}?action=order"
-                        buy_payload = {
-                            "product_id": product['provider_product_id'], # UUID
-                            "quantity": batch_qty,
-                            "external_order_id": ext_order_id
-                        }
-                    else:
-                        headers["X-API-Key"] = api_key
-                        headers["Content-Type"] = "application/json"
-                        url = f"{base_url}/api/buy"
-                        buy_payload = {
-                            "product_id": product['provider_product_id'],
-                            "quantity": batch_qty
-                        }
+                    headers = {
+                        "Authorization": f"Bearer {api_key}",
+                        "X-API-Key": api_key,
+                        "Content-Type": "application/json"
+                    }
+                    buy_payload = {
+                        "product_id": product['provider_product_id'],
+                        "quantity": batch_qty,
+                        "external_order_id": ext_order_id
+                    }
                     
+                    if is_supabase:
+                        url = f"{base_url}?action=order"
+                    else:
+                        url = f"{base_url}/api/purchase" if "shopdigital" in base_url else f"{base_url}/api/buy"
+
                     try:
                         async with session.post(url, headers=headers, json=buy_payload) as resp:
+                            if resp.status not in [200, 201] and not is_supabase and "/api/purchase" in url:
+                                # Fallback to /api/buy if /api/purchase gave 404
+                                alt_url = f"{base_url}/api/buy"
+                                async with session.post(alt_url, headers=headers, json=buy_payload) as alt_resp:
+                                    resp = alt_resp
+
                             if resp.status not in [200, 201]:
                                 try:
                                     err_data = await resp.json()
-                                    err_msg = err_data.get('error') or err_data.get('errorMessage') or 'Unknown provider error'
+                                    err_msg = err_data.get('error') or err_data.get('errorMessage') or err_data.get('message') or f'HTTP {resp.status}'
                                 except Exception:
                                     err_msg = await resp.text()
                                 if not provider_stock_data:
@@ -724,38 +722,32 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             buy_data = await resp.json()
                             
                             batch_items = []
-                            if is_supabase:
-                                raw_data = buy_data.get('data')
-                                if not raw_data:
-                                    if not provider_stock_data:
-                                        raise Exception("Provider returned empty delivery data")
-                                    break
-                                
-                                if isinstance(raw_data, str):
-                                    if "\n" in raw_data:
-                                        batch_items = [item.strip() for item in raw_data.split("\n") if item.strip()]
-                                    elif "," in raw_data:
-                                        batch_items = [item.strip() for item in raw_data.split(",") if item.strip()]
+                            # Check credentials / items / data fields
+                            raw_creds = buy_data.get('credentials') if buy_data.get('credentials') is not None else (buy_data.get('data') if buy_data.get('data') is not None else buy_data.get('items'))
+                            if raw_creds is not None:
+                                if isinstance(raw_creds, str):
+                                    if "\n" in raw_creds:
+                                        batch_items = [item.strip() for item in raw_creds.split("\n") if item.strip()]
+                                    elif "," in raw_creds:
+                                        batch_items = [item.strip() for item in raw_creds.split(",") if item.strip()]
                                     else:
-                                        batch_items = [raw_data]
-                                elif isinstance(raw_data, list):
-                                    batch_items = raw_data
+                                        batch_items = [raw_creds]
+                                elif isinstance(raw_creds, list):
+                                    batch_items = raw_creds
                                 else:
-                                    batch_items = [str(raw_data)]
-                            else:
-                                if not buy_data.get('ok') or 'items' not in buy_data:
-                                    if not provider_stock_data:
-                                        raise Exception("Provider purchase response invalid")
-                                    break
-                                batch_items = buy_data['items']
-                                
+                                    batch_items = [str(raw_creds)]
+                            elif buy_data.get('success') or buy_data.get('ok'):
+                                order_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
+                                batch_items = [f"Order #{order_id} Completed Successfully"]
+
                             if not batch_items:
+                                if not provider_stock_data:
+                                    raise Exception("Provider returned empty delivery data")
                                 break
                                 
                             provider_stock_data.extend(batch_items)
                             needed_qty -= len(batch_items)
-                            
-                            if len(batch_items) < batch_qty or not is_supabase:
+                            if not is_supabase:
                                 break
                     except asyncio.TimeoutError:
                         if not provider_stock_data:
