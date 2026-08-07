@@ -2790,6 +2790,27 @@ async def process_provider_key(message: Message, state: FSMContext, lang='en'):
         await state.update_data(prov_products=products, prov_id=prov_id)
         await message.answer(get_text('prov_select_product', lang), reply_markup=keyboards.get_provider_products_keyboard(products, lang))
 
+@router.callback_query(F.data.startswith("admin_prov_pg_"))
+async def cb_admin_prov_page(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    page = int(callback.data.replace("admin_prov_pg_", ""))
+    data = await state.get_data()
+    products = data.get('prov_products', [])
+    
+    if not products:
+        await callback.answer("Session expired. Please pull provider products again.", show_alert=True)
+        return
+        
+    kb = keyboards.get_provider_products_keyboard(products, lang=lang, page=page)
+    try:
+        await callback.message.edit_text(get_text('prov_select_product', lang), reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
+
 @router.callback_query(F.data.startswith("admin_prov_sel_"))
 async def cb_admin_prov_select_product(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):

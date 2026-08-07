@@ -347,14 +347,50 @@ def get_provider_manage_keyboard(provider_id, lang='en') -> InlineKeyboardMarkup
     builder.adjust(1)
     return builder.as_markup()
 
-def get_provider_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
+def get_provider_products_keyboard(products, lang='en', page=0, per_page=12) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for prod in products:
+    if not products:
+        builder.button(text="🔙 Cancel", callback_data="admin_menu")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    total_products = len(products)
+    total_pages = (total_products + per_page - 1) // per_page
+    page = max(0, min(page, total_pages - 1))
+
+    start_idx = page * per_page
+    end_idx = start_idx + per_page
+    page_products = products[start_idx:end_idx]
+
+    for prod in page_products:
         name = prod.get('name_en') or prod.get('name_ar') or f"ID: {prod['id']}"
+        if len(name) > 30:
+            name = name[:27] + "..."
         price = prod.get('price', 0.0)
         builder.button(text=f"📥 {name} (${price:.2f})", callback_data=f"admin_prov_sel_{prod['id']}")
+
+    adjust_pattern = [1] * len(page_products)
+
+    # Navigation buttons
+    if total_pages > 1:
+        nav_count = 0
+        if page > 0:
+            builder.button(text="⬅️ Prev", callback_data=f"admin_prov_pg_{page - 1}")
+            nav_count += 1
+        
+        builder.button(text=f"📄 {page + 1}/{total_pages}", callback_data="ignore")
+        nav_count += 1
+
+        if page < total_pages - 1:
+            builder.button(text="Next ➡️", callback_data=f"admin_prov_pg_{page + 1}")
+            nav_count += 1
+        
+        adjust_pattern.append(nav_count)
+
     builder.button(text="🔙 Cancel", callback_data="admin_menu")
-    builder.adjust(1)
+    adjust_pattern.append(1)
+
+    builder.adjust(*adjust_pattern)
     return builder.as_markup()
 
 async def get_force_sub_keyboard(bot, channels: list, lang='en') -> InlineKeyboardMarkup:
