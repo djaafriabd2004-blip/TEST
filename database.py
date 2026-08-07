@@ -532,7 +532,8 @@ async def bulk_add_stock(product_id, items):
         await db.commit()
 
 async def get_stock_count(product_id):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
         
         # Get local stock count first
@@ -553,34 +554,34 @@ async def get_stock_count(product_id):
                     base_url = prov['base_url']
                     api_key = prov['api_key']
                 
-            import aiohttp
-            is_supabase = "supabase.co" in base_url
-            
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "X-API-Key": api_key,
-                "Content-Type": "application/json"
-            }
-            url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
+                import aiohttp
+                is_supabase = "supabase.co" in base_url
                 
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=headers, timeout=5) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            raw_list = []
-                            if isinstance(data, list):
-                                raw_list = data
-                            elif isinstance(data, dict):
-                                raw_list = data.get('products') or data.get('data') or []
-                                
-                            for p in raw_list:
-                                if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
-                                    stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count', 0)
-                                    return local_count + int(stock_val)
-            except Exception as e:
-                logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
-            return local_count
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "X-API-Key": api_key,
+                    "Content-Type": "application/json"
+                }
+                url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
+                    
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, headers=headers, timeout=5) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                raw_list = []
+                                if isinstance(data, list):
+                                    raw_list = data
+                                elif isinstance(data, dict):
+                                    raw_list = data.get('products') or data.get('data') or []
+                                    
+                                for p in raw_list:
+                                    if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
+                                        stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count', 0)
+                                        return local_count + int(stock_val)
+                except Exception as e:
+                    logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
+                return local_count
                 
         return local_count
 
