@@ -704,80 +704,66 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                         else:
                             endpoints = [f"{base_url}/api/buy", f"{base_url}/api/purchase"]
 
-                    try:
-                        resp = None
-                        for ep in endpoints:
-                            try:
-                                r = await session.post(ep, headers=headers, json=buy_payload)
-                                if r.status != 404:
-                                    resp = r
+                    buy_data = None
+                    last_err = "No response from provider"
+                    
+                    for ep in endpoints:
+                        try:
+                            async with session.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                                if resp.status in [200, 201]:
+                                    try:
+                                        buy_data = await resp.json()
+                                    except Exception:
+                                        raw_txt = await resp.text()
+                                        buy_data = {"credentials": raw_txt}
                                     break
-                            except Exception:
-                                pass
-
-                        if not resp:
-                            # If all attempts returned 404, perform last request to capture status/error text
-                            resp = await session.post(endpoints[0], headers=headers, json=buy_payload)
-
-                            if resp.status not in [200, 201]:
-                                err_msg = f"HTTP {resp.status}"
-                                try:
-                                    err_text = await resp.text()
-                                    if err_text:
-                                        try:
-                                            import json
-                                            err_data = json.loads(err_text)
-                                            err_msg = err_data.get('error') or err_data.get('errorMessage') or err_data.get('message') or err_text[:200]
-                                        except Exception:
-                                            err_msg = err_text[:200]
-                                except Exception:
-                                    pass
-                                if not provider_stock_data:
-                                    raise Exception(f"Provider error: {err_msg}")
                                 else:
-                                    logger.warning(f"Batch provider order failed: {err_msg}")
-                                    break
-                            
-                            buy_data = await resp.json()
-                            
-                            batch_items = []
-                            # Check credentials / items / data fields
-                            raw_creds = buy_data.get('credentials') if buy_data.get('credentials') is not None else (buy_data.get('data') if buy_data.get('data') is not None else buy_data.get('items'))
-                            if raw_creds is not None:
-                                if isinstance(raw_creds, str):
-                                    if "\n" in raw_creds:
-                                        batch_items = [item.strip() for item in raw_creds.split("\n") if item.strip()]
-                                    elif "," in raw_creds:
-                                        batch_items = [item.strip() for item in raw_creds.split(",") if item.strip()]
-                                    else:
-                                        batch_items = [raw_creds]
-                                elif isinstance(raw_creds, list):
-                                    batch_items = raw_creds
-                                else:
-                                    batch_items = [str(raw_creds)]
-                            elif buy_data.get('success') or buy_data.get('ok'):
-                                order_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
-                                batch_items = [f"Order #{order_id} Completed Successfully"]
+                                    try:
+                                        err_json = await resp.json()
+                                        last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or f"HTTP {resp.status}"
+                                    except Exception:
+                                        err_txt = await resp.text()
+                                        last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
+                                    if resp.status != 404:
+                                        break
+                        except Exception as ep_err:
+                            logger.warning(f"Provider request error on {ep}: {ep_err}")
+                            last_err = str(ep_err)
 
-                            if not batch_items:
-                                if not provider_stock_data:
-                                    raise Exception("Provider returned empty delivery data")
-                                break
-                                
-                            provider_stock_data.extend(batch_items)
-                            needed_qty -= len(batch_items)
-                            if not is_supabase:
-                                break
-                    except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as conn_err:
+                    if not buy_data:
                         if not provider_stock_data:
-                            err_type = "Connection closed" if isinstance(conn_err, aiohttp.ClientConnectionError) else "Timed out"
-                            raise Exception(f"Provider connection failed ({err_type}). Please check provider server status.")
+                            raise Exception(f"Provider error: {last_err}")
+                        else:
+                            logger.warning(f"Batch provider order failed: {last_err}")
+                            break
+
+                    batch_items = []
+                    # Check credentials / items / data fields
+                    raw_creds = buy_data.get('credentials') if buy_data.get('credentials') is not None else (buy_data.get('data') if buy_data.get('data') is not None else buy_data.get('items'))
+                    if raw_creds is not None:
+                        if isinstance(raw_creds, str):
+                            if "\n" in raw_creds:
+                                batch_items = [item.strip() for item in raw_creds.split("\n") if item.strip()]
+                            elif "," in raw_creds:
+                                batch_items = [item.strip() for item in raw_creds.split(",") if item.strip()]
+                            else:
+                                batch_items = [raw_creds]
+                        elif isinstance(raw_creds, list):
+                            batch_items = raw_creds
+                        else:
+                            batch_items = [str(raw_creds)]
+                    elif buy_data.get('success') or buy_data.get('ok'):
+                        order_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
+                        batch_items = [f"Order #{order_id} Completed Successfully"]
+
+                    if not batch_items:
+                        if not provider_stock_data:
+                            raise Exception("Provider returned empty delivery data")
                         break
-                    except Exception as e:
-                        if not provider_stock_data:
-                            if "Provider error" in str(e) or "Provider purchase response invalid" in str(e) or "Provider connection failed" in str(e):
-                                raise e
-                            raise Exception(f"Failed to communicate with provider: {e}")
+                        
+                    provider_stock_data.extend(batch_items)
+                    needed_qty -= len(batch_items)
+                    if not is_supabase:
                         break
 
             if len(provider_stock_data) < remaining_qty and not allow_partial:
