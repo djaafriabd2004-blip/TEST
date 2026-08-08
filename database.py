@@ -456,9 +456,8 @@ async def delete_product(product_id):
 
 # Provider Integration Helpers
 async def save_provider(base_url, api_key, store_name=None):
-    base_url = base_url.strip().rstrip('/')
-    if not base_url.startswith('http'):
-        base_url = 'https://' + base_url
+    from utils import normalize_provider_url
+    base_url = normalize_provider_url(base_url)
     
     async with aiosqlite.connect(DB_NAME) as db:
         # Check if base_url exists
@@ -551,7 +550,8 @@ async def get_stock_count(product_id):
                     prov = await prov_cursor.fetchone()
                     if not prov:
                         return local_count
-                    base_url = prov['base_url']
+                    from utils import normalize_provider_url
+                    base_url = normalize_provider_url(prov['base_url'])
                     api_key = prov['api_key']
                 
                 import aiohttp
@@ -666,7 +666,8 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 prov = await prov_cursor.fetchone()
                 if not prov:
                     raise Exception("Product provider configuration not found")
-                base_url = prov['base_url']
+                from utils import normalize_provider_url
+                base_url = normalize_provider_url(prov['base_url'])
                 api_key = prov['api_key']
                 
             # Perform external purchase via provider API in batches if needed
@@ -696,17 +697,27 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     }
                     
                     if is_supabase:
-                        url = f"{base_url}?action=order"
+                        endpoints = [f"{base_url}?action=order"]
                     else:
-                        url = f"{base_url}/api/purchase" if "shopdigital" in base_url else f"{base_url}/api/buy"
+                        if "shopdigital" in base_url:
+                            endpoints = [f"{base_url}/api/purchase", f"{base_url}/api/buy"]
+                        else:
+                            endpoints = [f"{base_url}/api/buy", f"{base_url}/api/purchase"]
 
                     try:
-                        async with session.post(url, headers=headers, json=buy_payload) as resp:
-                            if resp.status not in [200, 201] and not is_supabase and "/api/purchase" in url:
-                                # Fallback to /api/buy if /api/purchase gave 404
-                                alt_url = f"{base_url}/api/buy"
-                                async with session.post(alt_url, headers=headers, json=buy_payload) as alt_resp:
-                                    resp = alt_resp
+                        resp = None
+                        for ep in endpoints:
+                            try:
+                                r = await session.post(ep, headers=headers, json=buy_payload)
+                                if r.status != 404:
+                                    resp = r
+                                    break
+                            except Exception:
+                                pass
+
+                        if not resp:
+                            # If all attempts returned 404, perform last request to capture status/error text
+                            resp = await session.post(endpoints[0], headers=headers, json=buy_payload)
 
                             if resp.status not in [200, 201]:
                                 err_msg = f"HTTP {resp.status}"

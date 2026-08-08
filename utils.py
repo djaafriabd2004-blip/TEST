@@ -6,6 +6,20 @@ from localization import get_text
 
 logger = logging.getLogger(__name__)
 
+def normalize_provider_url(url: str) -> str:
+    """
+    Normalizes a provider base URL by stripping trailing slashes and /api prefix
+    to prevent double /api/api/ path issues.
+    """
+    if not url:
+        return ""
+    url = url.strip().rstrip('/')
+    if not url.startswith('http'):
+        url = 'https://' + url
+    if url.endswith('/api'):
+        url = url[:-4]
+    return url.rstrip('/')
+
 def get_product_name(product, lang='en'):
     """
     Safely retrieves the localized product name from a database row or dict.
