@@ -379,20 +379,21 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             user_info += f" (@{message.from_user.username})"
         prod_title = get_product_name(product, 'en')
         
+        clean_err_msg = str(err_msg).replace('`', "'")
         admin_alert = (
             f"🚨 *DELIVERY ERROR ALERT! (Action Required)*\n\n"
             f"👤 *User:* {user_info} (`{user_id}`)\n"
             f"🛍️ *Product:* `{prod_title}` (ID: `{product_id}`)\n"
             f"🔢 *Quantity Requested:* `{qty}`\n"
             f"💵 *Total Price:* `${price_to_pay:.2f} USD`\n"
-            f"❌ *Error Details:* `{err_msg}`\n\n"
+            f"❌ *Error Details:* `{clean_err_msg}`\n\n"
             f"⚠️ *Note:* Please review this order and deliver manually or check stock if needed."
         )
         from database import get_admin_ids
         admin_ids = await get_admin_ids()
         for admin_id in admin_ids:
             try:
-                await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                await send_message_with_retry(bot.send_message, chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
             except Exception as ae:
                 logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
                 

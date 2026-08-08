@@ -709,11 +709,18 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                                     resp = alt_resp
 
                             if resp.status not in [200, 201]:
+                                err_msg = f"HTTP {resp.status}"
                                 try:
-                                    err_data = await resp.json()
-                                    err_msg = err_data.get('error') or err_data.get('errorMessage') or err_data.get('message') or f'HTTP {resp.status}'
+                                    err_text = await resp.text()
+                                    if err_text:
+                                        try:
+                                            import json
+                                            err_data = json.loads(err_text)
+                                            err_msg = err_data.get('error') or err_data.get('errorMessage') or err_data.get('message') or err_text[:200]
+                                        except Exception:
+                                            err_msg = err_text[:200]
                                 except Exception:
-                                    err_msg = await resp.text()
+                                    pass
                                 if not provider_stock_data:
                                     raise Exception(f"Provider error: {err_msg}")
                                 else:
@@ -750,13 +757,14 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             needed_qty -= len(batch_items)
                             if not is_supabase:
                                 break
-                    except asyncio.TimeoutError:
+                    except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as conn_err:
                         if not provider_stock_data:
-                            raise Exception("Provider request timed out. Please check if the purchase was debited before trying again.")
+                            err_type = "Connection closed" if isinstance(conn_err, aiohttp.ClientConnectionError) else "Timed out"
+                            raise Exception(f"Provider connection failed ({err_type}). Please check provider server status.")
                         break
                     except Exception as e:
                         if not provider_stock_data:
-                            if "Provider error" in str(e) or "Provider purchase response invalid" in str(e):
+                            if "Provider error" in str(e) or "Provider purchase response invalid" in str(e) or "Provider connection failed" in str(e):
                                 raise e
                             raise Exception(f"Failed to communicate with provider: {e}")
                         break
