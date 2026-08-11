@@ -1,7 +1,8 @@
-from aiogram import Router, F, Bot
+from aiogram import Router, F, Bot, BaseMiddleware
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, TelegramObject
 from aiogram.fsm.context import FSMContext
+from typing import Callable, Dict, Any, Awaitable
 from database import (
     get_products, get_product, add_product, update_product, delete_product,
     add_stock, bulk_add_stock, get_stock_count, get_setting, set_setting, get_all_users,
@@ -12,11 +13,38 @@ from database import (
 from localization import get_text
 from handlers.states import ProductStates, StockStates, AdminStates
 import keyboards
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+class AdminAuthMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        user_id = None
+        if hasattr(event, "from_user") and event.from_user:
+            user_id = event.from_user.id
+            
+        if not user_id or user_id not in config.ADMIN_IDS:
+            if isinstance(event, CallbackQuery):
+                try:
+                    await event.answer("❌ Unauthorized action.", show_alert=True)
+                except Exception:
+                    pass
+            return None
+            
+        return await handler(event, data)
+
+router.message.middleware(AdminAuthMiddleware())
+router.callback_query.middleware(AdminAuthMiddleware())
 
 def is_user_admin(user_id):
     return user_id in config.ADMIN_IDS

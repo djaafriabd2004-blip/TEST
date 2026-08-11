@@ -185,13 +185,7 @@ async def buy_api(request):
                 diff_qty = quantity - actual_qty
                 refund_amount = round(price_per_item * diff_qty, 2)
                 
-                # Refund user wallet locally since API purchase is using local balance logic
-                import aiosqlite
-                from config import DB_NAME
-                async with aiosqlite.connect(DB_NAME) as db:
-                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
-                    await db.commit()
-                
+                # Note: buy_product only deducted actual_price for items delivered, so no extra balance refund is needed.
                 await send_message_with_retry(
                     bot.send_message,
                     chat_id=user_id,

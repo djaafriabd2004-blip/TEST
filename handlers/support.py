@@ -5,7 +5,10 @@ from database import get_user, get_setting
 from localization import get_text
 from handlers.states import SupportStates, AdminStates
 import keyboards
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 import logging
 
 logger = logging.getLogger(__name__)

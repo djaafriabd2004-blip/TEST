@@ -2,7 +2,10 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 import aiosqlite
-from config import DB_NAME
+try:
+    from bot_config import DB_NAME
+except ImportError:
+    from config import DB_NAME
 from database import (
     get_products, get_product, get_stock_count, buy_product, get_user, get_setting,
     get_user_discount, is_subscribed_stock_notification, subscribe_stock_notification,
@@ -467,12 +470,14 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         diff_qty = qty - actual_qty
         refund_amount = round(price_per_item * diff_qty, 2)
         
-        # Credit user wallet with the difference
-        import aiosqlite
-        from config import DB_NAME
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
-            await db.commit()
+        # Credit user wallet with the difference ONLY IF the purchase was paid directly (skip_balance_check=True).
+        # For balance purchases, buy_product already deducted only actual_price from user balance.
+        if skip_balance_check and refund_amount > 0:
+            import aiosqlite
+            from config import DB_NAME
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
+                await db.commit()
             
     # Split stock_data_list into chunks of text, each having length <= 4000 to be safe
     chunks = []

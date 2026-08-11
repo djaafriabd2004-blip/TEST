@@ -9,7 +9,10 @@ from database import (
     get_user, update_user_balance, reject_payment, get_pending_cryptobot_payments
 )
 from cryptobot_client import get_cryptobot_invoice
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 
 logger = logging.getLogger(__name__)
 

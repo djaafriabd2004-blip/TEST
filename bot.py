@@ -3,7 +3,10 @@ import logging
 import sys
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 from database import db_init
 from middlewares.db_middleware import DbUserMiddleware
 from middlewares.fsm_clear_middleware import FsmStateClearMiddleware

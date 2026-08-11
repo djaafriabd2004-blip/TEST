@@ -4,7 +4,10 @@ import os
 import time
 import uuid
 from datetime import datetime
-from config import DB_NAME
+try:
+    from bot_config import DB_NAME
+except ImportError:
+    from config import DB_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +406,7 @@ async def cancel_all_pre_orders_for_product(product_id, bot=None, reason="price_
             po_user_id = po['user_id']
             refund_amount = po['price_paid']
             po_dict = dict(po) if po else {}
+            user_lang = po_dict.get('language') if po_dict.get('language') in ['en', 'ar', 'ru'] else 'en'
             prod_name = po_dict.get(f"name_{user_lang}") or po_dict.get("name_en") or po_dict.get("name_ar") or "Product"
             
             # Refund user balance

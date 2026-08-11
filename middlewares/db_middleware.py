@@ -2,7 +2,10 @@ from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from typing import Callable, Dict, Any, Awaitable
 from database import get_user, create_user
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 
 class DbUserMiddleware(BaseMiddleware):
     async def __call__(

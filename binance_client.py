@@ -5,7 +5,10 @@ import uuid
 import aiohttp
 import json
 import logging
-from config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+try:
+    from bot_config import BINANCE_API_KEY, BINANCE_SECRET_KEY
+except ImportError:
+    from config import BINANCE_API_KEY, BINANCE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +104,11 @@ async def create_binance_order(amount, description="Deposit Balance", order_id=N
     # Generate signature using the local secret key or fallback
     api_key, secret_key = await get_binance_keys()
     
-    # If the user hasn't set keys, return a dummy payment flow for testing
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
-        logger.warning("Binance keys not configured. Simulating order creation.")
-        # Return a mock payment URL and the generated order_id
+        logger.warning("Binance API keys not configured.")
         return {
-            "success": True,
-            "mock": True,
-            "checkoutUrl": f"https://test.binancepay.mock/pay?order={order_id}&amount={amount}",
-            "merchantTradeNo": order_id
+            "success": False,
+            "error": "Binance Pay API keys not configured. Please set API and Secret keys in admin panel."
         }
         
     headers = {
@@ -165,14 +164,12 @@ async def check_binance_order_status(merchant_trade_no):
     
     api_key, secret_key = await get_binance_keys()
     
-    # Simulate payment verification if keys are dummy
     if not api_key or not secret_key or api_key == "YOUR_BINANCE_API_KEY" or secret_key == "YOUR_BINANCE_SECRET_KEY":
-        logger.info("Binance keys not configured. Simulating payment check.")
-        # For testing, we mock complete payment as PAID
+        logger.warning("Binance API keys not configured.")
         return {
-            "success": True,
-            "mock": True,
-            "status": "PAID"
+            "success": False,
+            "error": "Binance Pay API keys not configured.",
+            "status": "FAILED"
         }
         
     signature = generate_signature(timestamp, nonce, body_str, secret_key)
@@ -488,24 +485,7 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
             if matched:
                 break
                 
-    # Fallback 3: Approximate numeric match
-    if not matched and tx_id_str.isdigit():
-        tx_numeric = int(tx_id_str)
-        for row in data:
-            if not isinstance(row, dict):
-                continue
-            for key in ['transactionId', 'transId', 'orderId']:
-                if key in row:
-                    cand_val = str(row[key]).strip()
-                    if cand_val.isdigit():
-                        cand_numeric = int(cand_val)
-                        if abs(cand_numeric - tx_numeric) <= 2:
-                            matched = row
-                            logger.info(f"[BINANCE_USER_API] approximate_numeric_match txId={tx_id_str} key={key} candidate={cand_val}")
-                            break
-            if matched:
-                break
-                
+
     # Fallback 4: Fetch more (100) if not found and transaction_id is not empty
     if not matched and tx_id_str:
         logger.info("[BINANCE_USER_API] Extending search to 100 transactions...")

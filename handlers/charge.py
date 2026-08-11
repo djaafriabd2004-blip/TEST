@@ -9,7 +9,10 @@ from crypto_verifier import verify_crypto_transaction, is_tx_too_old_error, get_
 from localization import get_text
 from handlers.states import ChargeStates
 from cryptobot_client import create_cryptobot_invoice, get_cryptobot_invoice
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 import keyboards
 import uuid
 import time

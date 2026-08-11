@@ -1,7 +1,10 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from localization import get_text
-import config
+try:
+    import bot_config as config
+except ImportError:
+    import config
 
 def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
