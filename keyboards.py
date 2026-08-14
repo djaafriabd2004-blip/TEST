@@ -344,6 +344,7 @@ def get_providers_list_keyboard(providers, lang='en') -> InlineKeyboardMarkup:
 
 def get_provider_manage_keyboard(provider_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.button(text="🔑 Update API Token / تعديل المفتاح", callback_data=f"admin_prov_editkey_{provider_id}")
     builder.button(text="📥 Pull/Import Products", callback_data=f"admin_prov_pull_{provider_id}")
     builder.button(text="❌ Delete Provider", callback_data=f"admin_prov_delete_{provider_id}")
     builder.button(text="🔙 Back", callback_data="admin_pull_external")

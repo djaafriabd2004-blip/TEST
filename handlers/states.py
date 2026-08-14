@@ -58,4 +58,5 @@ class AdminStates(StatesGroup):
 class ProvidersStates(StatesGroup):
     waiting_for_url = State()
     waiting_for_key = State()
+    waiting_for_edit_key = State()
     waiting_for_price = State()

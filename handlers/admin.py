@@ -2749,6 +2749,45 @@ async def cb_admin_prov_delete(callback: CallbackQuery, lang='en'):
     text = get_text('prov_list_title', lang)
     await callback.message.edit_text(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
 
+@router.callback_query(F.data.startswith("admin_prov_editkey_"))
+async def cb_admin_prov_edit_key(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    provider_id = int(callback.data.replace("admin_prov_editkey_", ""))
+    await state.set_state(ProvidersStates.waiting_for_edit_key)
+    await state.update_data(edit_provider_id=provider_id)
+    await callback.message.edit_text("🔑 *Please send the new API Key / Token for this provider:*", parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ProvidersStates.waiting_for_edit_key)
+async def process_provider_edit_key(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+        
+    new_key = message.text.strip()
+    data = await state.get_data()
+    provider_id = data.get('edit_provider_id')
+    await state.clear()
+    
+    from database import get_provider, save_provider
+    prov = await get_provider(provider_id)
+    if not prov:
+        await message.answer("❌ Provider not found.")
+        return
+        
+    base_url = prov['base_url']
+    store_name = dict(prov).get('store_name')
+    
+    await message.answer("⏳ Testing new API key connection...")
+    products = await fetch_provider_products(base_url, new_key)
+    if products is None:
+        await message.answer("❌ Connection test failed with new API key! Please check the key and try again.")
+    else:
+        await save_provider(base_url, new_key, store_name=store_name)
+        await message.answer("✅ API Key updated successfully for provider!")
+
 @router.callback_query(F.data.startswith("admin_prov_pull_"))
 async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
