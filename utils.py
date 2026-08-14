@@ -8,16 +8,20 @@ logger = logging.getLogger(__name__)
 
 def normalize_provider_url(url: str) -> str:
     """
-    Normalizes a provider base URL by stripping trailing slashes and /api prefix
-    to prevent double /api/api/ path issues.
+    Normalizes a provider base URL by stripping trailing slashes, /api, /v1, or /api-docs
+    to prevent double path issues.
     """
     if not url:
         return ""
     url = url.strip().rstrip('/')
     if not url.startswith('http'):
         url = 'https://' + url
+    if url.endswith('/api-docs'):
+        url = url[:-9]
     if url.endswith('/api'):
         url = url[:-4]
+    if url.endswith('/v1'):
+        url = url[:-3]
     return url.rstrip('/')
 
 def get_product_name(product, lang='en'):

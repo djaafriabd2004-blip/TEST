@@ -2651,43 +2651,56 @@ async def fetch_provider_products(base_url, api_key):
     from utils import normalize_provider_url
     base_url = normalize_provider_url(base_url)
     is_supabase = "supabase.co" in base_url
+    is_prodseller = "prodseller" in base_url
     
     headers = {
-        "Authorization": f"Bearer {api_key}",
-        "X-API-Key": api_key,
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {api_key.strip()}",
+        "X-API-Key": api_key.strip(),
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
-    url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
+    
+    if is_supabase:
+        endpoints = [f"{base_url}?action=products"]
+    elif is_prodseller:
+        endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
+    else:
+        endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
         
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    raw_list = []
-                    if isinstance(data, list):
-                        raw_list = data
-                    elif isinstance(data, dict):
-                        raw_list = data.get('products') or data.get('data') or []
-                        
-                    formatted = []
-                    for p in raw_list:
-                        if isinstance(p, dict) and p.get("id"):
-                            p_name = p.get("name") or p.get("name_en") or p.get("title") or f"Product {p.get('id')}"
-                            formatted.append({
-                                "id": p.get("id"),
-                                "name_ar": p_name,
-                                "name_en": p_name,
-                                "name_ru": p_name,
-                                "description_ar": f"Imported Product: {p_name}",
-                                "description_en": f"Imported Product: {p_name}",
-                                "description_ru": f"Imported Product: {p_name}",
-                                "price": float(p.get("price", 0.0)),
-                                "custom_emoji_id": None
-                            })
-                    return formatted
-                else:
-                    logger.error(f"Error fetching provider products HTTP {resp.status}")
+            for url in endpoints:
+                try:
+                    async with session.get(url, headers=headers, timeout=10) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            raw_list = []
+                            if isinstance(data, list):
+                                raw_list = data
+                            elif isinstance(data, dict):
+                                raw_list = data.get('products') or data.get('data') or []
+                                
+                            formatted = []
+                            for p in raw_list:
+                                if isinstance(p, dict) and p.get("id"):
+                                    p_name = p.get("name") or p.get("name_en") or p.get("title") or f"Product {p.get('id')}"
+                                    formatted.append({
+                                        "id": p.get("id"),
+                                        "name_ar": p_name,
+                                        "name_en": p_name,
+                                        "name_ru": p_name,
+                                        "description_ar": f"Imported Product: {p_name}",
+                                        "description_en": f"Imported Product: {p_name}",
+                                        "description_ru": f"Imported Product: {p_name}",
+                                        "price": float(p.get("price", 0.0)),
+                                        "custom_emoji_id": None
+                                    })
+                            if formatted:
+                                return formatted
+                        else:
+                            logger.warning(f"Provider {url} returned HTTP {resp.status}")
+                except Exception as ep_err:
+                    logger.warning(f"Error calling {url}: {ep_err}")
     except Exception as e:
         logger.error(f"Error fetching provider products: {e}")
     return None

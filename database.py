@@ -560,30 +560,43 @@ async def get_stock_count(product_id):
                 
                 import aiohttp
                 is_supabase = "supabase.co" in base_url
+                is_prodseller = "prodseller" in base_url
                 
                 headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "X-API-Key": api_key,
+                    "Authorization": f"Bearer {api_key.strip()}",
+                    "X-API-Key": api_key.strip(),
                     "Content-Type": "application/json",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
-                url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
+                
+                if is_supabase:
+                    endpoints = [f"{base_url}?action=products"]
+                elif is_prodseller:
+                    endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
+                else:
+                    endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
                     
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url, headers=headers, timeout=5) as resp:
-                            if resp.status == 200:
-                                data = await resp.json()
-                                raw_list = []
-                                if isinstance(data, list):
-                                    raw_list = data
-                                elif isinstance(data, dict):
-                                    raw_list = data.get('products') or data.get('data') or []
-                                    
-                                for p in raw_list:
-                                    if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
-                                        stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count', 0)
-                                        return local_count + int(stock_val)
+                        for url in endpoints:
+                            try:
+                                async with session.get(url, headers=headers, timeout=5) as resp:
+                                    if resp.status == 200:
+                                        data = await resp.json()
+                                        raw_list = []
+                                        if isinstance(data, list):
+                                            raw_list = data
+                                        elif isinstance(data, dict):
+                                            raw_list = data.get('products') or data.get('data') or []
+                                            
+                                        for p in raw_list:
+                                            if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
+                                                stock_val = p.get('stock')
+                                                if stock_val is None:
+                                                    stock_val = 999 if p.get('inStock') else 0
+                                                return local_count + int(stock_val)
+                            except Exception:
+                                pass
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
                 return local_count
@@ -683,6 +696,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             
             is_shopdigital = "shopdigital" in base_url
             is_supabase = "supabase.co" in base_url
+            is_prodseller = "prodseller" in base_url
             needed_qty = remaining_qty
             timeout_cfg = aiohttp.ClientTimeout(total=30)
             
@@ -697,10 +711,12 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     headers = {
                         "Authorization": f"Bearer {api_key.strip()}",
                         "X-API-Key": api_key.strip(),
+                        "Idempotency-Key": ext_order_id,
                         "Content-Type": "application/json",
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     }
                     buy_payload = {
+                        "productId": prov_pid,
                         "product_id": prov_pid,
                         "quantity": batch_qty,
                         "external_order_id": ext_order_id
@@ -708,11 +724,12 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     
                     if is_supabase:
                         endpoints = [f"{base_url}?action=order"]
+                    elif is_prodseller:
+                        endpoints = [f"{base_url}/v1/orders", f"{base_url}/orders", f"{base_url}/api/purchase", f"{base_url}/api/buy"]
+                    elif is_shopdigital:
+                        endpoints = [f"{base_url}/api/purchase", f"{base_url}/api/buy"]
                     else:
-                        if is_shopdigital:
-                            endpoints = [f"{base_url}/api/purchase", f"{base_url}/api/buy"]
-                        else:
-                            endpoints = [f"{base_url}/api/buy", f"{base_url}/api/purchase"]
+                        endpoints = [f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase", f"{base_url}/orders"]
 
                     buy_data = None
                     last_err = "No response from provider"
@@ -750,8 +767,14 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             break
 
                     batch_items = []
-                    # Check credentials / items / data fields
-                    raw_creds = buy_data.get('credentials') if buy_data.get('credentials') is not None else (buy_data.get('data') if buy_data.get('data') is not None else buy_data.get('items'))
+                    # Check deliveredKeys / deliveredKey / credentials / items / data fields
+                    raw_creds = (
+                        buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
+                        else (buy_data.get('deliveredKey') if buy_data.get('deliveredKey') is not None
+                        else (buy_data.get('credentials') if buy_data.get('credentials') is not None
+                        else (buy_data.get('data') if buy_data.get('data') is not None
+                        else buy_data.get('items'))))
+                    )
                     if raw_creds is not None:
                         if isinstance(raw_creds, str):
                             if "\n" in raw_creds:
