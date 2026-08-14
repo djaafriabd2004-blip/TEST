@@ -564,7 +564,8 @@ async def get_stock_count(product_id):
                 headers = {
                     "Authorization": f"Bearer {api_key}",
                     "X-API-Key": api_key,
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
                 url = f"{base_url}?action=products" if is_supabase else f"{base_url}/api/products"
                     
@@ -680,22 +681,27 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             import time
             import uuid
             
+            is_shopdigital = "shopdigital" in base_url
             is_supabase = "supabase.co" in base_url
             needed_qty = remaining_qty
             timeout_cfg = aiohttp.ClientTimeout(total=30)
             
             async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
                 while needed_qty > 0:
-                    batch_qty = min(needed_qty, 50) if is_supabase else needed_qty
+                    batch_qty = 1 if is_shopdigital else (min(needed_qty, 50) if is_supabase else needed_qty)
                     ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
                     
+                    raw_pid = product['provider_product_id']
+                    prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
+                    
                     headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "X-API-Key": api_key,
-                        "Content-Type": "application/json"
+                        "Authorization": f"Bearer {api_key.strip()}",
+                        "X-API-Key": api_key.strip(),
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     }
                     buy_payload = {
-                        "product_id": product['provider_product_id'],
+                        "product_id": prov_pid,
                         "quantity": batch_qty,
                         "external_order_id": ext_order_id
                     }
@@ -703,7 +709,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     if is_supabase:
                         endpoints = [f"{base_url}?action=order"]
                     else:
-                        if "shopdigital" in base_url:
+                        if is_shopdigital:
                             endpoints = [f"{base_url}/api/purchase", f"{base_url}/api/buy"]
                         else:
                             endpoints = [f"{base_url}/api/buy", f"{base_url}/api/purchase"]
@@ -713,6 +719,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     
                     for ep in endpoints:
                         try:
+                            logger.info(f"Executing provider order on {ep} with payload: {buy_payload}")
                             async with session.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                                 if resp.status in [200, 201]:
                                     try:
@@ -724,10 +731,11 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                                 else:
                                     try:
                                         err_json = await resp.json()
-                                        last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or f"HTTP {resp.status}"
+                                        last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or err_json.get('detail') or f"HTTP {resp.status}"
                                     except Exception:
                                         err_txt = await resp.text()
                                         last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
+                                    logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
                                     if resp.status != 404:
                                         break
                         except Exception as ep_err:
