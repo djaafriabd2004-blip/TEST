@@ -89,15 +89,15 @@ async def cb_product_view(callback: CallbackQuery, lang='en'):
         kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub)
         if entities:
             try:
-                await callback.message.edit_text(text, reply_markup=kb, entities=entities)
+                await send_message_with_retry(callback.message.edit_text, text, reply_markup=kb, entities=entities)
             except Exception as e:
-                logger.warning(f"edit_text with entities failed: {e}, falling back to Markdown")
+                logger.warning(f"edit_text with entities failed: {e}, falling back to plain text")
                 name = get_product_name(product, lang)
                 desc = get_product_desc(product, lang)
-                fallback_text = get_text('product_details', lang, name=name, desc=desc, price=f"`${product['price']:.2f} USD`", stock=stock_count)
-                await callback.message.edit_text(fallback_text, reply_markup=kb, parse_mode="Markdown")
+                fallback_text = get_text('product_details', lang, name=name, desc=desc, price=f"${product['price']:.2f} USD", stock=stock_count)
+                await send_message_with_retry(callback.message.edit_text, fallback_text, reply_markup=kb)
         else:
-            await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
+            await send_message_with_retry(callback.message.edit_text, text, reply_markup=kb, parse_mode=parse_mode)
     except Exception as outer_err:
         logger.error(f"Error in cb_product_view: {outer_err}")
     finally:
