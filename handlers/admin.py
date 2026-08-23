@@ -1679,19 +1679,18 @@ async def process_setting_value(message: Message, state: FSMContext):
         if "-" in val_str:
             parts = val_str.split("-")
             try:
-                min_v = int(parts[0].strip())
-                max_v = int(parts[1].strip())
-                if min_v > 0 and max_v >= min_v:
-                    await set_setting("auto_proofs_min_minutes", str(min_v))
-                    await set_setting("auto_proofs_max_minutes", str(max_v))
-                    await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: من {min_v} إلى {max_v} دقيقة.", reply_markup=keyboards.get_admin_back_keyboard())
-                else:
-                    raise ValueError()
+                v1 = abs(int(parts[0].strip()))
+                v2 = abs(int(parts[1].strip()))
+                min_v = max(1, min(v1, v2))
+                max_v = max(min_v, max(v1, v2))
+                await set_setting("auto_proofs_min_minutes", str(min_v))
+                await set_setting("auto_proofs_max_minutes", str(max_v))
+                await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: من {min_v} إلى {max_v} دقيقة.", reply_markup=keyboards.get_admin_back_keyboard())
             except Exception:
                 await message.answer("❌ صيغة غير صحيحة. يرجى إدخال أرقام صحيحة مثل `5-20` أو `15`.")
         else:
             try:
-                fixed_v = int(val_str)
+                fixed_v = abs(int(val_str))
                 if fixed_v > 0:
                     await set_setting("auto_proofs_min_minutes", str(fixed_v))
                     await set_setting("auto_proofs_max_minutes", str(fixed_v))
