@@ -292,8 +292,16 @@ async def start_auto_sales_proof_loop(bot):
 
     while True:
         try:
-            # Wait random interval between 5 and 20 minutes (300s to 1200s)
-            wait_seconds = random.randint(300, 1200)
+            # Read admin configurable interval (defaults to 5 to 20 minutes)
+            min_m_str = await get_setting("auto_proofs_min_minutes", "5")
+            max_m_str = await get_setting("auto_proofs_max_minutes", "20")
+            try:
+                min_m = max(1, int(str(min_m_str).strip()))
+                max_m = max(min_m, int(str(max_m_str).strip()))
+            except Exception:
+                min_m, max_m = 5, 20
+
+            wait_seconds = random.randint(min_m * 60, max_m * 60)
             await asyncio.sleep(wait_seconds)
 
             enabled = await get_setting("auto_proofs_enabled", "0")

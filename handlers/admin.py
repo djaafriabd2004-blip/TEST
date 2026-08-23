@@ -481,6 +481,8 @@ async def msg_admin_settings_menu(message: Message):
         news_ch = await get_setting("news_channel", "None")
         auto_proofs = await get_setting("auto_proofs_enabled", "0")
         proofs_icon = "🟢" if auto_proofs == "1" else "🔴"
+        proofs_min = await get_setting("auto_proofs_min_minutes", "5")
+        proofs_max = await get_setting("auto_proofs_max_minutes", "20")
         
         # Present channels as a clean list for the admin
         channels_list = ""
@@ -495,13 +497,15 @@ async def msg_admin_settings_menu(message: Message):
             f"📢 *Channel Settings*\n\n"
             f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
             f"📣 *News Channel:* `{news_ch}`\n"
-            f"📢 *Auto Sales Proofs:* `{'Enabled' if auto_proofs == '1' else 'Disabled'}`\n\n"
+            f"📢 *Auto Sales Proofs:* `{'Enabled' if auto_proofs == '1' else 'Disabled'}`\n"
+            f"⏱️ *Proof Posting Interval:* `{proofs_min} - {proofs_max} minutes`\n\n"
             f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
             f"The bot will check them and display each channel as an individual button to the user!"
         )
         builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
         builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
         builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
+        builder.button(text=f"⏱️ الفاصل الزمني: {proofs_min}-{proofs_max} دقيقة", callback_data="admin_set_proofs_interval")
         
     elif menu == "admin_support_settings":
         support = await get_setting("support_username", "None")
@@ -1597,6 +1601,8 @@ async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
     force_join = await get_setting("force_join_channels", "None")
     news_ch = await get_setting("news_channel", "None")
     proofs_icon = "🟢" if new_val == "1" else "🔴"
+    proofs_min = await get_setting("auto_proofs_min_minutes", "5")
+    proofs_max = await get_setting("auto_proofs_max_minutes", "20")
     
     channels_list = ""
     if force_join and force_join != "None":
@@ -1610,7 +1616,8 @@ async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
         f"📢 *Channel Settings*\n\n"
         f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
         f"📣 *News Channel:* `{news_ch}`\n"
-        f"📢 *Auto Sales Proofs:* `{'Enabled' if new_val == '1' else 'Disabled'}`\n\n"
+        f"📢 *Auto Sales Proofs:* `{'Enabled' if new_val == '1' else 'Disabled'}`\n"
+        f"⏱️ *Proof Posting Interval:* `{proofs_min} - {proofs_max} minutes`\n\n"
         f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
         f"The bot will check them and display each channel as an individual button to the user!"
     )
@@ -1619,6 +1626,7 @@ async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
     builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
     builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
     builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
+    builder.button(text=f"⏱️ الفاصل الزمني: {proofs_min}-{proofs_max} دقيقة", callback_data="admin_set_proofs_interval")
     builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
     builder.adjust(1)
     
@@ -1650,7 +1658,8 @@ async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext):
         "cryptobot_api_key": "🤖 Enter Crypto Bot API token (get from @CryptoPayTestVar or @CryptoBot):",
         "binance_api_proxy": "🌐 Enter Binance API Proxy (e.g. `http://user:pass@ip:port` or `socks5://ip:port`, or leave blank to disable):",
         "binance_api_key": "🔶 Enter your Binance API Key (get from https://www.binance.com/en/my/settings/api-management):",
-        "binance_secret_key": "🔶 Enter your Binance Secret Key:"
+        "binance_secret_key": "🔶 Enter your Binance Secret Key:",
+        "proofs_interval": "⏱️ أدخل الفاصل الزمني بالدقائق للنشر التلقائي للمبيعات (مثال: `5-20` أو `10-30` أو `15`):"
     }
     
     prompt = prompts.get(setting_key, "Enter new value:")
@@ -1665,6 +1674,34 @@ async def process_setting_value(message: Message, state: FSMContext):
     
     val = message.text.strip()
     
+    if setting_key == "proofs_interval":
+        val_str = val.strip()
+        if "-" in val_str:
+            parts = val_str.split("-")
+            try:
+                min_v = int(parts[0].strip())
+                max_v = int(parts[1].strip())
+                if min_v > 0 and max_v >= min_v:
+                    await set_setting("auto_proofs_min_minutes", str(min_v))
+                    await set_setting("auto_proofs_max_minutes", str(max_v))
+                    await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: من {min_v} إلى {max_v} دقيقة.", reply_markup=keyboards.get_admin_back_keyboard())
+                else:
+                    raise ValueError()
+            except Exception:
+                await message.answer("❌ صيغة غير صحيحة. يرجى إدخال أرقام صحيحة مثل `5-20` أو `15`.")
+        else:
+            try:
+                fixed_v = int(val_str)
+                if fixed_v > 0:
+                    await set_setting("auto_proofs_min_minutes", str(fixed_v))
+                    await set_setting("auto_proofs_max_minutes", str(fixed_v))
+                    await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: كل {fixed_v} دقيقة بالضبط.", reply_markup=keyboards.get_admin_back_keyboard())
+                else:
+                    raise ValueError()
+            except Exception:
+                await message.answer("❌ صيغة غير صحيحة. يرجى إدخال أرقام صحيحة مثل `5-20` أو `15`.")
+        return
+
     # Save setting key mappings
     db_keys = {
         "force_join": "force_join_channels",
