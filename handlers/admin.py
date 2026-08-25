@@ -726,21 +726,14 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
             try:
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)
             except Exception as e:
-                logger.warning(f"admin edit_text with entities failed: {e}, falling back")
-                fallback_text = (
-                    f"📋 *Product Details (Admin)*\n\n"
-                    f"🇬🇧 *Name EN:* {product['name_en']}\n"
-                    f"🇸🇦 *Name AR:* {product['name_ar']}\n"
-                    f"🇷🇺 *Name RU:* {product['name_ru']}\n\n"
-                    f"🇬🇧 *Desc EN:* {product['description_en']}\n"
-                    f"🇸🇦 *Desc AR:* {product['description_ar']}\n"
-                    f"🇷🇺 *Desc RU:* {product['description_ru']}\n\n"
-                    f"💵 *Price:* ${product['price']:.2f} USD\n"
-                    f"📦 *Stock Count:* {stock} items available"
-                )
-                await callback.message.edit_text(fallback_text, reply_markup=kb, parse_mode="Markdown")
+                logger.warning(f"admin edit_text with entities failed: {e}, falling back to plain text")
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode=None)
         else:
-            await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
+            try:
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode=parse_mode)
+            except Exception as e:
+                logger.warning(f"admin edit_text with parse_mode={parse_mode} failed: {e}, falling back to plain text")
+                await callback.message.edit_text(text, reply_markup=kb, parse_mode=None)
     except Exception as outer_err:
         logger.error(f"Error in cb_admin_prod_view: {outer_err}")
     finally:
