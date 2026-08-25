@@ -2732,17 +2732,24 @@ async def fetch_provider_products(base_url, api_key):
                             formatted = []
                             for p in raw_list:
                                 if isinstance(p, dict) and p.get("id"):
-                                    p_name = p.get("name") or p.get("name_en") or p.get("title") or f"Product {p.get('id')}"
+                                    p_name = p.get("name") or p.get("name_en") or p.get("name_ar") or p.get("title") or f"Product {p.get('id')}"
+                                    name_ar = p.get("name_ar") or p_name
+                                    name_en = p.get("name_en") or p_name
+                                    name_ru = p.get("name_ru") or p_name
+                                    desc_ar = p.get("description_ar") or p.get("description") or f"Imported Product: {p_name}"
+                                    desc_en = p.get("description_en") or p.get("description") or f"Imported Product: {p_name}"
+                                    desc_ru = p.get("description_ru") or p.get("description") or f"Imported Product: {p_name}"
+                                    emoji_id = p.get("custom_emoji_id")
                                     formatted.append({
                                         "id": p.get("id"),
-                                        "name_ar": p_name,
-                                        "name_en": p_name,
-                                        "name_ru": p_name,
-                                        "description_ar": f"Imported Product: {p_name}",
-                                        "description_en": f"Imported Product: {p_name}",
-                                        "description_ru": f"Imported Product: {p_name}",
+                                        "name_ar": name_ar,
+                                        "name_en": name_en,
+                                        "name_ru": name_ru,
+                                        "description_ar": desc_ar,
+                                        "description_en": desc_en,
+                                        "description_ru": desc_ru,
                                         "price": float(p.get("price", 0.0)),
-                                        "custom_emoji_id": None
+                                        "custom_emoji_id": emoji_id
                                     })
                             if formatted:
                                 return formatted

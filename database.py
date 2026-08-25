@@ -589,21 +589,26 @@ async def get_stock_count(product_id):
                                         elif isinstance(data, dict):
                                             raw_list = data.get('products') or data.get('data') or []
                                             
-                                        for p in raw_list:
                                             if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
-                                                stock_val = p.get('stock')
+                                                stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count')
+                                                if stock_val is None:
+                                                    stock_val = p.get('quantity')
+                                                if stock_val is None:
+                                                    stock_val = p.get('count')
+                                                if stock_val is None:
+                                                    stock_val = p.get('available')
                                                 if stock_val is None and is_prodseller:
                                                     try:
                                                         single_url = f"{base_url}/v1/products/{provider_prod_id}"
                                                         async with session.get(single_url, headers=headers, timeout=3) as single_resp:
                                                             if single_resp.status == 200:
                                                                 single_data = await single_resp.json()
-                                                                if isinstance(single_data, dict) and single_data.get('stock') is not None:
-                                                                    stock_val = single_data.get('stock')
+                                                                if isinstance(single_data, dict):
+                                                                    stock_val = single_data.get('stock') or single_data.get('stock_count') or single_data.get('quantity')
                                                     except Exception:
                                                         pass
                                                 if stock_val is None:
-                                                    stock_val = 999 if p.get('inStock') else 0
+                                                    stock_val = 999 if (p.get('inStock') or p.get('in_stock')) else 0
                                                 return local_count + int(stock_val)
                             except Exception:
                                 pass
@@ -678,19 +683,25 @@ async def get_all_stock_counts(products=None):
                                     raw_list = data if isinstance(data, list) else (data.get('products') or data.get('data') or [])
                                     for p in raw_list:
                                         if isinstance(p, dict) and str(p.get('id')) == str(prov_pid):
-                                            s_val = p.get('stock')
+                                            s_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count')
+                                            if s_val is None:
+                                                s_val = p.get('quantity')
+                                            if s_val is None:
+                                                s_val = p.get('count')
+                                            if s_val is None:
+                                                s_val = p.get('available')
                                             if s_val is None and is_prodseller:
                                                 try:
                                                     single_url = f"{base_url}/v1/products/{prov_pid}"
                                                     async with session.get(single_url, headers=headers, timeout=aiohttp.ClientTimeout(total=2)) as s_resp:
                                                         if s_resp.status == 200:
                                                             s_data = await s_resp.json()
-                                                            if isinstance(s_data, dict) and s_data.get('stock') is not None:
-                                                                s_val = s_data.get('stock')
+                                                            if isinstance(s_data, dict):
+                                                                s_val = s_data.get('stock') or s_data.get('stock_count') or s_data.get('quantity')
                                                 except Exception:
                                                     pass
                                             if s_val is None:
-                                                s_val = 999 if p.get('inStock') else 0
+                                                s_val = 999 if (p.get('inStock') or p.get('in_stock')) else 0
                                             stock_counts[pid] = local_c + int(s_val)
                                             return
                         except Exception:

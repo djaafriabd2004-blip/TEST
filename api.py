@@ -56,14 +56,17 @@ async def get_me_api(request):
     })
 
 async def get_products_api(request):
-    from database import get_products, get_stock_count
+    from database import get_products, get_all_stock_counts
     products = await get_products()
+    stock_counts = await get_all_stock_counts(products)
     result = []
     for p in products:
         p_dict = dict(p)
-        # Fetch actual stock count
-        stock_count = await get_stock_count(p_dict["id"])
-        p_dict["stock_count"] = stock_count
+        s_cnt = stock_counts.get(p_dict["id"], 0)
+        p_dict["stock"] = s_cnt
+        p_dict["stock_count"] = s_cnt
+        p_dict["quantity"] = s_cnt
+        p_dict["inStock"] = bool(s_cnt > 0)
         result.append(p_dict)
     return web.json_response({"ok": True, "products": result})
 
@@ -79,7 +82,11 @@ async def get_product_detail_api(request):
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
     p_dict = dict(product)
-    p_dict["stock_count"] = await get_stock_count(product_id)
+    s_cnt = await get_stock_count(product_id)
+    p_dict["stock"] = s_cnt
+    p_dict["stock_count"] = s_cnt
+    p_dict["quantity"] = s_cnt
+    p_dict["inStock"] = bool(s_cnt > 0)
     return web.json_response({"ok": True, "product": p_dict})
 
 async def buy_api(request):
