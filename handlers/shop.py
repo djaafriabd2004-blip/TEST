@@ -31,9 +31,8 @@ async def show_products_list(message_or_callback, lang='en'):
             await message_or_callback.answer(text)
         return
         
-    stock_counts = {}
-    for p in products:
-        stock_counts[p['id']] = await get_stock_count(p['id'])
+    from database import get_all_stock_counts
+    stock_counts = await get_all_stock_counts(products)
         
     text = get_text('shop_title', lang)
     kb = keyboards.get_products_keyboard(products, stock_counts, lang)

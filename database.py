@@ -613,6 +613,108 @@ async def get_stock_count(product_id):
                 
         return local_count
 
+async def get_all_stock_counts(products=None):
+    """
+    Optimized batch function to get stock counts for all products in 1 DB connection
+    instead of opening N connections in a loop. Prevents 'can't start new thread' errors.
+    """
+    stock_counts = {}
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
+        db.row_factory = aiosqlite.Row
+        
+        # 1. Batch local stock counts
+        async with db.execute("SELECT product_id, COUNT(*) as cnt FROM stocks WHERE is_sold = 0 GROUP BY product_id;") as cursor:
+            rows = await cursor.fetchall()
+            for r in rows:
+                stock_counts[r['product_id']] = r['cnt']
+
+        # 2. Get all provider-linked products
+        async with db.execute("""
+            SELECT p.id as product_id, p.provider_id, p.provider_product_id, pr.base_url, pr.api_key
+            FROM products p
+            JOIN providers pr ON p.provider_id = pr.id
+            WHERE p.provider_id IS NOT NULL;
+        """) as cursor:
+            prov_prods = await cursor.fetchall()
+
+    # If there are provider products, fetch their live stock concurrently with a 3s timeout
+    if prov_prods:
+        import aiohttp
+        import asyncio
+        from utils import normalize_provider_url
+
+        async def fetch_single_prov_stock(item):
+            pid = item['product_id']
+            prov_pid = item['provider_product_id']
+            base_url = normalize_provider_url(item['base_url'])
+            api_key = item['api_key']
+            
+            local_c = stock_counts.get(pid, 0)
+            is_supabase = "supabase.co" in base_url
+            is_prodseller = "prodseller" in base_url
+            
+            headers = {
+                "Authorization": f"Bearer {api_key.strip()}",
+                "X-API-Key": api_key.strip(),
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            
+            if is_supabase:
+                endpoints = [f"{base_url}?action=products"]
+            elif is_prodseller:
+                endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
+            else:
+                endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    for url in endpoints:
+                        try:
+                            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    raw_list = data if isinstance(data, list) else (data.get('products') or data.get('data') or [])
+                                    for p in raw_list:
+                                        if isinstance(p, dict) and str(p.get('id')) == str(prov_pid):
+                                            s_val = p.get('stock')
+                                            if s_val is None and is_prodseller:
+                                                try:
+                                                    single_url = f"{base_url}/v1/products/{prov_pid}"
+                                                    async with session.get(single_url, headers=headers, timeout=aiohttp.ClientTimeout(total=2)) as s_resp:
+                                                        if s_resp.status == 200:
+                                                            s_data = await s_resp.json()
+                                                            if isinstance(s_data, dict) and s_data.get('stock') is not None:
+                                                                s_val = s_data.get('stock')
+                                                except Exception:
+                                                    pass
+                                            if s_val is None:
+                                                s_val = 999 if p.get('inStock') else 0
+                                            stock_counts[pid] = local_c + int(s_val)
+                                            return
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.warning(f"Error fetching live stock for provider product {pid}: {e}")
+
+        # Limit concurrent provider requests to 5 to avoid resource exhaustion
+        sem = asyncio.Semaphore(5)
+        async def sem_fetch(item):
+            async with sem:
+                await fetch_single_prov_stock(item)
+
+        await asyncio.gather(*(sem_fetch(item) for item in prov_prods), return_exceptions=True)
+
+    # Fill default 0 for products with no stock
+    if products:
+        for p in products:
+            p_id = p['id'] if isinstance(p, dict) else (p.get('id') if isinstance(p, dict) else None)
+            if p_id and p_id not in stock_counts:
+                stock_counts[p_id] = 0
+
+    return stock_counts
+
 # Purchase Helpers
 async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
     for attempt in range(3):
