@@ -1810,7 +1810,8 @@ async def broadcast_restock_to_users(bot, product_id, added_qty):
                 from aiogram.utils.keyboard import InlineKeyboardBuilder
                 builder = InlineKeyboardBuilder()
                 builder.button(text="🛍️ Shop Now", callback_data=f"prod_view_{product_id}")
-                await bot.send_message(chat_id=uid, text=text_dict.get(lang, text_dict['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
+                from utils import send_message_with_retry
+                await send_message_with_retry(bot.send_message, chat_id=uid, text=text_dict.get(lang, text_dict['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
             except Exception:
                 pass
         await clear_stock_notifications(product_id)

@@ -59,7 +59,8 @@ async def process_support_message(message: Message, state: FSMContext, bot: Bot,
                 user_id=user_id,
                 message=msg_text
             )
-            await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=kb, parse_mode="Markdown")
+            from utils import send_message_with_retry
+            await send_message_with_retry(bot.send_message, chat_id=admin_id, text=admin_text, reply_markup=kb, parse_mode="Markdown")
         except Exception as e:
             logger.error(f"Failed to forward ticket to admin {admin_id}: {e}")
             
@@ -86,13 +87,15 @@ async def cb_admin_reply_ticket(callback: CallbackQuery, state: FSMContext, is_a
 @router.message(AdminStates.waiting_for_reply_text)
 async def process_admin_reply_text(message: Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
-    if user_id not in config.ADMIN_IDS:
+    from database import get_admin_ids
+    admin_ids = await get_admin_ids()
+    if user_id not in admin_ids:
         await state.clear()
         return
         
     data = await state.get_data()
     target_user_id = data.get("reply_target_id")
-    reply_text = message.text
+    reply_text = message.text or message.caption or ""
     
     await state.clear()
     
@@ -105,8 +108,12 @@ async def process_admin_reply_text(message: Message, state: FSMContext, bot: Bot
     
     # Send message to user
     try:
-        delivered_msg = get_text('support_reply_delivered', target_lang, reply=reply_text)
-        await bot.send_message(chat_id=target_user_id, text=delivered_msg, parse_mode="Markdown")
+        from utils import send_message_with_retry
+        if message.text:
+            delivered_msg = get_text('support_reply_delivered', target_lang, reply=reply_text)
+            await send_message_with_retry(bot.send_message, chat_id=target_user_id, text=delivered_msg, parse_mode="Markdown")
+        else:
+            await message.copy_to(chat_id=target_user_id)
         await message.answer("✅ Reply has been delivered to the user.")
     except Exception as e:
         logger.error(f"Failed to send reply to user {target_user_id}: {e}")

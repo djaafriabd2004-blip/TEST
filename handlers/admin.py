@@ -1795,7 +1795,6 @@ async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot)
         await state.clear()
         return
         
-    broadcast_msg = message.text
     await state.clear()
     
     users = await get_all_users()
@@ -1807,19 +1806,33 @@ async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot)
     
     success = 0
     fail = 0
+    from utils import send_message_with_retry
+    import asyncio
+    
     for u in users:
         try:
-            # We broadcast the exact text
-            await bot.send_message(chat_id=u['user_id'], text=broadcast_msg, parse_mode="Markdown")
+            # Copy exact message (supports text, photos, videos, custom emojis, buttons, documents)
+            await message.copy_to(chat_id=u['user_id'])
             success += 1
         except Exception as e:
-            fail += 1
-            logger.warning(f"Could not broadcast to {u['user_id']}: {e}")
+            err_str = str(e).lower()
+            if "blocked" in err_str or "deactivated" in err_str:
+                fail += 1
+            else:
+                try:
+                    b_text = message.text or message.caption or "Broadcast Message"
+                    await send_message_with_retry(bot.send_message, chat_id=u['user_id'], text=b_text, parse_mode="Markdown")
+                    success += 1
+                except Exception as inner_e:
+                    fail += 1
+                    logger.warning(f"Could not broadcast to {u['user_id']}: {inner_e}")
+                    
+        await asyncio.sleep(0.04)
             
     await wait_msg.edit_text(
         f"📣 *Broadcast Completed!*\n\n"
         f"✅ *Successful:* `{success}`\n"
-        f"❌ *Failed:* `{fail}`",
+        f"❌ *Failed / Blocked:* `{fail}`",
         reply_markup=keyboards.get_admin_back_keyboard(),
         parse_mode="Markdown"
     )
