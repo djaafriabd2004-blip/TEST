@@ -554,13 +554,12 @@ async def get_stock_count(product_id):
                     prov = await prov_cursor.fetchone()
                     if not prov:
                         return local_count
-                    from utils import normalize_provider_url
+                    from utils import normalize_provider_url, extract_stock_from_dict, extract_products_list_from_json, matches_product_id
                     base_url = normalize_provider_url(prov['base_url'])
                     api_key = prov['api_key']
                 
                 import aiohttp
                 is_supabase = "supabase.co" in base_url
-                is_prodseller = "prodseller" in base_url
                 
                 headers = {
                     "Authorization": f"Bearer {api_key.strip()}",
@@ -569,47 +568,35 @@ async def get_stock_count(product_id):
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
                 
-                if is_supabase:
-                    endpoints = [f"{base_url}?action=products"]
-                elif is_prodseller:
-                    endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
-                else:
-                    endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
+                endpoints = [
+                    f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+                    f"{base_url}/api/products",
+                    f"{base_url}/products",
+                    f"{base_url}/api/v1/products",
+                    f"{base_url}/v1/products/{provider_prod_id}",
+                    f"{base_url}/api/products/{provider_prod_id}",
+                    f"{base_url}/products/{provider_prod_id}"
+                ]
                     
                 try:
                     async with aiohttp.ClientSession() as session:
                         for url in endpoints:
                             try:
-                                async with session.get(url, headers=headers, timeout=5) as resp:
+                                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                                     if resp.status == 200:
                                         data = await resp.json()
-                                        raw_list = []
-                                        if isinstance(data, list):
-                                            raw_list = data
-                                        elif isinstance(data, dict):
-                                            raw_list = data.get('products') or data.get('data') or []
-                                            
-                                            if isinstance(p, dict) and str(p.get('id')) == str(provider_prod_id):
-                                                stock_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count')
-                                                if stock_val is None:
-                                                    stock_val = p.get('quantity')
-                                                if stock_val is None:
-                                                    stock_val = p.get('count')
-                                                if stock_val is None:
-                                                    stock_val = p.get('available')
-                                                if stock_val is None and is_prodseller:
-                                                    try:
-                                                        single_url = f"{base_url}/v1/products/{provider_prod_id}"
-                                                        async with session.get(single_url, headers=headers, timeout=3) as single_resp:
-                                                            if single_resp.status == 200:
-                                                                single_data = await single_resp.json()
-                                                                if isinstance(single_data, dict):
-                                                                    stock_val = single_data.get('stock') or single_data.get('stock_count') or single_data.get('quantity')
-                                                    except Exception:
-                                                        pass
-                                                if stock_val is None:
-                                                    stock_val = 999 if (p.get('inStock') or p.get('in_stock')) else 0
-                                                return local_count + int(stock_val)
+                                        raw_list = extract_products_list_from_json(data)
+                                        for p in raw_list:
+                                            if matches_product_id(p, provider_prod_id):
+                                                stock_val = extract_stock_from_dict(p)
+                                                if stock_val is not None:
+                                                    return local_count + stock_val
+                                        if isinstance(data, dict):
+                                            single_p = data.get('product') or data.get('data') or data
+                                            if matches_product_id(single_p, provider_prod_id):
+                                                stock_val = extract_stock_from_dict(single_p)
+                                                if stock_val is not None:
+                                                    return local_count + stock_val
                             except Exception:
                                 pass
                 except Exception as e:
@@ -647,7 +634,7 @@ async def get_all_stock_counts(products=None):
     if prov_prods:
         import aiohttp
         import asyncio
-        from utils import normalize_provider_url
+        from utils import normalize_provider_url, extract_stock_from_dict, extract_products_list_from_json, matches_product_id
 
         async def fetch_single_prov_stock(item):
             pid = item['product_id']
@@ -657,21 +644,23 @@ async def get_all_stock_counts(products=None):
             
             local_c = stock_counts.get(pid, 0)
             is_supabase = "supabase.co" in base_url
-            is_prodseller = "prodseller" in base_url
             
             headers = {
                 "Authorization": f"Bearer {api_key.strip()}",
                 "X-API-Key": api_key.strip(),
                 "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             
-            if is_supabase:
-                endpoints = [f"{base_url}?action=products"]
-            elif is_prodseller:
-                endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
-            else:
-                endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
+            endpoints = [
+                f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+                f"{base_url}/api/products",
+                f"{base_url}/products",
+                f"{base_url}/api/v1/products",
+                f"{base_url}/v1/products/{prov_pid}",
+                f"{base_url}/api/products/{prov_pid}",
+                f"{base_url}/products/{prov_pid}"
+            ]
 
             try:
                 async with aiohttp.ClientSession() as session:
@@ -680,30 +669,20 @@ async def get_all_stock_counts(products=None):
                             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
-                                    raw_list = data if isinstance(data, list) else (data.get('products') or data.get('data') or [])
+                                    raw_list = extract_products_list_from_json(data)
                                     for p in raw_list:
-                                        if isinstance(p, dict) and str(p.get('id')) == str(prov_pid):
-                                            s_val = p.get('stock') if p.get('stock') is not None else p.get('stock_count')
-                                            if s_val is None:
-                                                s_val = p.get('quantity')
-                                            if s_val is None:
-                                                s_val = p.get('count')
-                                            if s_val is None:
-                                                s_val = p.get('available')
-                                            if s_val is None and is_prodseller:
-                                                try:
-                                                    single_url = f"{base_url}/v1/products/{prov_pid}"
-                                                    async with session.get(single_url, headers=headers, timeout=aiohttp.ClientTimeout(total=2)) as s_resp:
-                                                        if s_resp.status == 200:
-                                                            s_data = await s_resp.json()
-                                                            if isinstance(s_data, dict):
-                                                                s_val = s_data.get('stock') or s_data.get('stock_count') or s_data.get('quantity')
-                                                except Exception:
-                                                    pass
-                                            if s_val is None:
-                                                s_val = 999 if (p.get('inStock') or p.get('in_stock')) else 0
-                                            stock_counts[pid] = local_c + int(s_val)
-                                            return
+                                        if matches_product_id(p, prov_pid):
+                                            s_val = extract_stock_from_dict(p)
+                                            if s_val is not None:
+                                                stock_counts[pid] = local_c + s_val
+                                                return
+                                    if isinstance(data, dict):
+                                        single_p = data.get('product') or data.get('data') or data
+                                        if matches_product_id(single_p, prov_pid):
+                                            s_val = extract_stock_from_dict(single_p)
+                                            if s_val is not None:
+                                                stock_counts[pid] = local_c + s_val
+                                                return
                         except Exception:
                             pass
             except Exception as e:

@@ -24,6 +24,75 @@ def normalize_provider_url(url: str) -> str:
         url = url[:-3]
     return url.rstrip('/')
 
+def extract_stock_from_dict(p):
+    """
+    Universally extracts numeric stock from any provider's JSON product dictionary.
+    Supports ShopDigital, ProdSeller, Supabase, Sellix, Whop, SMM Panels, WooCommerce,
+    and custom Telegram store bots.
+    """
+    if not isinstance(p, dict):
+        return None
+    
+    # 1. Check numeric stock fields
+    for key in ['stock', 'stock_count', 'quantity', 'qty', 'count', 'amount', 'inventory', 'available', 'available_stock', 'max', 'remains', 'balance']:
+        val = p.get(key)
+        if val is not None and not isinstance(val, bool):
+            try:
+                return max(0, int(val))
+            except (ValueError, TypeError):
+                pass
+    
+    # 2. Check boolean inStock flags
+    for key in ['inStock', 'in_stock', 'is_available', 'available', 'active', 'enabled']:
+        val = p.get(key)
+        if val is True:
+            return 999
+        elif val is False:
+            return 0
+            
+    # 3. Check string representations like "in stock", "out of stock"
+    status_str = str(p.get('status') or p.get('stock_status') or '').lower()
+    if 'instock' in status_str or 'available' in status_str:
+        return 999
+    elif 'outofstock' in status_str or 'empty' in status_str:
+        return 0
+        
+    return None
+
+def extract_products_list_from_json(data):
+    """
+    Universally extracts the list of products from any JSON response structure.
+    """
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ['products', 'data', 'result', 'items', 'payload', 'services', 'goods']:
+            val = data.get(key)
+            if isinstance(val, list):
+                return val
+            if isinstance(val, dict):
+                for subkey in ['products', 'items', 'list']:
+                    subval = val.get(subkey)
+                    if isinstance(subval, list):
+                        return subval
+                return [val]
+        if 'id' in data or 'product_id' in data or 'productId' in data or 'service' in data:
+            return [data]
+    return []
+
+def matches_product_id(p, target_id) -> bool:
+    """
+    Checks if a provider's product dictionary matches the specified target ID.
+    """
+    if not isinstance(p, dict):
+        return False
+    t_str = str(target_id).strip()
+    for key in ['id', 'product_id', 'productId', 'service', 'code', 'sku', 'slug']:
+        val = p.get(key)
+        if val is not None and str(val).strip() == t_str:
+            return True
+    return False
+
 def get_product_name(product, lang='en'):
     """
     Safely retrieves the localized product name from a database row or dict.

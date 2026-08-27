@@ -2690,10 +2690,9 @@ async def fetch_provider_store_name(base_url, api_key):
 
 async def fetch_provider_products(base_url, api_key):
     import aiohttp
-    from utils import normalize_provider_url
+    from utils import normalize_provider_url, extract_products_list_from_json
     base_url = normalize_provider_url(base_url)
     is_supabase = "supabase.co" in base_url
-    is_prodseller = "prodseller" in base_url
     
     headers = {
         "Authorization": f"Bearer {api_key.strip()}",
@@ -2702,12 +2701,12 @@ async def fetch_provider_products(base_url, api_key):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     
-    if is_supabase:
-        endpoints = [f"{base_url}?action=products"]
-    elif is_prodseller:
-        endpoints = [f"{base_url}/v1/products", f"{base_url}/products", f"{base_url}/api/products"]
-    else:
-        endpoints = [f"{base_url}/api/products", f"{base_url}/v1/products", f"{base_url}/products"]
+    endpoints = [
+        f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+        f"{base_url}/api/products",
+        f"{base_url}/products",
+        f"{base_url}/api/v1/products"
+    ]
         
     try:
         async with aiohttp.ClientSession() as session:
@@ -2716,16 +2715,12 @@ async def fetch_provider_products(base_url, api_key):
                     async with session.get(url, headers=headers, timeout=10) as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            raw_list = []
-                            if isinstance(data, list):
-                                raw_list = data
-                            elif isinstance(data, dict):
-                                raw_list = data.get('products') or data.get('data') or []
-                                
+                            raw_list = extract_products_list_from_json(data)
                             formatted = []
                             for p in raw_list:
-                                if isinstance(p, dict) and p.get("id"):
-                                    p_name = p.get("name") or p.get("name_en") or p.get("name_ar") or p.get("title") or f"Product {p.get('id')}"
+                                if isinstance(p, dict) and (p.get("id") or p.get("product_id") or p.get("productId") or p.get("service")):
+                                    p_id = p.get("id") or p.get("product_id") or p.get("productId") or p.get("service")
+                                    p_name = p.get("name") or p.get("name_en") or p.get("name_ar") or p.get("title") or p.get("service_name") or f"Product {p_id}"
                                     name_ar = p.get("name_ar") or p_name
                                     name_en = p.get("name_en") or p_name
                                     name_ru = p.get("name_ru") or p_name
@@ -2733,15 +2728,16 @@ async def fetch_provider_products(base_url, api_key):
                                     desc_en = p.get("description_en") or p.get("description") or f"Imported Product: {p_name}"
                                     desc_ru = p.get("description_ru") or p.get("description") or f"Imported Product: {p_name}"
                                     emoji_id = p.get("custom_emoji_id")
+                                    price_val = float(p.get("price") or p.get("unit_price") or p.get("rate") or 0.0)
                                     formatted.append({
-                                        "id": p.get("id"),
+                                        "id": p_id,
                                         "name_ar": name_ar,
                                         "name_en": name_en,
                                         "name_ru": name_ru,
                                         "description_ar": desc_ar,
                                         "description_en": desc_en,
                                         "description_ru": desc_ru,
-                                        "price": float(p.get("price", 0.0)),
+                                        "price": price_val,
                                         "custom_emoji_id": emoji_id
                                     })
                             if formatted:
