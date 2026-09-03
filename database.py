@@ -827,11 +827,11 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     if is_supabase:
                         endpoints = [f"{base_url}?action=order"]
                     elif is_prodseller:
-                        endpoints = [f"{base_url}/v1/orders", f"{base_url}/orders", f"{base_url}/api/purchase", f"{base_url}/api/buy"]
+                        endpoints = [f"{base_url}/v1/orders"]
                     elif is_shopdigital:
-                        endpoints = [f"{base_url}/api/purchase", f"{base_url}/api/buy"]
+                        endpoints = [f"{base_url}/api/purchase"]
                     else:
-                        endpoints = [f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase", f"{base_url}/orders"]
+                        endpoints = [f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase"]
 
                     buy_data = None
                     last_err = "No response from provider"
@@ -839,7 +839,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     for ep in endpoints:
                         try:
                             logger.info(f"Executing provider order on {ep} with payload: {buy_payload}")
-                            async with session.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                            async with session.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
                                 if resp.status in [200, 201]:
                                     try:
                                         buy_data = await resp.json()
@@ -853,10 +853,12 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                                         last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or err_json.get('detail') or f"HTTP {resp.status}"
                                     except Exception:
                                         err_txt = await resp.text()
-                                        last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
+                                        if "<!DOCTYPE html>" in err_txt or "<html" in err_txt or "Cannot POST" in err_txt:
+                                            last_err = f"Provider service error (HTTP {resp.status})"
+                                        else:
+                                            last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
                                     logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
-                                    if resp.status != 404:
-                                        break
+                                    break
                         except Exception as ep_err:
                             logger.warning(f"Provider request error on {ep}: {ep_err}")
                             last_err = str(ep_err)
