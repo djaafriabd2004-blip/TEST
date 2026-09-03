@@ -565,6 +565,7 @@ async def get_stock_count(product_id):
                     "Authorization": f"Bearer {api_key.strip()}",
                     "X-API-Key": api_key.strip(),
                     "Content-Type": "application/json",
+                    "Accept": "application/json",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
                 
@@ -649,6 +650,7 @@ async def get_all_stock_counts(products=None):
                 "Authorization": f"Bearer {api_key.strip()}",
                 "X-API-Key": api_key.strip(),
                 "Content-Type": "application/json",
+                "Accept": "application/json",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
             

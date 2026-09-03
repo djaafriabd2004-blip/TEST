@@ -86,10 +86,10 @@ def matches_product_id(p, target_id) -> bool:
     """
     if not isinstance(p, dict):
         return False
-    t_str = str(target_id).strip()
-    for key in ['id', 'product_id', 'productId', 'service', 'code', 'sku', 'slug']:
+    t_str = str(target_id).strip().lower()
+    for key in ['id', '_id', 'product_id', 'productId', 'service', 'code', 'sku', 'slug']:
         val = p.get(key)
-        if val is not None and str(val).strip() == t_str:
+        if val is not None and str(val).strip().lower() == t_str:
             return True
     return False
 
