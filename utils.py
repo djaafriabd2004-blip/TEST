@@ -24,7 +24,7 @@ def normalize_provider_url(url: str) -> str:
         url = url[:-3]
     return url.rstrip('/')
 
-def extract_stock_from_dict(p):
+def extract_stock_from_dict(p, allow_boolean=True):
     """
     Universally extracts numeric stock from any provider's JSON product dictionary.
     Supports ShopDigital, ProdSeller, Supabase, Sellix, Whop, SMM Panels, WooCommerce,
@@ -33,7 +33,7 @@ def extract_stock_from_dict(p):
     if not isinstance(p, dict):
         return None
     
-    # 1. Check numeric stock fields
+    # 1. Check numeric stock fields FIRST
     for key in ['stock', 'stock_count', 'quantity', 'qty', 'count', 'amount', 'inventory', 'available', 'available_stock', 'max', 'remains', 'balance']:
         val = p.get(key)
         if val is not None and not isinstance(val, bool):
@@ -42,20 +42,21 @@ def extract_stock_from_dict(p):
             except (ValueError, TypeError):
                 pass
     
-    # 2. Check boolean inStock flags
-    for key in ['inStock', 'in_stock', 'is_available', 'available', 'active', 'enabled']:
-        val = p.get(key)
-        if val is True:
+    # 2. Check boolean inStock flags if allow_boolean is True
+    if allow_boolean:
+        for key in ['inStock', 'in_stock', 'is_available', 'available', 'active', 'enabled']:
+            val = p.get(key)
+            if val is True:
+                return 999
+            elif val is False:
+                return 0
+                
+        # 3. Check string representations like "in stock", "out of stock"
+        status_str = str(p.get('status') or p.get('stock_status') or '').lower()
+        if 'instock' in status_str or 'available' in status_str:
             return 999
-        elif val is False:
+        elif 'outofstock' in status_str or 'empty' in status_str:
             return 0
-            
-    # 3. Check string representations like "in stock", "out of stock"
-    status_str = str(p.get('status') or p.get('stock_status') or '').lower()
-    if 'instock' in status_str or 'available' in status_str:
-        return 999
-    elif 'outofstock' in status_str or 'empty' in status_str:
-        return 0
         
     return None
 

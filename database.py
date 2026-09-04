@@ -570,36 +570,45 @@ async def get_stock_count(product_id):
                 }
                 
                 endpoints = [
+                    f"{base_url}/v1/products/{provider_prod_id}",
+                    f"{base_url}/api/products/{provider_prod_id}",
+                    f"{base_url}/products/{provider_prod_id}",
+                    f"{base_url}/api/v1/products/{provider_prod_id}",
                     f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
                     f"{base_url}/api/products",
                     f"{base_url}/products",
-                    f"{base_url}/api/v1/products",
-                    f"{base_url}/v1/products/{provider_prod_id}",
-                    f"{base_url}/api/products/{provider_prod_id}",
-                    f"{base_url}/products/{provider_prod_id}"
+                    f"{base_url}/api/v1/products"
                 ]
                     
                 try:
+                    fallback_stock = None
                     async with aiohttp.ClientSession() as session:
                         for url in endpoints:
                             try:
                                 async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                                     if resp.status == 200:
                                         data = await resp.json()
+                                        if isinstance(data, dict):
+                                            single_p = data.get('product') or data.get('data') or data
+                                            if matches_product_id(single_p, provider_prod_id) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
+                                                num_stock = extract_stock_from_dict(single_p, allow_boolean=False)
+                                                if num_stock is not None:
+                                                    return local_count + num_stock
+                                                if fallback_stock is None:
+                                                    fallback_stock = extract_stock_from_dict(single_p, allow_boolean=True)
+                                        
                                         raw_list = extract_products_list_from_json(data)
                                         for p in raw_list:
                                             if matches_product_id(p, provider_prod_id):
-                                                stock_val = extract_stock_from_dict(p)
-                                                if stock_val is not None:
-                                                    return local_count + stock_val
-                                        if isinstance(data, dict):
-                                            single_p = data.get('product') or data.get('data') or data
-                                            if matches_product_id(single_p, provider_prod_id):
-                                                stock_val = extract_stock_from_dict(single_p)
-                                                if stock_val is not None:
-                                                    return local_count + stock_val
+                                                num_stock = extract_stock_from_dict(p, allow_boolean=False)
+                                                if num_stock is not None:
+                                                    return local_count + num_stock
+                                                if fallback_stock is None:
+                                                    fallback_stock = extract_stock_from_dict(p, allow_boolean=True)
                             except Exception:
                                 pass
+                    if fallback_stock is not None:
+                        return local_count + fallback_stock
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
                 return local_count
@@ -655,38 +664,47 @@ async def get_all_stock_counts(products=None):
             }
             
             endpoints = [
+                f"{base_url}/v1/products/{prov_pid}",
+                f"{base_url}/api/products/{prov_pid}",
+                f"{base_url}/products/{prov_pid}",
+                f"{base_url}/api/v1/products/{prov_pid}",
                 f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
                 f"{base_url}/api/products",
                 f"{base_url}/products",
-                f"{base_url}/api/v1/products",
-                f"{base_url}/v1/products/{prov_pid}",
-                f"{base_url}/api/products/{prov_pid}",
-                f"{base_url}/products/{prov_pid}"
+                f"{base_url}/api/v1/products"
             ]
 
             try:
+                fallback_s = None
                 async with aiohttp.ClientSession() as session:
                     for url in endpoints:
                         try:
                             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
+                                    if isinstance(data, dict):
+                                        single_p = data.get('product') or data.get('data') or data
+                                        if matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
+                                            num_s = extract_stock_from_dict(single_p, allow_boolean=False)
+                                            if num_s is not None:
+                                                stock_counts[pid] = local_c + num_s
+                                                return
+                                            if fallback_s is None:
+                                                fallback_s = extract_stock_from_dict(single_p, allow_boolean=True)
+                                    
                                     raw_list = extract_products_list_from_json(data)
                                     for p in raw_list:
                                         if matches_product_id(p, prov_pid):
-                                            s_val = extract_stock_from_dict(p)
-                                            if s_val is not None:
-                                                stock_counts[pid] = local_c + s_val
+                                            num_s = extract_stock_from_dict(p, allow_boolean=False)
+                                            if num_s is not None:
+                                                stock_counts[pid] = local_c + num_s
                                                 return
-                                    if isinstance(data, dict):
-                                        single_p = data.get('product') or data.get('data') or data
-                                        if matches_product_id(single_p, prov_pid):
-                                            s_val = extract_stock_from_dict(single_p)
-                                            if s_val is not None:
-                                                stock_counts[pid] = local_c + s_val
-                                                return
+                                            if fallback_s is None:
+                                                fallback_s = extract_stock_from_dict(p, allow_boolean=True)
                         except Exception:
                             pass
+                if fallback_s is not None:
+                    stock_counts[pid] = local_c + fallback_s
             except Exception as e:
                 logger.warning(f"Error fetching live stock for provider product {pid}: {e}")
 
