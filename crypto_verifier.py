@@ -17,10 +17,15 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 TX_TOO_OLD_PREFIX = "TX_TOO_OLD"
+INVALID_CURRENCY_PREFIX = "INVALID_CURRENCY"
 
 
 def is_tx_too_old_error(message) -> bool:
     return isinstance(message, str) and message.startswith(TX_TOO_OLD_PREFIX)
+
+
+def is_invalid_currency_error(message) -> bool:
+    return isinstance(message, str) and message.startswith(INVALID_CURRENCY_PREFIX)
 
 
 def is_amount_matching(requested_amount: float, actual_amount: float, coin: str) -> bool:
@@ -616,6 +621,24 @@ async def start_auto_verification_loop(bot):
                                 except Exception:
                                     pass
                     else:
+                        if is_invalid_currency_error(result_val):
+                            await reject_payment(transaction_id)
+                            admin_alert = (
+                                f"🚨 *CRITICAL SECURITY ALERT (Background): Non-USDT Transfer Attempt!*\n\n"
+                                f"👤 *User ID:* `{user_id}`\n"
+                                f"🪙 *Method:* `{coin}`\n"
+                                f"🔗 *TxID/PayID:* `{txid}`\n"
+                                f"❌ *Reason:* {result_val}\n"
+                                f"⚠️ *Status:* Automatically Blocked & Rejected."
+                            )
+                            for admin_id in config.ADMIN_IDS:
+                                try:
+                                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                                except Exception:
+                                    pass
+                            logger.info(f"Rejected invalid currency payment {transaction_id}: {result_val}")
+                            continue
+
                         if is_tx_too_old_error(result_val):
                             await reject_payment(transaction_id)
                             

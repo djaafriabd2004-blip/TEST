@@ -535,7 +535,7 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
 async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
     """
     Unified payment verifier that queries Pay transaction history and Spot deposit history.
-    Enforces strict amount matching and transaction age validation.
+    Enforces strict currency validation (ONLY USDT) and transaction age validation.
     """
     from crypto_verifier import get_max_tx_age_seconds, validate_tx_age, parse_unix_timestamp
     max_age_seconds = await get_max_tx_age_seconds()
@@ -544,6 +544,28 @@ async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
     res_pay = await query_binance_pay_transactions(tx_id, min_timestamp=min_timestamp)
     if res_pay.get('success'):
         tx = res_pay['transaction']
+        
+        # STRICT CURRENCY VALIDATION: Check currency / asset / fundsDetail
+        tx_currency = str(tx.get('currency') or tx.get('asset') or tx.get('cryptoCurrency') or tx.get('coin') or '').strip().upper()
+        
+        # Check fundsDetail list if present
+        if not tx_currency and isinstance(tx.get('fundsDetail'), list) and len(tx.get('fundsDetail')) > 0:
+            first_fund = tx['fundsDetail'][0]
+            if isinstance(first_fund, dict):
+                tx_currency = str(first_fund.get('currency') or first_fund.get('asset') or '').strip().upper()
+                
+        # Reject non-USDT currencies (e.g. PEPE, SHIB, BTC, LTC, etc.)
+        if tx_currency and tx_currency not in ['USDT', 'USD']:
+            logger.warning(f"[BINANCE_PAY_FRAUD_PREVENTION] Rejected transaction {tx_id} with invalid currency: '{tx_currency}'. Only USDT transfers are accepted.")
+            return False, f"INVALID_CURRENCY: Received {tx_currency} but only USDT is accepted."
+            
+        # Check additional currency fields
+        for k in ['payCurrency', 'orderCurrency', 'baseCurrency']:
+            val_c = str(tx.get(k) or '').strip().upper()
+            if val_c and val_c not in ['USDT', 'USD']:
+                logger.warning(f"[BINANCE_PAY_FRAUD_PREVENTION] Rejected transaction {tx_id} with invalid currency field {k}: '{val_c}'. Only USDT transfers are accepted.")
+                return False, f"INVALID_CURRENCY: Received {val_c} but only USDT is accepted."
+
         # Extract the amount properly from various possible keys
         raw_amount = (
             tx.get('amount') or 
@@ -570,10 +592,16 @@ async def verify_binance_payment(tx_id, coin='USDT', min_timestamp=None):
 
         return True, amount
 
-    # 2. Try querying Spot deposit history
-    res_dep = await query_binance_deposits(tx_id, coin=coin, min_timestamp=min_timestamp)
+    # 2. Try querying Spot deposit history (Strictly coin='USDT')
+    res_dep = await query_binance_deposits(tx_id, coin='USDT', min_timestamp=min_timestamp)
     if res_dep.get('success'):
         tx = res_dep['transaction']
+        
+        tx_coin = str(tx.get('coin') or tx.get('asset') or '').strip().upper()
+        if tx_coin and tx_coin not in ['USDT', 'USD']:
+            logger.warning(f"[BINANCE_DEPOSITS_FRAUD_PREVENTION] Rejected deposit {tx_id} with invalid coin: '{tx_coin}'. Only USDT is accepted.")
+            return False, f"INVALID_CURRENCY: Received {tx_coin} but only USDT is accepted."
+
         raw_amount = tx.get('amount') or 0
         try:
             amount = float(raw_amount)

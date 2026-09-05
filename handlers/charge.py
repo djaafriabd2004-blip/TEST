@@ -327,6 +327,32 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
                 except Exception:
                     pass
     else:
+        from crypto_verifier import is_tx_too_old_error, is_invalid_currency_error, get_max_tx_age_seconds
+        
+        if is_invalid_currency_error(result_val):
+            await reject_payment(transaction_id)
+            admin_alert = (
+                f"🚨 *CRITICAL SECURITY ALERT: Non-USDT Transfer Attempt!*\n\n"
+                f"👤 *User:* {user_info} (`{user_id}`)\n"
+                f"🪙 *Payment Method:* `{coin_label}`\n"
+                f"🔗 *TxID/PayID:* `{txid}`\n"
+                f"❌ *Reason:* {result_val}\n"
+                f"⚠️ *Status:* Automatically Blocked & Rejected."
+            )
+            for admin_id in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="Markdown")
+                except Exception:
+                    pass
+            
+            err_msg = {
+                "ar": "❌ *عملة غير مقبولة!*\n\nتم رفض المعاملة لأن التحويل تم بعملة غير USDT. نقبل فقط تحويلات عملة USDT (Binance Pay / BEP20).",
+                "en": "❌ *Unsupported Currency!*\n\nTransaction rejected because payment was sent in a non-USDT currency. We only accept USDT transfers.",
+                "ru": "❌ *Неподдерживаемая валюта!*\n\nТранзакция отклонена, так как платеж был отправлен не в USDT. Принимаются только переводы в USDT."
+            }
+            await message.answer(err_msg.get(lang, err_msg['en']), parse_mode="Markdown")
+            return
+
         if is_tx_too_old_error(result_val):
             await reject_payment(transaction_id)
             
