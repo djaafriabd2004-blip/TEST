@@ -817,26 +817,56 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                         "Accept": "application/json",
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     }
-                    buy_payload = {
-                        "productId": prov_pid,
-                        "product_id": prov_pid,
-                        "quantity": batch_qty,
-                        "external_order_id": ext_order_id,
-                        "client_order_reference": ext_order_id
-                    }
-                    
                     if is_pandora:
-                        # Pandora Digital Quote flow before order
+                        # Pandora Digital strict schema: only product_id, quantity, expected_unit_price, price_version, client_order_reference
+                        expected_price = None
+                        price_version = None
                         try:
-                            async with session.post(f"{base_url}/api/v1/quotes", headers=headers, json={"product_id": prov_pid, "quantity": batch_qty}, timeout=aiohttp.ClientTimeout(total=8)) as q_resp:
+                            async with session.post(
+                                f"{base_url}/api/v1/quotes",
+                                headers=headers,
+                                json={"product_id": prov_pid, "quantity": int(batch_qty)},
+                                timeout=aiohttp.ClientTimeout(total=8)
+                            ) as q_resp:
                                 if q_resp.status in [200, 201]:
                                     q_data = await q_resp.json()
                                     if isinstance(q_data, dict):
-                                        buy_payload["expected_unit_price"] = str(q_data.get("unit_price") or q_data.get("price") or "0.00")
-                                        if q_data.get("price_version"):
-                                            buy_payload["price_version"] = str(q_data.get("price_version"))
+                                        expected_price = q_data.get("unit_price")
+                                        price_version = q_data.get("price_version")
+                                else:
+                                    q_err_text = await q_resp.text()
+                                    logger.warning(f"Pandora quote status {q_resp.status}: {q_err_text}")
                         except Exception as q_err:
                             logger.warning(f"Pandora quote error: {q_err}")
+
+                        if not expected_price:
+                            try:
+                                async with session.get(f"{base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as p_resp:
+                                    if p_resp.status == 200:
+                                        p_data = await p_resp.json()
+                                        if isinstance(p_data, dict):
+                                            expected_price = p_data.get("unit_price")
+                            except Exception:
+                                pass
+
+                        prod_base_price = product['price'] if isinstance(product, dict) and 'price' in product else 1.00
+                        buy_payload = {
+                            "product_id": prov_pid,
+                            "quantity": int(batch_qty),
+                            "expected_unit_price": str(expected_price) if expected_price is not None else str(prod_base_price)
+                        }
+                        if price_version:
+                            buy_payload["price_version"] = str(price_version)
+                        if ext_order_id:
+                            buy_payload["client_order_reference"] = ext_order_id[:100]
+                    else:
+                        buy_payload = {
+                            "productId": prov_pid,
+                            "product_id": prov_pid,
+                            "quantity": batch_qty,
+                            "external_order_id": ext_order_id,
+                            "client_order_reference": ext_order_id
+                        }
 
                     if is_supabase:
                         endpoints = [f"{base_url}?action=order"]
