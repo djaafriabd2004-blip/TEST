@@ -772,7 +772,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
         async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, quantity)) as cursor:
             local_stocks = await cursor.fetchall()
             
-        local_stock_data = [s['stock_data'] for s in local_stocks]
+        local_stock_data = [s['data'] for s in local_stocks]
         local_stock_ids = [s['id'] for s in local_stocks]
         remaining_qty = quantity - len(local_stock_data)
         
