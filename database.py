@@ -753,16 +753,19 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
         
         unit_price = get_product_unit_price(product, quantity)
         
-        async with db.execute("SELECT balance, discount FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+        async with db.execute("SELECT balance FROM users WHERE user_id = ?;", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user:
                 raise Exception("User not found")
             
-        discount = user['discount'] if user and user['discount'] is not None else 0.0
+        async with db.execute("SELECT discount_percent FROM user_discounts WHERE user_id = ?;", (user_id,)) as disc_cursor:
+            disc_row = await disc_cursor.fetchone()
+            discount = float(disc_row['discount_percent']) if disc_row and disc_row['discount_percent'] is not None else 0.0
+            
         final_price_per_item = round(unit_price * (1 - discount / 100.0), 2)
         total_price = round(final_price_per_item * quantity, 2)
         
-        if not skip_balance_check and user['balance'] < total_price:
+        if not skip_balance_check and round(user['balance'], 2) < total_price:
             raise Exception("Insufficient balance")
 
         # Check local stock first
