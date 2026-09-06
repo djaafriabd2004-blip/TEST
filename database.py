@@ -748,6 +748,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 raise Exception("Product not found")
 
         from datetime import datetime
+        from utils import get_product_unit_price
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         unit_price = get_product_unit_price(product, quantity)
