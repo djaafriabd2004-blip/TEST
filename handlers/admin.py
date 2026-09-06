@@ -2702,10 +2702,10 @@ async def fetch_provider_products(base_url, api_key):
     }
     
     endpoints = [
-        f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+        f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
+        f"{base_url}/v1/products",
         f"{base_url}/api/products",
-        f"{base_url}/products",
-        f"{base_url}/api/v1/products"
+        f"{base_url}/products"
     ]
         
     try:

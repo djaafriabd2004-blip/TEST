@@ -570,14 +570,14 @@ async def get_stock_count(product_id):
                 }
                 
                 endpoints = [
+                    f"{base_url}/api/v1/products/{provider_prod_id}",
                     f"{base_url}/v1/products/{provider_prod_id}",
                     f"{base_url}/api/products/{provider_prod_id}",
                     f"{base_url}/products/{provider_prod_id}",
-                    f"{base_url}/api/v1/products/{provider_prod_id}",
-                    f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+                    f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
+                    f"{base_url}/v1/products",
                     f"{base_url}/api/products",
-                    f"{base_url}/products",
-                    f"{base_url}/api/v1/products"
+                    f"{base_url}/products"
                 ]
                     
                 try:
@@ -664,14 +664,14 @@ async def get_all_stock_counts(products=None):
             }
             
             endpoints = [
+                f"{base_url}/api/v1/products/{prov_pid}",
                 f"{base_url}/v1/products/{prov_pid}",
                 f"{base_url}/api/products/{prov_pid}",
                 f"{base_url}/products/{prov_pid}",
-                f"{base_url}/api/v1/products/{prov_pid}",
-                f"{base_url}?action=products" if is_supabase else f"{base_url}/v1/products",
+                f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
+                f"{base_url}/v1/products",
                 f"{base_url}/api/products",
-                f"{base_url}/products",
-                f"{base_url}/api/v1/products"
+                f"{base_url}/products"
             ]
 
             try:
@@ -733,7 +733,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
         except Exception as e:
             if ("locked" in str(e).lower() or "busy" in str(e).lower()) and attempt < 2:
                 logger.warning(f"Database locked in buy_product (attempt {attempt+1}/3). Retrying in 0.3s...")
-                await asyncio.sleep(0.3 * (attempt + 1))
+                await asyncio.sleep(0.3)
                 continue
             raise e
 
@@ -742,60 +742,34 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
         await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
         
-        # 0. Idempotency Check: if client_order_id is provided, check if we already processed it
-        if client_order_id:
-            async with db.execute("SELECT * FROM orders WHERE client_order_id = ? AND user_id = ?;", (client_order_id, user_id)) as dup_cursor:
-                existing_orders = await dup_cursor.fetchall()
-                if existing_orders:
-                    # Collect already delivered items for this order
-                    all_stock_data = [item['stock_data'] for item in existing_orders]
-                    price_paid = sum(item['price_paid'] for item in existing_orders)
-                    purchase_time = existing_orders[0]['purchased_at']
-                    actual_qty = len(existing_orders)
-                    return all_stock_data, price_paid, purchase_time, actual_qty
-        
-        # Get product info
         async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
             product = await cursor.fetchone()
             if not product:
                 raise Exception("Product not found")
+
+        from datetime import datetime
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # Get user info
-        async with db.execute("SELECT balance FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+        unit_price = get_product_unit_price(product, quantity)
+        
+        async with db.execute("SELECT balance, discount FROM users WHERE user_id = ?;", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user:
                 raise Exception("User not found")
-                
-        # Check user discount
-        async with db.execute("SELECT discount_percent FROM user_discounts WHERE user_id = ?;", (user_id,)) as cursor:
-            discount_row = await cursor.fetchone()
-            discount_percent = discount_row[0] if discount_row else 0.0
             
-        from utils import get_product_unit_price
-        unit_price = get_product_unit_price(product, quantity)
-        final_price_per_item = round(unit_price * (1 - discount_percent / 100), 2)
+        discount = user['discount'] if user and user['discount'] is not None else 0.0
+        final_price_per_item = round(unit_price * (1 - discount / 100.0), 2)
         total_price = round(final_price_per_item * quantity, 2)
         
-        if not skip_balance_check and round(user['balance'], 2) < total_price:
+        if not skip_balance_check and user['balance'] < total_price:
             raise Exception("Insufficient balance")
+
+        # Check local stock first
+        async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, quantity)) as cursor:
+            local_stocks = await cursor.fetchall()
             
-        # Check local stock count first
-        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as local_cursor:
-            local_count = (await local_cursor.fetchone())[0]
-            
-        local_stock_data = []
-        local_stock_ids = []
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Deduct from local stock as much as possible first
-        local_to_take = min(quantity, local_count)
-        if local_to_take > 0:
-            async with db.execute("SELECT * FROM stocks WHERE product_id = ? AND is_sold = 0 LIMIT ?;", (product_id, local_to_take)) as cursor:
-                local_items = await cursor.fetchall()
-                for item in local_items:
-                    local_stock_data.append(item['data'])
-                    local_stock_ids.append(item['id'])
-                    
+        local_stock_data = [s['stock_data'] for s in local_stocks]
+        local_stock_ids = [s['id'] for s in local_stocks]
         remaining_qty = quantity - len(local_stock_data)
         
         # Check if imported product and we still need items from provider
@@ -819,6 +793,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             is_shopdigital = "shopdigital" in base_url
             is_supabase = "supabase.co" in base_url
             is_prodseller = "prodseller" in base_url
+            is_pandora = "pandoradigital" in base_url
             needed_qty = remaining_qty
             timeout_cfg = aiohttp.ClientTimeout(total=30)
             
@@ -835,23 +810,40 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                         "X-API-Key": api_key.strip(),
                         "Idempotency-Key": ext_order_id,
                         "Content-Type": "application/json",
+                        "Accept": "application/json",
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     }
                     buy_payload = {
                         "productId": prov_pid,
                         "product_id": prov_pid,
                         "quantity": batch_qty,
-                        "external_order_id": ext_order_id
+                        "external_order_id": ext_order_id,
+                        "client_order_reference": ext_order_id
                     }
                     
+                    if is_pandora:
+                        # Pandora Digital Quote flow before order
+                        try:
+                            async with session.post(f"{base_url}/api/v1/quotes", headers=headers, json={"product_id": prov_pid, "quantity": batch_qty}, timeout=aiohttp.ClientTimeout(total=8)) as q_resp:
+                                if q_resp.status in [200, 201]:
+                                    q_data = await q_resp.json()
+                                    if isinstance(q_data, dict):
+                                        buy_payload["expected_unit_price"] = str(q_data.get("unit_price") or q_data.get("price") or "0.00")
+                                        if q_data.get("price_version"):
+                                            buy_payload["price_version"] = str(q_data.get("price_version"))
+                        except Exception as q_err:
+                            logger.warning(f"Pandora quote error: {q_err}")
+
                     if is_supabase:
                         endpoints = [f"{base_url}?action=order"]
+                    elif is_pandora:
+                        endpoints = [f"{base_url}/api/v1/orders"]
                     elif is_prodseller:
                         endpoints = [f"{base_url}/v1/orders"]
                     elif is_shopdigital:
                         endpoints = [f"{base_url}/api/purchase"]
                     else:
-                        endpoints = [f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase"]
+                        endpoints = [f"{base_url}/api/v1/orders", f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase"]
 
                     buy_data = None
                     last_err = "No response from provider"
@@ -871,6 +863,8 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                                     try:
                                         err_json = await resp.json()
                                         last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or err_json.get('detail') or f"HTTP {resp.status}"
+                                        if isinstance(last_err, dict):
+                                            last_err = last_err.get('message') or last_err.get('code') or str(last_err)
                                     except Exception:
                                         err_txt = await resp.text()
                                         if "<!DOCTYPE html>" in err_txt or "<html" in err_txt or "Cannot POST" in err_txt:
@@ -891,14 +885,44 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             break
 
                     batch_items = []
-                    # Check deliveredKeys / deliveredKey / credentials / items / data fields
-                    raw_creds = (
-                        buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
-                        else (buy_data.get('deliveredKey') if buy_data.get('deliveredKey') is not None
-                        else (buy_data.get('credentials') if buy_data.get('credentials') is not None
-                        else (buy_data.get('data') if buy_data.get('data') is not None
-                        else buy_data.get('items'))))
-                    )
+                    
+                    # 1. Check delivery dictionary (Pandora Digital style)
+                    deliv = buy_data.get('delivery')
+                    if isinstance(deliv, dict) and deliv.get('items'):
+                        raw_creds = deliv['items']
+                    elif isinstance(deliv, list):
+                        raw_creds = deliv
+                    else:
+                        # 2. Check deliveredKeys / deliveredKey / credentials / data / items
+                        raw_creds = (
+                            buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
+                            else (buy_data.get('deliveredKey') if buy_data.get('deliveredKey') is not None
+                            else (buy_data.get('credentials') if buy_data.get('credentials') is not None
+                            else (buy_data.get('data') if buy_data.get('data') is not None
+                            else buy_data.get('items'))))
+                        )
+
+                    # 3. If order is processing (Pandora Digital asynchronous fulfillment), poll order lookup
+                    if not raw_creds and (buy_data.get('status') == 'processing' or buy_data.get('status') == 'pending'):
+                        ord_id = buy_data.get('order_id') or buy_data.get('id')
+                        if ord_id:
+                            for _ in range(3):
+                                await asyncio.sleep(2)
+                                try:
+                                    async with session.get(f"{base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=6)) as o_resp:
+                                        if o_resp.status == 200:
+                                            o_data = await o_resp.json()
+                                            if isinstance(o_data, dict):
+                                                o_deliv = o_data.get('delivery')
+                                                if isinstance(o_deliv, dict) and o_deliv.get('items'):
+                                                    raw_creds = o_deliv['items']
+                                                    break
+                                                elif o_data.get('deliveredKeys') or o_data.get('credentials'):
+                                                    raw_creds = o_data.get('deliveredKeys') or o_data.get('credentials')
+                                                    break
+                                except Exception:
+                                    pass
+
                     if raw_creds is not None:
                         if isinstance(raw_creds, str):
                             if "\n" in raw_creds:
@@ -908,10 +932,10 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             else:
                                 batch_items = [raw_creds]
                         elif isinstance(raw_creds, list):
-                            batch_items = raw_creds
+                            batch_items = [str(it['code']) if isinstance(it, dict) and 'code' in it else str(it) for it in raw_creds]
                         else:
                             batch_items = [str(raw_creds)]
-                    elif buy_data.get('success') or buy_data.get('ok'):
+                    elif buy_data.get('success') or buy_data.get('ok') or buy_data.get('status') in ['completed', 'delivered']:
                         order_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
                         batch_items = [f"Order #{order_id} Completed Successfully"]
 

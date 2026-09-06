@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 def normalize_provider_url(url: str) -> str:
     """
-    Normalizes a provider base URL by stripping trailing slashes, /api, /v1, or /api-docs
+    Normalizes a provider base URL by stripping trailing slashes, /docs, /api-docs, /api/v1, /api, or /v1
     to prevent double path issues.
     """
     if not url:
@@ -16,8 +16,12 @@ def normalize_provider_url(url: str) -> str:
     url = url.strip().rstrip('/')
     if not url.startswith('http'):
         url = 'https://' + url
+    if url.endswith('/docs'):
+        url = url[:-5]
     if url.endswith('/api-docs'):
         url = url[:-9]
+    if url.endswith('/api/v1'):
+        url = url[:-7]
     if url.endswith('/api'):
         url = url[:-4]
     if url.endswith('/v1'):
