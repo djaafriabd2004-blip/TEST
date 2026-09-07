@@ -1133,7 +1133,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             )
             
         await db.commit()
-        invalidate_provider_stock_cache(product_id=product['id'], provider_id=product.get('provider_id'))
+        invalidate_provider_stock_cache(product_id=product['id'], provider_id=product['provider_id'])
         all_stock_data = local_stock_data + provider_stock_data
         
         # Check and award referral bonus on first purchase
