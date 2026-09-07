@@ -400,7 +400,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             except Exception as ae:
                 logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
                 
-        if "Out of stock" in err_msg:
+        if "out of stock" in err_msg.lower():
             from database import set_cached_provider_stock
             set_cached_provider_stock(product_id, 0)
             if skip_balance_check:

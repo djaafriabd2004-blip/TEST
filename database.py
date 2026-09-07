@@ -1011,6 +1011,8 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                                             last_err = f"Provider service error (HTTP {resp.status})"
                                         else:
                                             last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
+                                    if "$slice" in str(last_err) or "must be positive: 0" in str(last_err) or "no items in stock" in str(last_err).lower():
+                                        last_err = "Out of stock (Product depleted at provider)"
                                     logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
                                     break
                         except Exception as ep_err:
@@ -1020,6 +1022,8 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     if not buy_data:
                         set_cached_provider_stock(product_id, 0)
                         if not provider_stock_data:
+                            if "out of stock" in str(last_err).lower():
+                                raise Exception(f"Out of stock ({last_err})")
                             raise Exception(f"Provider error: {last_err}")
                         else:
                             logger.warning(f"Batch provider order failed: {last_err}")
