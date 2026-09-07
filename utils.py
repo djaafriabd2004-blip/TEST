@@ -358,7 +358,7 @@ async def start_auto_sales_proof_loop(bot):
     """
     import random
     import html
-    from database import get_setting, get_products, get_stock_count
+    from database import get_setting, get_products, get_all_stock_counts
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
     proof_logger = logging.getLogger("auto_sales_proof")
@@ -390,16 +390,14 @@ async def start_auto_sales_proof_loop(bot):
             if not products:
                 continue
 
+            stock_map = await get_all_stock_counts(products)
             available_products = []
             weights = []
             for p in products:
-                try:
-                    count = await get_stock_count(p['id'])
-                    if count > 0:
-                        available_products.append(p)
-                        weights.append(count)
-                except Exception:
-                    pass
+                count = stock_map.get(p['id'], 0)
+                if count > 0:
+                    available_products.append(p)
+                    weights.append(count)
 
             if not available_products:
                 available_products = list(products)

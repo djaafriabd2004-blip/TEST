@@ -457,6 +457,7 @@ async def delete_product(product_id):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM products WHERE id = ?;", (product_id,))
         await db.commit()
+    invalidate_provider_stock_cache(product_id)
 
 # Provider Integration Helpers
 async def save_provider(base_url, api_key, store_name=None):
@@ -522,19 +523,54 @@ async def get_product(product_id):
         async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
             return await cursor.fetchone()
 
+# Provider Stock Cache Storage & TTL
+_PROVIDER_STOCK_CACHE = {}  # {product_id: (count, timestamp)}
+PROVIDER_STOCK_CACHE_TTL = 90  # 90 seconds cache
+
+def invalidate_provider_stock_cache(product_id=None, provider_id=None):
+    global _PROVIDER_STOCK_CACHE
+    if product_id is not None:
+        _PROVIDER_STOCK_CACHE.pop(product_id, None)
+    else:
+        _PROVIDER_STOCK_CACHE.clear()
+
+def set_cached_provider_stock(product_id, stock_val):
+    global _PROVIDER_STOCK_CACHE
+    import time
+    try:
+        _PROVIDER_STOCK_CACHE[product_id] = (int(stock_val) if stock_val is not None else 0, time.time())
+    except Exception:
+        pass
+
 # Stock Helpers
 async def add_stock(product_id, data):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("INSERT INTO stocks (product_id, data) VALUES (?, ?);", (product_id, data))
         await db.commit()
+    invalidate_provider_stock_cache(product_id)
 
 async def bulk_add_stock(product_id, items):
     async with aiosqlite.connect(DB_NAME) as db:
         params = [(product_id, item) for item in items if item.strip()]
         await db.executemany("INSERT INTO stocks (product_id, data) VALUES (?, ?);", params)
         await db.commit()
+    invalidate_provider_stock_cache(product_id)
 
-async def get_stock_count(product_id):
+async def get_stock_count(product_id, use_cache=True):
+    import time
+    now_ts = time.time()
+    
+    # Fast path: check in-memory cache
+    if use_cache and product_id in _PROVIDER_STOCK_CACHE:
+        cached_val, cached_ts = _PROVIDER_STOCK_CACHE[product_id]
+        if (now_ts - cached_ts) < PROVIDER_STOCK_CACHE_TTL:
+            async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+                await db.execute("PRAGMA busy_timeout = 30000;")
+                async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as local_cursor:
+                    local_row = await local_cursor.fetchone()
+                    local_count = local_row[0] if local_row else 0
+            return local_count + cached_val
+
     async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
         await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
@@ -576,8 +612,7 @@ async def get_stock_count(product_id):
                     f"{base_url}/products/{provider_prod_id}",
                     f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
                     f"{base_url}/v1/products",
-                    f"{base_url}/api/products",
-                    f"{base_url}/products"
+                    f"{base_url}/api/products"
                 ]
                     
                 try:
@@ -593,6 +628,7 @@ async def get_stock_count(product_id):
                                             if matches_product_id(single_p, provider_prod_id) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
                                                 num_stock = extract_stock_from_dict(single_p, allow_boolean=False)
                                                 if num_stock is not None:
+                                                    set_cached_provider_stock(product_id, num_stock)
                                                     return local_count + num_stock
                                                 if fallback_stock is None:
                                                     fallback_stock = extract_stock_from_dict(single_p, allow_boolean=True)
@@ -602,25 +638,36 @@ async def get_stock_count(product_id):
                                             if matches_product_id(p, provider_prod_id):
                                                 num_stock = extract_stock_from_dict(p, allow_boolean=False)
                                                 if num_stock is not None:
+                                                    set_cached_provider_stock(product_id, num_stock)
                                                     return local_count + num_stock
                                                 if fallback_stock is None:
                                                     fallback_stock = extract_stock_from_dict(p, allow_boolean=True)
+                                        if fallback_stock is not None or ('num_stock' in locals() and num_stock is not None):
+                                            break
                             except Exception:
                                 pass
                     if fallback_stock is not None:
+                        set_cached_provider_stock(product_id, fallback_stock)
                         return local_count + fallback_stock
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
+                
+                if product_id in _PROVIDER_STOCK_CACHE:
+                    return local_count + _PROVIDER_STOCK_CACHE[product_id][0]
                 return local_count
                 
         return local_count
 
-async def get_all_stock_counts(products=None):
+async def get_all_stock_counts(products=None, use_cache=True):
     """
     Optimized batch function to get stock counts for all products in 1 DB connection
-    instead of opening N connections in a loop. Prevents 'can't start new thread' errors.
+    with intelligent in-memory TTL caching and single bulk requests per provider.
+    Prevents rate limit errors and speeds up catalog browsing.
     """
+    import time
+    now_ts = time.time()
     stock_counts = {}
+    
     async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
         await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
@@ -640,21 +687,48 @@ async def get_all_stock_counts(products=None):
         """) as cursor:
             prov_prods = await cursor.fetchall()
 
-    # If there are provider products, fetch their live stock concurrently with a 3s timeout
     if prov_prods:
         import aiohttp
         import asyncio
         from utils import normalize_provider_url, extract_stock_from_dict, extract_products_list_from_json, matches_product_id
 
-        async def fetch_single_prov_stock(item):
-            pid = item['product_id']
-            prov_pid = item['provider_product_id']
-            base_url = normalize_provider_url(item['base_url'])
-            api_key = item['api_key']
+        # Group items by provider to do 1 single bulk fetch per provider
+        providers_group = {}
+        for item in prov_prods:
+            pr_id = item['provider_id']
+            if pr_id not in providers_group:
+                providers_group[pr_id] = {
+                    "base_url": normalize_provider_url(item['base_url']),
+                    "api_key": item['api_key'],
+                    "items": []
+                }
+            providers_group[pr_id]["items"].append(item)
+
+        async def process_provider_products(pr_id, pr_data):
+            base_url = pr_data["base_url"]
+            api_key = pr_data["api_key"]
+            items = pr_data["items"]
             
-            local_c = stock_counts.get(pid, 0)
+            # Check if all items in this provider already have valid cache
+            unexpired_all = True
+            if use_cache:
+                for it in items:
+                    it_pid = it['product_id']
+                    if it_pid not in _PROVIDER_STOCK_CACHE or (now_ts - _PROVIDER_STOCK_CACHE[it_pid][1]) >= PROVIDER_STOCK_CACHE_TTL:
+                        unexpired_all = False
+                        break
+            else:
+                unexpired_all = False
+                
+            if unexpired_all and use_cache:
+                for it in items:
+                    it_pid = it['product_id']
+                    cached_s, _ = _PROVIDER_STOCK_CACHE[it_pid]
+                    stock_counts[it_pid] = stock_counts.get(it_pid, 0) + cached_s
+                return
+
+            # Need to fetch fresh data from provider via 1 single bulk catalog call
             is_supabase = "supabase.co" in base_url
-            
             headers = {
                 "Authorization": f"Bearer {api_key.strip()}",
                 "X-API-Key": api_key.strip(),
@@ -662,59 +736,91 @@ async def get_all_stock_counts(products=None):
                 "Accept": "application/json",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
-            
-            endpoints = [
-                f"{base_url}/api/v1/products/{prov_pid}",
-                f"{base_url}/v1/products/{prov_pid}",
-                f"{base_url}/api/products/{prov_pid}",
-                f"{base_url}/products/{prov_pid}",
+            bulk_endpoints = [
                 f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
                 f"{base_url}/v1/products",
                 f"{base_url}/api/products",
                 f"{base_url}/products"
             ]
 
+            catalog_products = None
             try:
-                fallback_s = None
                 async with aiohttp.ClientSession() as session:
-                    for url in endpoints:
+                    for url in bulk_endpoints:
                         try:
-                            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
-                                    if isinstance(data, dict):
-                                        single_p = data.get('product') or data.get('data') or data
-                                        if matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
-                                            num_s = extract_stock_from_dict(single_p, allow_boolean=False)
-                                            if num_s is not None:
-                                                stock_counts[pid] = local_c + num_s
-                                                return
-                                            if fallback_s is None:
-                                                fallback_s = extract_stock_from_dict(single_p, allow_boolean=True)
-                                    
-                                    raw_list = extract_products_list_from_json(data)
-                                    for p in raw_list:
-                                        if matches_product_id(p, prov_pid):
-                                            num_s = extract_stock_from_dict(p, allow_boolean=False)
-                                            if num_s is not None:
-                                                stock_counts[pid] = local_c + num_s
-                                                return
-                                            if fallback_s is None:
-                                                fallback_s = extract_stock_from_dict(p, allow_boolean=True)
+                                    catalog_products = extract_products_list_from_json(data)
+                                    if catalog_products:
+                                        break
                         except Exception:
                             pass
-                if fallback_s is not None:
-                    stock_counts[pid] = local_c + fallback_s
             except Exception as e:
-                logger.warning(f"Error fetching live stock for provider product {pid}: {e}")
+                logger.warning(f"Error fetching bulk catalog for provider {pr_id}: {e}")
 
-        # Limit concurrent provider requests to 5 to avoid resource exhaustion
-        sem = asyncio.Semaphore(5)
-        async def sem_fetch(item):
-            async with sem:
-                await fetch_single_prov_stock(item)
+            # Match items against catalog_products
+            unmatched_items = []
+            for it in items:
+                it_pid = it['product_id']
+                prov_pid = it['provider_product_id']
+                local_c = stock_counts.get(it_pid, 0)
+                
+                matched = False
+                if catalog_products:
+                    for p in catalog_products:
+                        if matches_product_id(p, prov_pid):
+                            num_s = extract_stock_from_dict(p, allow_boolean=False)
+                            if num_s is None:
+                                num_s = extract_stock_from_dict(p, allow_boolean=True) or 0
+                            set_cached_provider_stock(it_pid, num_s)
+                            stock_counts[it_pid] = local_c + num_s
+                            matched = True
+                            break
 
-        await asyncio.gather(*(sem_fetch(item) for item in prov_prods), return_exceptions=True)
+                if not matched:
+                    unmatched_items.append(it)
+
+            # For any item not found in bulk list (or if bulk list failed), fetch individually with short timeout
+            if unmatched_items:
+                async with aiohttp.ClientSession() as session:
+                    for it in unmatched_items:
+                        it_pid = it['product_id']
+                        prov_pid = it['provider_product_id']
+                        local_c = stock_counts.get(it_pid, 0)
+                        
+                        item_endpoints = [
+                            f"{base_url}/api/v1/products/{prov_pid}",
+                            f"{base_url}/v1/products/{prov_pid}",
+                            f"{base_url}/api/products/{prov_pid}"
+                        ]
+                        found_stock = None
+                        for u in item_endpoints:
+                            try:
+                                async with session.get(u, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                                    if resp.status == 200:
+                                        data = await resp.json()
+                                        single_p = data.get('product') or data.get('data') or data if isinstance(data, dict) else None
+                                        if single_p and (matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p)):
+                                            found_stock = extract_stock_from_dict(single_p, allow_boolean=False)
+                                            if found_stock is None:
+                                                found_stock = extract_stock_from_dict(single_p, allow_boolean=True)
+                                            if found_stock is not None:
+                                                break
+                            except Exception:
+                                pass
+                        
+                        if found_stock is not None:
+                            set_cached_provider_stock(it_pid, found_stock)
+                            stock_counts[it_pid] = local_c + found_stock
+                        elif it_pid in _PROVIDER_STOCK_CACHE:
+                            # Use existing cached value
+                            stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
+                        else:
+                            stock_counts[it_pid] = local_c
+
+        # Process all providers concurrently
+        await asyncio.gather(*(process_provider_products(pr_id, pr_data) for pr_id, pr_data in providers_group.items()), return_exceptions=True)
 
     # Fill default 0 for products with no stock
     if products:
@@ -912,6 +1018,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                             last_err = str(ep_err)
 
                     if not buy_data:
+                        set_cached_provider_stock(product_id, 0)
                         if not provider_stock_data:
                             raise Exception(f"Provider error: {last_err}")
                         else:
@@ -975,6 +1082,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
 
                     if not batch_items:
                         if not provider_stock_data:
+                            set_cached_provider_stock(product_id, 0)
                             raise Exception("Provider returned empty delivery data")
                         break
                         
@@ -984,11 +1092,13 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                         break
 
             if len(provider_stock_data) < remaining_qty and not allow_partial:
+                set_cached_provider_stock(product_id, 0)
                 raise Exception(f"Provider returned insufficient items ({len(provider_stock_data)} received, {remaining_qty} requested)")
                 
         # Calculate actual purchased quantity and final price
         actual_qty = len(local_stock_data) + len(provider_stock_data)
         if actual_qty == 0:
+            set_cached_provider_stock(product_id, 0)
             raise Exception("Out of stock")
             
         actual_price = round(final_price_per_item * actual_qty, 2)
@@ -1023,6 +1133,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             )
             
         await db.commit()
+        invalidate_provider_stock_cache(product_id=product['id'], provider_id=product.get('provider_id'))
         all_stock_data = local_stock_data + provider_stock_data
         
         # Check and award referral bonus on first purchase

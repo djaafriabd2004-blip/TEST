@@ -401,6 +401,8 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
                 
         if "Out of stock" in err_msg:
+            from database import set_cached_provider_stock
+            set_cached_provider_stock(product_id, 0)
             if skip_balance_check:
                 # Direct checkout payment went out of stock. Refund the full price_to_pay to user's wallet!
                 import aiosqlite
