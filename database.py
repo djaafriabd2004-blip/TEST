@@ -590,65 +590,17 @@ async def get_stock_count(product_id, use_cache=True):
                     prov = await prov_cursor.fetchone()
                     if not prov:
                         return local_count
-                    from utils import normalize_provider_url, extract_stock_from_dict, extract_products_list_from_json, matches_product_id
-                    base_url = normalize_provider_url(prov['base_url'])
+                    base_url = prov['base_url']
                     api_key = prov['api_key']
                 
-                import aiohttp
-                is_supabase = "supabase.co" in base_url
+                from providers_engine import get_provider_adapter
+                adapter = get_provider_adapter(base_url, api_key)
                 
-                headers = {
-                    "Authorization": f"Bearer {api_key.strip()}",
-                    "X-API-Key": api_key.strip(),
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-                
-                endpoints = [
-                    f"{base_url}/api/v1/products/{provider_prod_id}",
-                    f"{base_url}/v1/products/{provider_prod_id}",
-                    f"{base_url}/api/products/{provider_prod_id}",
-                    f"{base_url}/products/{provider_prod_id}",
-                    f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
-                    f"{base_url}/v1/products",
-                    f"{base_url}/api/products"
-                ]
-                    
                 try:
-                    fallback_stock = None
-                    async with aiohttp.ClientSession() as session:
-                        for url in endpoints:
-                            try:
-                                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
-                                    if resp.status == 200:
-                                        data = await resp.json()
-                                        if isinstance(data, dict):
-                                            single_p = data.get('product') or data.get('data') or data
-                                            if matches_product_id(single_p, provider_prod_id) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
-                                                num_stock = extract_stock_from_dict(single_p, allow_boolean=False)
-                                                if num_stock is not None:
-                                                    set_cached_provider_stock(product_id, num_stock)
-                                                    return local_count + num_stock
-                                                if fallback_stock is None:
-                                                    fallback_stock = extract_stock_from_dict(single_p, allow_boolean=True)
-                                        
-                                        raw_list = extract_products_list_from_json(data)
-                                        for p in raw_list:
-                                            if matches_product_id(p, provider_prod_id):
-                                                num_stock = extract_stock_from_dict(p, allow_boolean=False)
-                                                if num_stock is not None:
-                                                    set_cached_provider_stock(product_id, num_stock)
-                                                    return local_count + num_stock
-                                                if fallback_stock is None:
-                                                    fallback_stock = extract_stock_from_dict(p, allow_boolean=True)
-                                        if fallback_stock is not None or ('num_stock' in locals() and num_stock is not None):
-                                            break
-                            except Exception:
-                                pass
-                    if fallback_stock is not None:
-                        set_cached_provider_stock(product_id, fallback_stock)
-                        return local_count + fallback_stock
+                    num_stock = await adapter.fetch_stock(provider_prod_id)
+                    if num_stock is not None:
+                        set_cached_provider_stock(product_id, num_stock)
+                        return local_count + num_stock
                 except Exception as e:
                     logger.error(f"Error fetching live stock for imported product {product_id}: {e}")
                 
@@ -688,9 +640,9 @@ async def get_all_stock_counts(products=None, use_cache=True):
             prov_prods = await cursor.fetchall()
 
     if prov_prods:
-        import aiohttp
         import asyncio
-        from utils import normalize_provider_url, extract_stock_from_dict, extract_products_list_from_json, matches_product_id
+        from utils import matches_product_id
+        from providers_engine import get_provider_adapter
 
         # Group items by provider to do 1 single bulk fetch per provider
         providers_group = {}
@@ -698,7 +650,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
             pr_id = item['provider_id']
             if pr_id not in providers_group:
                 providers_group[pr_id] = {
-                    "base_url": normalize_provider_url(item['base_url']),
+                    "base_url": item['base_url'],
                     "api_key": item['api_key'],
                     "items": []
                 }
@@ -727,35 +679,10 @@ async def get_all_stock_counts(products=None, use_cache=True):
                     stock_counts[it_pid] = stock_counts.get(it_pid, 0) + cached_s
                 return
 
-            # Need to fetch fresh data from provider via 1 single bulk catalog call
-            is_supabase = "supabase.co" in base_url
-            headers = {
-                "Authorization": f"Bearer {api_key.strip()}",
-                "X-API-Key": api_key.strip(),
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            bulk_endpoints = [
-                f"{base_url}?action=products" if is_supabase else f"{base_url}/api/v1/products",
-                f"{base_url}/v1/products",
-                f"{base_url}/api/products",
-                f"{base_url}/products"
-            ]
-
+            adapter = get_provider_adapter(base_url, api_key)
             catalog_products = None
             try:
-                async with aiohttp.ClientSession() as session:
-                    for url in bulk_endpoints:
-                        try:
-                            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
-                                if resp.status == 200:
-                                    data = await resp.json()
-                                    catalog_products = extract_products_list_from_json(data)
-                                    if catalog_products:
-                                        break
-                        except Exception:
-                            pass
+                catalog_products = await adapter.fetch_catalog()
             except Exception as e:
                 logger.warning(f"Error fetching bulk catalog for provider {pr_id}: {e}")
 
@@ -770,9 +697,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
                 if catalog_products:
                     for p in catalog_products:
                         if matches_product_id(p, prov_pid):
-                            num_s = extract_stock_from_dict(p, allow_boolean=False)
-                            if num_s is None:
-                                num_s = extract_stock_from_dict(p, allow_boolean=True) or 0
+                            num_s = int(p.get('stock', 0))
                             set_cached_provider_stock(it_pid, num_s)
                             stock_counts[it_pid] = local_c + num_s
                             matched = True
@@ -783,38 +708,21 @@ async def get_all_stock_counts(products=None, use_cache=True):
 
             # For any item not found in bulk list (or if bulk list failed), fetch individually with short timeout
             if unmatched_items:
-                async with aiohttp.ClientSession() as session:
-                    for it in unmatched_items:
-                        it_pid = it['product_id']
-                        prov_pid = it['provider_product_id']
-                        local_c = stock_counts.get(it_pid, 0)
-                        
-                        item_endpoints = [
-                            f"{base_url}/api/v1/products/{prov_pid}",
-                            f"{base_url}/v1/products/{prov_pid}",
-                            f"{base_url}/api/products/{prov_pid}"
-                        ]
-                        found_stock = None
-                        for u in item_endpoints:
-                            try:
-                                async with session.get(u, headers=headers, timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                                    if resp.status == 200:
-                                        data = await resp.json()
-                                        single_p = data.get('product') or data.get('data') or data if isinstance(data, dict) else None
-                                        if single_p and (matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p)):
-                                            found_stock = extract_stock_from_dict(single_p, allow_boolean=False)
-                                            if found_stock is None:
-                                                found_stock = extract_stock_from_dict(single_p, allow_boolean=True)
-                                            if found_stock is not None:
-                                                break
-                            except Exception:
-                                pass
-                        
+                for it in unmatched_items:
+                    it_pid = it['product_id']
+                    prov_pid = it['provider_product_id']
+                    local_c = stock_counts.get(it_pid, 0)
+                    try:
+                        found_stock = await adapter.fetch_stock(prov_pid)
                         if found_stock is not None:
                             set_cached_provider_stock(it_pid, found_stock)
                             stock_counts[it_pid] = local_c + found_stock
                         elif it_pid in _PROVIDER_STOCK_CACHE:
-                            # Use existing cached value
+                            stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
+                        else:
+                            stock_counts[it_pid] = local_c
+                    except Exception:
+                        if it_pid in _PROVIDER_STOCK_CACHE:
                             stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
                         else:
                             stock_counts[it_pid] = local_c
@@ -890,210 +798,24 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 prov = await prov_cursor.fetchone()
                 if not prov:
                     raise Exception("Product provider configuration not found")
-                from utils import normalize_provider_url
-                base_url = normalize_provider_url(prov['base_url'])
-                api_key = prov['api_key']
                 
-            # Perform external purchase via provider API in batches if needed
-            import aiohttp
-            import asyncio
-            import time
-            import uuid
-            
-            is_shopdigital = "shopdigital" in base_url
-            is_supabase = "supabase.co" in base_url
-            is_prodseller = "prodseller" in base_url
-            is_pandora = "pandoradigital" in base_url
-            needed_qty = remaining_qty
-            timeout_cfg = aiohttp.ClientTimeout(total=30)
-            
-            async with aiohttp.ClientSession(timeout=timeout_cfg) as session:
-                while needed_qty > 0:
-                    batch_qty = 1 if is_shopdigital else (min(needed_qty, 50) if is_supabase else needed_qty)
-                    ext_order_id = f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
-                    
-                    raw_pid = product['provider_product_id']
-                    prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
-                    
-                    headers = {
-                        "Authorization": f"Bearer {api_key.strip()}",
-                        "X-API-Key": api_key.strip(),
-                        "Idempotency-Key": ext_order_id,
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    }
-                    if is_pandora:
-                        # Pandora Digital strict schema: only product_id, quantity, expected_unit_price, price_version, client_order_reference
-                        expected_price = None
-                        price_version = None
-                        try:
-                            async with session.post(
-                                f"{base_url}/api/v1/quotes",
-                                headers=headers,
-                                json={"product_id": prov_pid, "quantity": int(batch_qty)},
-                                timeout=aiohttp.ClientTimeout(total=8)
-                            ) as q_resp:
-                                if q_resp.status in [200, 201]:
-                                    q_data = await q_resp.json()
-                                    if isinstance(q_data, dict):
-                                        expected_price = q_data.get("unit_price")
-                                        price_version = q_data.get("price_version")
-                                else:
-                                    q_err_text = await q_resp.text()
-                                    logger.warning(f"Pandora quote status {q_resp.status}: {q_err_text}")
-                        except Exception as q_err:
-                            logger.warning(f"Pandora quote error: {q_err}")
+            from providers_engine import get_provider_adapter
+            adapter = get_provider_adapter(prov['base_url'], prov['api_key'])
+            raw_pid = product['provider_product_id']
+            prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
 
-                        if not expected_price:
-                            try:
-                                async with session.get(f"{base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as p_resp:
-                                    if p_resp.status == 200:
-                                        p_data = await p_resp.json()
-                                        if isinstance(p_data, dict):
-                                            expected_price = p_data.get("unit_price")
-                            except Exception:
-                                pass
-
-                        prod_base_price = product['price'] if isinstance(product, dict) and 'price' in product else 1.00
-                        buy_payload = {
-                            "product_id": prov_pid,
-                            "quantity": int(batch_qty),
-                            "expected_unit_price": str(expected_price) if expected_price is not None else str(prod_base_price)
-                        }
-                        if price_version:
-                            buy_payload["price_version"] = str(price_version)
-                        if ext_order_id:
-                            buy_payload["client_order_reference"] = ext_order_id[:100]
-                    else:
-                        buy_payload = {
-                            "productId": prov_pid,
-                            "product_id": prov_pid,
-                            "quantity": batch_qty,
-                            "external_order_id": ext_order_id,
-                            "client_order_reference": ext_order_id
-                        }
-
-                    if is_supabase:
-                        endpoints = [f"{base_url}?action=order"]
-                    elif is_pandora:
-                        endpoints = [f"{base_url}/api/v1/orders"]
-                    elif is_prodseller:
-                        endpoints = [f"{base_url}/v1/orders"]
-                    elif is_shopdigital:
-                        endpoints = [f"{base_url}/api/purchase"]
-                    else:
-                        endpoints = [f"{base_url}/api/v1/orders", f"{base_url}/api/buy", f"{base_url}/v1/orders", f"{base_url}/api/purchase"]
-
-                    buy_data = None
-                    last_err = "No response from provider"
-                    
-                    for ep in endpoints:
-                        try:
-                            logger.info(f"Executing provider order on {ep} with payload: {buy_payload}")
-                            async with session.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                                if resp.status in [200, 201]:
-                                    try:
-                                        buy_data = await resp.json()
-                                    except Exception:
-                                        raw_txt = await resp.text()
-                                        buy_data = {"credentials": raw_txt}
-                                    break
-                                else:
-                                    try:
-                                        err_json = await resp.json()
-                                        last_err = err_json.get('error') or err_json.get('errorMessage') or err_json.get('message') or err_json.get('detail') or f"HTTP {resp.status}"
-                                        if isinstance(last_err, dict):
-                                            last_err = last_err.get('message') or last_err.get('code') or str(last_err)
-                                    except Exception:
-                                        err_txt = await resp.text()
-                                        if "<!DOCTYPE html>" in err_txt or "<html" in err_txt or "Cannot POST" in err_txt:
-                                            last_err = f"Provider service error (HTTP {resp.status})"
-                                        else:
-                                            last_err = err_txt[:200] if err_txt else f"HTTP {resp.status}"
-                                    if "$slice" in str(last_err) or "must be positive: 0" in str(last_err) or "no items in stock" in str(last_err).lower():
-                                        last_err = "Out of stock (Product depleted at provider)"
-                                    logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
-                                    break
-                        except Exception as ep_err:
-                            logger.warning(f"Provider request error on {ep}: {ep_err}")
-                            last_err = str(ep_err)
-
-                    if not buy_data:
-                        set_cached_provider_stock(product_id, 0)
-                        if not provider_stock_data:
-                            if "out of stock" in str(last_err).lower():
-                                raise Exception(f"Out of stock ({last_err})")
-                            raise Exception(f"Provider error: {last_err}")
-                        else:
-                            logger.warning(f"Batch provider order failed: {last_err}")
-                            break
-
-                    batch_items = []
-                    
-                    # 1. Check delivery dictionary (Pandora Digital style)
-                    deliv = buy_data.get('delivery')
-                    if isinstance(deliv, dict) and deliv.get('items'):
-                        raw_creds = deliv['items']
-                    elif isinstance(deliv, list):
-                        raw_creds = deliv
-                    else:
-                        # 2. Check deliveredKeys / deliveredKey / credentials / data / items
-                        raw_creds = (
-                            buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
-                            else (buy_data.get('deliveredKey') if buy_data.get('deliveredKey') is not None
-                            else (buy_data.get('credentials') if buy_data.get('credentials') is not None
-                            else (buy_data.get('data') if buy_data.get('data') is not None
-                            else buy_data.get('items'))))
-                        )
-
-                    # 3. If order is processing (Pandora Digital asynchronous fulfillment), poll order lookup
-                    if not raw_creds and (buy_data.get('status') == 'processing' or buy_data.get('status') == 'pending'):
-                        ord_id = buy_data.get('order_id') or buy_data.get('id')
-                        if ord_id:
-                            for _ in range(3):
-                                await asyncio.sleep(2)
-                                try:
-                                    async with session.get(f"{base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=6)) as o_resp:
-                                        if o_resp.status == 200:
-                                            o_data = await o_resp.json()
-                                            if isinstance(o_data, dict):
-                                                o_deliv = o_data.get('delivery')
-                                                if isinstance(o_deliv, dict) and o_deliv.get('items'):
-                                                    raw_creds = o_deliv['items']
-                                                    break
-                                                elif o_data.get('deliveredKeys') or o_data.get('credentials'):
-                                                    raw_creds = o_data.get('deliveredKeys') or o_data.get('credentials')
-                                                    break
-                                except Exception:
-                                    pass
-
-                    if raw_creds is not None:
-                        if isinstance(raw_creds, str):
-                            if "\n" in raw_creds:
-                                batch_items = [item.strip() for item in raw_creds.split("\n") if item.strip()]
-                            elif "," in raw_creds:
-                                batch_items = [item.strip() for item in raw_creds.split(",") if item.strip()]
-                            else:
-                                batch_items = [raw_creds]
-                        elif isinstance(raw_creds, list):
-                            batch_items = [str(it['code']) if isinstance(it, dict) and 'code' in it else str(it) for it in raw_creds]
-                        else:
-                            batch_items = [str(raw_creds)]
-                    elif buy_data.get('success') or buy_data.get('ok') or buy_data.get('status') in ['completed', 'delivered']:
-                        order_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
-                        batch_items = [f"Order #{order_id} Completed Successfully"]
-
-                    if not batch_items:
-                        if not provider_stock_data:
-                            set_cached_provider_stock(product_id, 0)
-                            raise Exception("Provider returned empty delivery data")
-                        break
-                        
-                    provider_stock_data.extend(batch_items)
-                    needed_qty -= len(batch_items)
-                    if not is_supabase:
-                        break
+            try:
+                delivered_items = await adapter.execute_order(
+                    provider_product_id=prov_pid,
+                    quantity=remaining_qty,
+                    expected_price=product['price'] if isinstance(product, dict) and 'price' in product else 1.00,
+                    client_order_ref=client_order_id
+                )
+                if delivered_items:
+                    provider_stock_data.extend(delivered_items)
+            except Exception as pe:
+                set_cached_provider_stock(product_id, 0)
+                raise pe
 
             if len(provider_stock_data) < remaining_qty and not allow_partial:
                 set_cached_provider_stock(product_id, 0)

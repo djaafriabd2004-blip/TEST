@@ -66,22 +66,37 @@ def extract_stock_from_dict(p, allow_boolean=True):
 
 def extract_products_list_from_json(data):
     """
-    Universally extracts the list of products from any JSON response structure.
+    Universally extracts the list of products from any JSON response structure,
+    including nested category items, catalogs, and flat lists.
     """
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ['products', 'data', 'result', 'items', 'payload', 'services', 'goods']:
+        # 1. Check nested categories list (e.g. Aethel Seller API / Custom APIs)
+        if 'categories' in data and isinstance(data['categories'], list):
+            nested_items = []
+            for cat in data['categories']:
+                if isinstance(cat, dict):
+                    cat_items = cat.get('items') or cat.get('products') or cat.get('goods') or []
+                    if isinstance(cat_items, list):
+                        for it in cat_items:
+                            if isinstance(it, dict):
+                                nested_items.append(it)
+            if nested_items:
+                return nested_items
+
+        # 2. Check standard dictionary root keys
+        for key in ['products', 'data', 'result', 'items', 'payload', 'services', 'goods', 'catalog']:
             val = data.get(key)
             if isinstance(val, list):
                 return val
             if isinstance(val, dict):
-                for subkey in ['products', 'items', 'list']:
+                for subkey in ['products', 'items', 'list', 'goods', 'catalog']:
                     subval = val.get(subkey)
                     if isinstance(subval, list):
                         return subval
                 return [val]
-        if 'id' in data or 'product_id' in data or 'productId' in data or 'service' in data:
+        if 'id' in data or 'product_id' in data or 'productId' in data or 'service' in data or 'item_id' in data:
             return [data]
     return []
 
@@ -92,7 +107,7 @@ def matches_product_id(p, target_id) -> bool:
     if not isinstance(p, dict):
         return False
     t_str = str(target_id).strip().lower()
-    for key in ['id', '_id', 'product_id', 'productId', 'service', 'code', 'sku', 'slug']:
+    for key in ['id', '_id', 'product_id', 'productId', 'service', 'code', 'sku', 'slug', 'item_id']:
         val = p.get(key)
         if val is not None and str(val).strip().lower() == t_str:
             return True
