@@ -834,6 +834,10 @@ async def add_prod_custom_emoji(message: Message, state: FSMContext, bot: Bot, l
         reply_markup=keyboards.get_admin_back_keyboard()
     )
     
+    # Broadcast to all users in private chat
+    from database import broadcast_new_product_to_users
+    await broadcast_new_product_to_users(message.bot, product_id)
+    
     # Broadcast to news channel if configured
     news_channel = await get_setting('news_channel', '')
     if news_channel:
@@ -1253,10 +1257,36 @@ async def process_single_stock(message: Message, state: FSMContext):
     from database import notify_admins_stock_change
     await notify_admins_stock_change(message.bot, prod_id, 'refill', 1)
     
-    # Broadcast restock notification to all users in private chats
-    from database import broadcast_restock_to_users, clear_stock_notifications
+    # Broadcast restock notification to all subscribed users in private chats
+    from database import broadcast_restock_to_users
     await broadcast_restock_to_users(message.bot, prod_id, 1)
-    await clear_stock_notifications(prod_id)
+    
+    # Send News Channel announcement
+    product = await get_product(prod_id)
+    news_channel = await get_setting('news_channel', '')
+    if news_channel and product:
+        try:
+            import html
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
+            prod_name = product['name_en'] or product['name_ar'] or "Product"
+            escaped_prod_name = html.escape(prod_name)
+            announce_text = (
+                f"⚡️ <b>PRODUCT RESTOCKED</b> ⚡️\n"
+                f"──────────────────\n"
+                f"🛍 <b>Product:</b> <code>{escaped_prod_name}</code>\n"
+                f"📦 <b>Items Added:</b> <code>1 unit</code>\n"
+                f"💵 <b>Price:</b> <code>${product['price']:.2f} USD</code>\n"
+                f"──────────────────\n"
+                f"👉 <i>Available now at:</i> @{bot_username}"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛍️ Shop Now", url=f"https://t.me/{bot_username}")]
+            ])
+            await message.bot.send_message(chat_id=news_channel, text=announce_text, parse_mode="HTML", reply_markup=kb)
+        except Exception as e:
+            logger.error(f"Failed to send single restock announcement to news channel: {e}")
 
 @router.message(StockStates.waiting_for_bulk_stock)
 async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang='en'):
@@ -1335,10 +1365,9 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
     prod_name = product['name_en'] if product else "Product"
     prod_name_ar = product['name_ar'] if product else "منتج"
     
-    # Broadcast restock notification to all users in private chats
-    from database import broadcast_restock_to_users, clear_stock_notifications
+    # Broadcast restock notification to all subscribed users in private chats
+    from database import broadcast_restock_to_users
     await broadcast_restock_to_users(message.bot, prod_id, len(lines))
-    await clear_stock_notifications(prod_id)
             
     # Send News Channel announcement
     news_channel = await get_setting('news_channel', '')
@@ -2933,9 +2962,9 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
         await state.clear()
         return
         
-    from database import add_imported_product
+    from database import add_imported_product, broadcast_new_product_to_users
     
-    await add_imported_product(
+    product_id = await add_imported_product(
         name_ar=prod.get('name_ar', prod.get('name_en')),
         name_en=prod.get('name_en'),
         name_ru=prod.get('name_ru', prod.get('name_en')),
@@ -2947,6 +2976,37 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
         provider_id=prov_id,
         provider_product_id=prod['id']
     )
+    
+    # Broadcast to all users in private chat
+    if product_id:
+        await broadcast_new_product_to_users(message.bot, product_id)
+        
+    # Broadcast to news channel if configured
+    news_channel = await get_setting('news_channel', '')
+    if news_channel:
+        try:
+            import html
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            bot_info = await message.bot.get_me()
+            bot_username = bot_info.username
+            product_name = prod.get('name_en') or prod.get('name_ar') or "Product"
+            product_desc = prod.get('description_en') or prod.get('description_ar') or ""
+            escaped_name = html.escape(product_name)
+            escaped_desc = html.escape(product_desc)
+            announce_text = (
+                f"🔥 <b>NEW PRODUCT AVAILABLE</b> 🔥\n"
+                f"──────────────────\n"
+                f"📦 <b>Name:</b> <code>{escaped_name}</code>\n"
+                f"💵 <b>Price:</b> <code>${price:.2f} USD</code>\n\n"
+                + (f"📝 <b>Description:</b>\n<i>{escaped_desc}</i>\n──────────────────\n" if escaped_desc else "──────────────────\n") +
+                f"👉 <i>Get it now:</i> @{bot_username}"
+            )
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛒 Buy Now", url=f"https://t.me/{bot_username}")]
+            ])
+            await message.bot.send_message(chat_id=news_channel, text=announce_text, parse_mode="HTML", reply_markup=kb)
+        except Exception as e:
+            logger.error(f"Failed to log imported product announcement to news channel: {e}")
     
     text = get_text('prov_import_success', lang, name=prod.get('name_en'), price=price)
     await message.answer(text, parse_mode="Markdown")

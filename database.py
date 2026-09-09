@@ -1695,32 +1695,144 @@ async def notify_admins_stock_change(bot, product_id, event_type, quantity=1):
 async def broadcast_restock_to_users(bot, product_id, added_qty):
     async def _run_broadcast():
         import asyncio
+        from utils import send_message_with_retry
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        
         product = await get_product(product_id)
         if not product:
             return
+            
         users = await get_stock_notification_subscribers(product_id)
         if not users:
             return
-        prod_name_ar = product['name_ar']
-        prod_name_en = product['name_en']
+            
+        prod_name_ar = product['name_ar'] or product['name_en']
+        prod_name_en = product['name_en'] or product['name_ar']
         price = product['price']
+        
         for u in users:
             uid = u['user_id']
             lang = u['language'] or 'en'
             name = prod_name_ar if lang == 'ar' else prod_name_en
             text_dict = {
-                'ar': f"🎉 *توفر منتج مفضل لديك!*\n\n🛍 *المنتج:* `{name}`\n📦 *الكمية المضافة:* `{added_qty}` قطع\n💵 *السعر:* `${price:.2f} USD`\n\nسارع بالشراء الآن قبل نفاد الكمية! 🚀",
-                'en': f"🎉 *Restock Alert!*\n\n🛍 *Product:* `{name}`\n📦 *Added Quantity:* `{added_qty}` items\n💵 *Price:* `${price:.2f} USD`\n\nHurry up and shop before it runs out! 🚀",
-                'ru': f"🎉 *Пополнение товара!*\n\n🛍 *Товар:* `{name}`\n📦 *Добавлено:* `{added_qty}` шт.\n💵 *Цена:* `${price:.2f} USD`\n\nУспейте купить! 🚀"
+                'ar': (
+                    f"🎉 *توفر منتج مفضل لديك!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *المنتج:* `{name}`\n"
+                    f"📦 *الكمية المضافة:* `{added_qty}` قطع\n"
+                    f"💵 *السعر:* `${price:.2f} USD`\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"سارع بالشراء الآن قبل نفاد الكمية! 🚀"
+                ),
+                'en': (
+                    f"🎉 *Restock Alert!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *Product:* `{name}`\n"
+                    f"📦 *Added Quantity:* `{added_qty}` items\n"
+                    f"💵 *Price:* `${price:.2f} USD`\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"Hurry up and shop before it runs out! 🚀"
+                ),
+                'ru': (
+                    f"🎉 *Пополнение товара!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *Товар:* `{name}`\n"
+                    f"📦 *Добавлено:* `{added_qty}` шт.\n"
+                    f"💵 *Цена:* `${price:.2f} USD`\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"Успейте купить! 🚀"
+                )
             }
             try:
-                from aiogram.utils.keyboard import InlineKeyboardBuilder
                 builder = InlineKeyboardBuilder()
-                builder.button(text="🛍️ Shop Now", callback_data=f"prod_view_{product_id}")
-                from utils import send_message_with_retry
+                btn_text = "🛍️ شراء الآن" if lang == 'ar' else ("🛍️ Купить сейчас" if lang == 'ru' else "🛍️ Shop Now")
+                builder.button(text=btn_text, callback_data=f"prod_view_{product_id}")
                 await send_message_with_retry(bot.send_message, chat_id=uid, text=text_dict.get(lang, text_dict['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
             except Exception:
                 pass
+            await asyncio.sleep(0.04)
+            
         await clear_stock_notifications(product_id)
+        
     import asyncio
     asyncio.create_task(_run_broadcast())
+
+async def broadcast_new_product_to_users(bot, product_id):
+    async def _run_broadcast():
+        import asyncio
+        from utils import send_message_with_retry
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        
+        product = await get_product(product_id)
+        if not product:
+            return
+            
+        users = await get_all_users()
+        if not users:
+            return
+            
+        prod_name_ar = product['name_ar'] or product['name_en']
+        prod_name_en = product['name_en'] or product['name_ar']
+        desc_ar = product['description_ar'] or product['description_en'] or ''
+        desc_en = product['description_en'] or product['description_ar'] or ''
+        price = product['price']
+        
+        # Clean description snippet for preview (up to 150 chars)
+        desc_ar_short = (desc_ar[:150] + "...") if len(desc_ar) > 150 else desc_ar
+        desc_en_short = (desc_en[:150] + "...") if len(desc_en) > 150 else desc_en
+        
+        for u in users:
+            uid = u['user_id']
+            lang = u['language'] or 'en'
+            name = prod_name_ar if lang == 'ar' else prod_name_en
+            desc = desc_ar_short if lang == 'ar' else desc_en_short
+            
+            text_dict = {
+                'ar': (
+                    f"🔥 *منتج جديد متوفر الآن في المتجر!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *المنتج:* `{name}`\n"
+                    f"💵 *السعر:* `${price:.2f} USD`\n"
+                    + (f"\n📝 *الوصف:*\n_{desc}_\n" if desc else "\n") +
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👇 اضغط على الزر أدناه لمعاينة وشراء المنتج:"
+                ),
+                'en': (
+                    f"🔥 *New Product Available Now!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *Product:* `{name}`\n"
+                    f"💵 *Price:* `${price:.2f} USD`\n"
+                    + (f"\n📝 *Description:*\n_{desc}_\n" if desc else "\n") +
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👇 Click the button below to view and purchase:"
+                ),
+                'ru': (
+                    f"🔥 *Доступен новый товар!*\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"🛍 *Товар:* `{name}`\n"
+                    f"💵 *Цена:* `${price:.2f} USD`\n"
+                    + (f"\n📝 *Описание:*\n_{desc}_\n" if desc else "\n") +
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"👇 Нажмите кнопку ниже для просмотра и покупки:"
+                )
+            }
+            
+            builder = InlineKeyboardBuilder()
+            btn_text = "🛍️ شراء الآن" if lang == 'ar' else ("🛍️ Купить сейчас" if lang == 'ru' else "🛍️ Buy Now")
+            builder.button(text=btn_text, callback_data=f"prod_view_{product_id}")
+            
+            try:
+                await send_message_with_retry(
+                    bot.send_message,
+                    chat_id=uid,
+                    text=text_dict.get(lang, text_dict['en']),
+                    reply_markup=builder.as_markup(),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(0.04)  # 25 msg/sec to prevent Telegram rate limit
+            
+    import asyncio
+    asyncio.create_task(_run_broadcast())
+
