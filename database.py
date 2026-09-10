@@ -1702,7 +1702,7 @@ async def broadcast_restock_to_users(bot, product_id, added_qty):
         if not product:
             return
             
-        users = await get_stock_notification_subscribers(product_id)
+        users = await get_all_users()
         if not users:
             return
             
@@ -1716,16 +1716,16 @@ async def broadcast_restock_to_users(bot, product_id, added_qty):
             name = prod_name_ar if lang == 'ar' else prod_name_en
             text_dict = {
                 'ar': (
-                    f"🎉 *توفر منتج مفضل لديك!*\n"
+                    f"⚡️ *تم توفر كمية جديدة من المنتج!*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *المنتج:* `{name}`\n"
-                    f"📦 *الكمية المضافة:* `{added_qty}` قطع\n"
+                    f"📦 *الكمية المضافة:* `{added_qty}` قطعة\n"
                     f"💵 *السعر:* `${price:.2f} USD`\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"سارع بالشراء الآن قبل نفاد الكمية! 🚀"
                 ),
                 'en': (
-                    f"🎉 *Restock Alert!*\n"
+                    f"⚡️ *Product Restocked!*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *Product:* `{name}`\n"
                     f"📦 *Added Quantity:* `{added_qty}` items\n"
@@ -1734,7 +1734,7 @@ async def broadcast_restock_to_users(bot, product_id, added_qty):
                     f"Hurry up and shop before it runs out! 🚀"
                 ),
                 'ru': (
-                    f"🎉 *Пополнение товара!*\n"
+                    f"⚡️ *Пополнение товара!*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *Товар:* `{name}`\n"
                     f"📦 *Добавлено:* `{added_qty}` шт.\n"
