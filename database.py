@@ -905,11 +905,10 @@ async def check_and_award_referral(user_id):
         
         # 4. Notify referrer via bot if possible
         try:
-            # Import locally to avoid circular dependencies
-            from bot import main
-            # To notify, we can retrieve bot token and query or let middleware/handlers notify.
-            # However, since bot instance is running, we can fetch from config or pass bot
-            import config
+            try:
+                import bot_config as config
+            except ImportError:
+                import config
             from aiogram import Bot
             bot_instance = Bot(token=config.BOT_TOKEN)
             
@@ -1626,7 +1625,10 @@ async def get_admin_ids() -> list:
     """
     Returns list of admin user IDs from config.ADMIN_IDS or stored in settings table.
     """
-    import config
+    try:
+        import bot_config as config
+    except ImportError:
+        import config
     admin_list = list(config.ADMIN_IDS)
     try:
         db_admin_str = await get_setting('admin_ids', '')

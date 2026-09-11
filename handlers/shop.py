@@ -3,8 +3,10 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 import aiosqlite
 try:
+    import bot_config as config
     from bot_config import DB_NAME
 except ImportError:
+    import config
     from config import DB_NAME
 from database import (
     get_products, get_product, get_stock_count, buy_product, get_user, get_setting,
@@ -335,7 +337,6 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             f"💵 *Amount Paid:* `${price_to_pay:.2f} USD`\n"
             f"🆔 *TxID/PayID:* `{txid}`"
         )
-        import config
         for admin_id in config.ADMIN_IDS:
             try:
                 await bot.send_message(chat_id=admin_id, text=admin_notif, parse_mode="Markdown")
@@ -356,7 +357,6 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             f"🔗 *TxID/PayID:* `{txid}`\n\n"
             f"You can verify and approve this manually from the Pending Deposits section."
         )
-        import config
         kb = keyboards.get_admin_payment_approval_keyboard(merchant_trade_no)
         for admin_id in config.ADMIN_IDS:
             try:
@@ -375,7 +375,6 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         err_msg = str(e)
         
         # Send instant high-priority notification to admins about delivery error / provider failure
-        import config
         admin_username = "admin"
         user_info = f"{message.from_user.first_name}"
         if message.from_user.username:
