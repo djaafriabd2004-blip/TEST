@@ -62,6 +62,37 @@ async def db_init():
         );
         """)
         
+        # Stocks Table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS stocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            is_sold INTEGER DEFAULT 0,
+            sold_to INTEGER DEFAULT NULL,
+            sold_at TIMESTAMP DEFAULT NULL,
+            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        """)
+        
+        # Orders Table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            stock_id INTEGER NOT NULL,
+            price_paid REAL NOT NULL,
+            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            stock_data TEXT NOT NULL,
+            product_name_ar TEXT NOT NULL,
+            product_name_en TEXT NOT NULL,
+            product_name_ru TEXT NOT NULL,
+            client_order_id TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(user_id)
+        );
+        """)
+        
         # Migration: Verify all expected columns in products table
         async with db.execute("PRAGMA table_info(products);") as cursor:
             columns = [row[1] for row in await cursor.fetchall()]
@@ -107,37 +138,6 @@ async def db_init():
             order_columns = [row[1] for row in await cursor.fetchall()]
             if "client_order_id" not in order_columns:
                 await db.execute("ALTER TABLE orders ADD COLUMN client_order_id TEXT;")
-        
-        # Stocks Table
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS stocks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            product_id INTEGER NOT NULL,
-            data TEXT NOT NULL,
-            is_sold INTEGER DEFAULT 0,
-            sold_to INTEGER DEFAULT NULL,
-            sold_at TIMESTAMP DEFAULT NULL,
-            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
-        );
-        """)
-        
-        # Orders Table
-        await db.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
-            stock_id INTEGER NOT NULL,
-            price_paid REAL NOT NULL,
-            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            stock_data TEXT NOT NULL,
-            product_name_ar TEXT NOT NULL,
-            product_name_en TEXT NOT NULL,
-            product_name_ru TEXT NOT NULL,
-            client_order_id TEXT,
-            FOREIGN KEY(user_id) REFERENCES users(user_id)
-        );
-        """)
         
         # Payments Table
         await db.execute("""
