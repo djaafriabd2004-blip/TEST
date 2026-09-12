@@ -280,7 +280,10 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
 
         # Update payment amount in DB to the actual verified amount on-chain
         import aiosqlite
-        from config import DB_NAME
+        try:
+            from bot_config import DB_NAME
+        except ImportError:
+            from config import DB_NAME
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute(
                 "UPDATE payments SET amount = ? WHERE transaction_id = ?;", 

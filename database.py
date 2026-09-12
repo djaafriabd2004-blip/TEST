@@ -709,14 +709,14 @@ async def get_all_stock_counts(products=None, use_cache=True):
                 if not matched:
                     unmatched_items.append(it)
 
-            # For any item not found in bulk list (or if bulk list failed), fetch individually with short timeout
+            # For any item not found in bulk list (or if bulk list failed), fetch individually concurrently with short timeout
             if unmatched_items:
-                for it in unmatched_items:
+                async def _fetch_single_item(it):
                     it_pid = it['product_id']
                     prov_pid = it['provider_product_id']
                     local_c = stock_counts.get(it_pid, 0)
                     try:
-                        found_stock = await adapter.fetch_stock(prov_pid)
+                        found_stock = await asyncio.wait_for(adapter.fetch_stock(prov_pid), timeout=6.0)
                         if found_stock is not None:
                             set_cached_provider_stock(it_pid, found_stock)
                             stock_counts[it_pid] = local_c + found_stock
@@ -729,6 +729,8 @@ async def get_all_stock_counts(products=None, use_cache=True):
                             stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
                         else:
                             stock_counts[it_pid] = local_c
+
+                await asyncio.gather(*(_fetch_single_item(it) for it in unmatched_items), return_exceptions=True)
 
         # Process all providers concurrently
         await asyncio.gather(*(process_provider_products(pr_id, pr_data) for pr_id, pr_data in providers_group.items()), return_exceptions=True)

@@ -318,7 +318,10 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     if success and is_amount_matching(price_to_pay, result_val, "BINANCE"):
         # Complete payment in DB (Direct checkout: manually set completed to avoid adding balance)
         import aiosqlite
-        from config import DB_NAME
+        try:
+            from bot_config import DB_NAME
+        except ImportError:
+            from config import DB_NAME
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (merchant_trade_no,))
             await db.commit()
@@ -405,7 +408,10 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             if skip_balance_check:
                 # Direct checkout payment went out of stock. Refund the full price_to_pay to user's wallet!
                 import aiosqlite
-                from config import DB_NAME
+                try:
+                    from bot_config import DB_NAME
+                except ImportError:
+                    from config import DB_NAME
                 async with aiosqlite.connect(DB_NAME) as db:
                     await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
                     await db.commit()
@@ -421,7 +427,10 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         else:
             # Query database for the first admin username if configured
             import aiosqlite
-            from config import DB_NAME
+            try:
+                from bot_config import DB_NAME
+            except ImportError:
+                from config import DB_NAME
             async with aiosqlite.connect(DB_NAME) as db:
                 db.row_factory = aiosqlite.Row
                 if config.ADMIN_IDS:
@@ -475,7 +484,10 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
         # For balance purchases, buy_product already deducted only actual_price from user balance.
         if skip_balance_check and refund_amount > 0:
             import aiosqlite
-            from config import DB_NAME
+            try:
+                from bot_config import DB_NAME
+            except ImportError:
+                from config import DB_NAME
             async with aiosqlite.connect(DB_NAME) as db:
                 await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (refund_amount, user_id))
                 await db.commit()

@@ -2485,7 +2485,10 @@ async def cmd_backup_db(message: Message, bot: Bot):
         
     from aiogram.types import FSInputFile
     import os
-    from config import DB_NAME
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
     
     if not os.path.exists(DB_NAME):
         await message.answer("❌ Database file not found.")
@@ -2522,7 +2525,10 @@ async def process_restore_db(message: Message, state: FSMContext, bot: Bot):
         file = await bot.get_file(file_id)
         file_path = file.file_path
         
-        from config import DB_NAME
+        try:
+            from bot_config import DB_NAME
+        except ImportError:
+            from config import DB_NAME
         import os
         
         # Ensure parent folder exists
@@ -2687,25 +2693,36 @@ async def fetch_provider_store_name(base_url, api_key):
         base_url = 'https://' + base_url
     is_supabase = "supabase.co" in base_url
     
-    headers = {}
-    if is_supabase:
-        headers["Authorization"] = f"Bearer {api_key}"
-        url = f"{base_url}?action=balance"
-    else:
-        headers["X-API-Key"] = api_key
-        url = f"{base_url}/api/me"
-        
+    headers = {
+        "X-API-Key": api_key,
+        "Authorization": f"Bearer {api_key}",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    endpoints = [
+        f"{base_url}?action=balance" if is_supabase else f"{base_url}/api/me",
+        f"{base_url}/api/v1/me",
+        f"{base_url}/v1/me",
+        f"{base_url}/me"
+    ]
+    
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if is_supabase:
-                        return "Supabase Reseller API"
-                    if data.get('ok') and data.get('store_name'):
-                        return data['store_name']
-                    elif data.get('ok') and 'user' in data:
-                        return f"Partner: {data['user']['first_name']}"
+            for url in endpoints:
+                try:
+                    async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if is_supabase:
+                                return "Supabase Reseller API"
+                            if isinstance(data, dict):
+                                if data.get('ok') and data.get('store_name'):
+                                    return data['store_name']
+                                elif data.get('store_name'):
+                                    return data['store_name']
+                                elif data.get('ok') and 'user' in data and isinstance(data['user'], dict):
+                                    return f"Partner: {data['user'].get('first_name') or data['user'].get('username')}"
+                except Exception:
+                    continue
     except Exception:
         pass
     
@@ -3132,7 +3149,10 @@ async def cb_admin_preorder_detail(callback: CallbackQuery, lang='en'):
     
     # Query database directly for pre-order details
     import aiosqlite
-    from config import DB_NAME
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -3185,7 +3205,10 @@ async def cb_admin_preorder_cancel(callback: CallbackQuery, lang='en'):
             }
             # Fetch user language
             import aiosqlite
-            from config import DB_NAME
+            try:
+                from bot_config import DB_NAME
+            except ImportError:
+                from config import DB_NAME
             async with aiosqlite.connect(DB_NAME) as db:
                 async with db.execute("SELECT language FROM users WHERE user_id = ?;", (user_id,)) as cur:
                     row = await cur.fetchone()

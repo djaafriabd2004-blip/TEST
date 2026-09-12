@@ -47,13 +47,17 @@ class BaseProviderAdapter:
             f"{self.base_url}/api/v1/products",
             f"{self.base_url}/v1/products",
             f"{self.base_url}/api/products",
-            f"{self.base_url}/products"
+            f"{self.base_url}/products",
+            f"{self.base_url}/api/v1/catalog",
+            f"{self.base_url}/v1/catalog",
+            f"{self.base_url}/api/catalog",
+            f"{self.base_url}/catalog"
         ]
         
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             try:
                                 data = await resp.json()
@@ -62,7 +66,7 @@ class BaseProviderAdapter:
                             raw_list = extract_products_list_from_json(data)
                             if raw_list:
                                 return self._standardize_catalog(raw_list)
-                            elif isinstance(data, dict) and data.get('ok') is True:
+                            elif isinstance(data, dict) and (data.get('ok') is True or data.get('status') == 'success' or 'products' in data):
                                 return []
                             elif isinstance(data, list) and len(data) == 0:
                                 return []
@@ -92,7 +96,7 @@ class BaseProviderAdapter:
             fallback_stock = None
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             if isinstance(data, dict):
@@ -119,9 +123,10 @@ class BaseProviderAdapter:
             
             # Fallback: fetch full catalog and search
             catalog = await self.fetch_catalog(s)
-            for p in catalog:
-                if matches_product_id(p, prov_pid):
-                    return int(p.get('stock', 0))
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return int(p.get('stock', 0))
             return None
 
         if session:
@@ -143,31 +148,37 @@ class BaseProviderAdapter:
         Raises Exception if order failed or provider returned error.
         """
         prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         
         payload = {
             "productId": prov_pid,
-            "product_id": prov_pid,
-            "quantity": quantity,
+            "product_id": item_id,
+            "item_id": item_id,
+            "quantity": int(quantity),
             "external_order_id": order_ref,
-            "client_order_reference": order_ref
+            "client_order_reference": order_ref,
+            "client_order_id": order_ref,
+            "idempotency_key": order_ref
         }
         
         endpoints = [
             f"{self.base_url}/api/v1/orders",
             f"{self.base_url}/api/buy",
             f"{self.base_url}/v1/orders",
-            f"{self.base_url}/api/purchase"
+            f"{self.base_url}/api/purchase",
+            f"{self.base_url}/v1/purchases",
+            f"{self.base_url}/api/v1/purchases"
         ]
 
         async def _req(s):
             last_err = "No response from provider"
-            headers = self.get_headers({"Idempotency-Key": order_ref})
+            headers = self.get_headers({"Idempotency-Key": str(order_ref)})
             
             for ep in endpoints:
                 try:
                     logger.info(f"Executing provider order on {ep} with payload: {payload}")
-                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                         if resp.status in [200, 201]:
                             try:
                                 buy_data = await resp.json()
@@ -178,6 +189,8 @@ class BaseProviderAdapter:
                         else:
                             last_err = await self._parse_error_response(resp)
                             logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
+                            if resp.status == 404 or "Cannot POST" in str(last_err) or "Not Found" in str(last_err):
+                                continue
                             break
                 except Exception as ep_err:
                     logger.warning(f"Provider request error on {ep}: {ep_err}")
@@ -195,7 +208,33 @@ class BaseProviderAdapter:
                 return await _req(s)
 
     async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
-        return None
+        endpoints = [
+            f"{self.base_url}/api/v1/me",
+            f"{self.base_url}/v1/me",
+            f"{self.base_url}/api/me",
+            f"{self.base_url}/me",
+            f"{self.base_url}/v1/balance",
+            f"{self.base_url}/api/v1/balance",
+            f"{self.base_url}/api/balance",
+            f"{self.base_url}/balance"
+        ]
+        async def _req(s):
+            for url in endpoints:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                return data
+                except Exception:
+                    pass
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
 
     def _standardize_catalog(self, raw_list: List[Any]) -> List[Dict[str, Any]]:
         formatted = []
@@ -311,7 +350,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             raw_list = extract_products_list_from_json(data)
@@ -348,7 +387,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                     f"{self.base_url}/api/v1/quotes",
                     headers=headers,
                     json={"product_id": prov_pid, "quantity": int(quantity)},
-                    timeout=aiohttp.ClientTimeout(total=8)
+                    timeout=aiohttp.ClientTimeout(total=10, connect=5)
                 ) as q_resp:
                     if q_resp.status in [200, 201]:
                         q_data = await q_resp.json()
@@ -360,7 +399,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
 
             if not unit_price:
                 try:
-                    async with s.get(f"{self.base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as p_resp:
+                    async with s.get(f"{self.base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=5)) as p_resp:
                         if p_resp.status == 200:
                             p_data = await p_resp.json()
                             if isinstance(p_data, dict):
@@ -379,7 +418,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                 buy_payload["client_order_reference"] = order_ref[:100]
 
             logger.info(f"Executing Pandora order on {self.base_url}/api/v1/orders with payload: {buy_payload}")
-            async with s.post(f"{self.base_url}/api/v1/orders", headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+            async with s.post(f"{self.base_url}/api/v1/orders", headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                 if resp.status in [200, 201]:
                     buy_data = await resp.json()
                     # Handle async processing
@@ -389,7 +428,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                             for _ in range(4):
                                 await asyncio.sleep(2)
                                 try:
-                                    async with s.get(f"{self.base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=6)) as o_resp:
+                                    async with s.get(f"{self.base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as o_resp:
                                         if o_resp.status == 200:
                                             o_data = await o_resp.json()
                                             if o_data.get('delivery') or o_data.get('deliveredKeys'):
@@ -426,6 +465,7 @@ class AethelProviderAdapter(BaseProviderAdapter):
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers = {
             "X-API-Key": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -438,13 +478,14 @@ class AethelProviderAdapter(BaseProviderAdapter):
         endpoints = [
             f"{self.base_url}/v1/catalog",
             f"{self.base_url}/api/v1/catalog",
-            f"{self.base_url}/catalog"
+            f"{self.base_url}/catalog",
+            f"{self.base_url}/api/catalog"
         ]
         
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             raw_list = extract_products_list_from_json(data)
@@ -463,12 +504,14 @@ class AethelProviderAdapter(BaseProviderAdapter):
     async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
         endpoints = [
             f"{self.base_url}/v1/balance",
-            f"{self.base_url}/api/v1/balance"
+            f"{self.base_url}/api/v1/balance",
+            f"{self.base_url}/api/balance",
+            f"{self.base_url}/balance"
         ]
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
                         if resp.status == 200:
                             return await resp.json()
                 except Exception:
@@ -503,7 +546,9 @@ class AethelProviderAdapter(BaseProviderAdapter):
         
         endpoints = [
             f"{self.base_url}/v1/purchases",
-            f"{self.base_url}/api/v1/purchases"
+            f"{self.base_url}/api/v1/purchases",
+            f"{self.base_url}/v1/orders",
+            f"{self.base_url}/api/v1/orders"
         ]
 
         async def _req(s):
@@ -511,7 +556,7 @@ class AethelProviderAdapter(BaseProviderAdapter):
             for ep in endpoints:
                 try:
                     logger.info(f"Executing Aethel order on {ep} with payload: {payload}")
-                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                         if resp.status in [200, 201]:
                             buy_data = await resp.json()
                             return self._parse_delivery_data(buy_data, order_ref)
@@ -554,7 +599,7 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             raw_list = extract_products_list_from_json(data)
@@ -592,7 +637,7 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         async def _req(s):
             ep = f"{self.base_url}/v1/orders"
             logger.info(f"Executing ProdSeller order on {ep} with payload: {payload}")
-            async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+            async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                 if resp.status in [200, 201]:
                     buy_data = await resp.json()
                     return self._parse_delivery_data(buy_data, order_ref)
@@ -625,7 +670,7 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
         async def _req(s):
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             data = await resp.json()
                             raw_list = extract_products_list_from_json(data)
@@ -662,7 +707,7 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
                     "quantity": 1,
                     "external_order_id": f"{order_ref}_{len(collected_items)}"
                 }
-                async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                     if resp.status in [200, 201]:
                         buy_data = await resp.json()
                         delivered = self._parse_delivery_data(buy_data, order_ref)
@@ -695,7 +740,7 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
         url = f"{self.base_url}?action=products"
         async def _req(s):
             try:
-                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         raw_list = extract_products_list_from_json(data)
@@ -730,7 +775,7 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
         url = f"{self.base_url}?action=order"
 
         async def _req(s):
-            async with s.post(url, headers=self.get_headers(), json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            async with s.post(url, headers=self.get_headers(), json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                 if resp.status in [200, 201]:
                     buy_data = await resp.json()
                     return self._parse_delivery_data(buy_data, order_ref)

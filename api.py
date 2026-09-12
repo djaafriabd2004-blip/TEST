@@ -78,7 +78,7 @@ async def get_me_api(request):
 async def get_products_api(request):
     from database import get_products, get_all_stock_counts
     products = await get_products()
-    stock_counts = await get_all_stock_counts(products)
+    stock_counts = await get_all_stock_counts(products, use_cache=True)
     result = []
     for p in products:
         p_dict = dict(p)
@@ -268,7 +268,10 @@ async def buy_api(request):
         
         # Query order ID to get transaction / order identity
         import aiosqlite
-        from config import DB_NAME
+        try:
+            from bot_config import DB_NAME
+        except ImportError:
+            from config import DB_NAME
         order_id = None
         async with aiosqlite.connect(DB_NAME) as db:
             async with db.execute("SELECT id FROM orders WHERE user_id = ? AND purchased_at = ? LIMIT 1;", (user_id, purchase_time)) as ord_cur:
@@ -352,7 +355,10 @@ async def get_order_history_api(request):
     user_id = user["user_id"]
     
     import aiosqlite
-    from config import DB_NAME
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
     
     # Fetch recent orders grouped by purchase time and product
     # In order to return cohesive multi-item purchases as single orders
@@ -393,7 +399,10 @@ async def get_order_detail_api(request):
     order_param = request.match_info["id"]
     
     import aiosqlite
-    from config import DB_NAME
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
     
     # Try looking it up by client_order_id first, then by numerical id
     query = """
