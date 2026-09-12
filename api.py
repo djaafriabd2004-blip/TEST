@@ -10,22 +10,37 @@ logger = logging.getLogger(__name__)
 @web.middleware
 async def api_key_auth_middleware(request, handler):
     # Allow public endpoints
-    if request.path == "/" or request.path == "/api/health":
+    clean_path = request.path.rstrip('/')
+    if clean_path in ["", "/", "/api/health", "/health", "/v1/health", "/api/v1/health"]:
         return await handler(request)
         
-    if request.path.startswith("/api/"):
-        api_key = request.headers.get("X-API-Key")
-        if not api_key:
-            return web.json_response({"ok": False, "error": "API Key missing in X-API-Key header"}, status=401)
+    # Extract API Key from multiple standard headers / query params
+    api_key = (
+        request.headers.get("X-API-Key") or
+        request.headers.get("Authorization") or
+        request.headers.get("X-Auth-Token") or
+        request.headers.get("api-key") or
+        request.headers.get("api_key") or
+        request.query.get("api_key") or
+        request.query.get("key") or
+        request.query.get("token")
+    )
+    
+    if api_key:
+        api_key = api_key.strip()
+        if api_key.lower().startswith("bearer "):
+            api_key = api_key[7:].strip()
             
-        from database import get_user_by_api_key
-        user = await get_user_by_api_key(api_key)
-        if not user:
-            return web.json_response({"ok": False, "error": "Invalid API Key"}, status=401)
-            
-        # Store user info in request context
-        request["user"] = user
+    if not api_key:
+        return web.json_response({"ok": False, "error": "API Key missing in X-API-Key or Authorization header"}, status=401)
         
+    from database import get_user_by_api_key
+    user = await get_user_by_api_key(api_key)
+    if not user:
+        return web.json_response({"ok": False, "error": "Invalid API Key"}, status=401)
+        
+    # Store user info in request context
+    request["user"] = user
     return await handler(request)
 
 # Endpoints
@@ -43,14 +58,19 @@ async def get_me_api(request):
     user = request["user"]
     from database import get_setting
     store_name = await get_setting("store_name", "Digital Store")
+    bal = float(user["balance"] or 0.0)
     return web.json_response({
         "ok": True,
         "store_name": store_name,
+        "balance": bal,
+        "balance_usd": f"{bal:.2f}",
+        "currency": "USD",
         "user": {
             "user_id": user["user_id"],
             "username": user["username"],
             "first_name": user["first_name"],
-            "balance": user["balance"],
+            "balance": bal,
+            "balance_usd": f"{bal:.2f}",
             "language": user["language"]
         }
     })
@@ -98,21 +118,26 @@ async def buy_api(request):
     except Exception:
         return web.json_response({"ok": False, "error": "Invalid JSON body"}, status=400)
         
-    product_id = data.get("product_id")
-    quantity = data.get("quantity", 1)
-    
-    if not product_id or not isinstance(product_id, int):
+    raw_pid = data.get("product_id") or data.get("productId") or data.get("item_id") or data.get("service") or data.get("id")
+    try:
+        product_id = int(str(raw_pid).strip())
+    except (ValueError, TypeError):
         return web.json_response({"ok": False, "error": "product_id is required and must be an integer"}, status=400)
         
-    if not isinstance(quantity, int) or quantity < 1:
-        return web.json_response({"ok": False, "error": "quantity must be a positive integer"}, status=400)
+    raw_qty = data.get("quantity") or data.get("qty") or data.get("count") or data.get("amount") or 1
+    try:
+        quantity = int(raw_qty)
+        if quantity < 1:
+            quantity = 1
+    except (ValueError, TypeError):
+        quantity = 1
         
     from database import buy_product, get_product
     product = await get_product(product_id)
     if not product:
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
-    client_order_id = data.get("client_order_id") or data.get("idempotency_key")
+    client_order_id = data.get("client_order_id") or data.get("idempotency_key") or data.get("external_order_id") or data.get("client_order_reference")
     
     try:
         # Pass client_order_id to buy_product to enable idempotency checks
@@ -271,15 +296,51 @@ def create_api_app(bot) -> web.Application:
     app = web.Application(middlewares=[api_key_auth_middleware])
     app["bot"] = bot
     
-    # Register routes
+    # 1. Root & Health routes
     app.router.add_get("/", index_api)
+    app.router.add_get("/health", health_api)
     app.router.add_get("/api/health", health_api)
+    app.router.add_get("/v1/health", health_api)
+    app.router.add_get("/api/v1/health", health_api)
+    
+    # 2. Account & Balance routes
     app.router.add_get("/api/me", get_me_api)
+    app.router.add_get("/v1/me", get_me_api)
+    app.router.add_get("/api/v1/me", get_me_api)
+    app.router.add_get("/api/balance", get_me_api)
+    app.router.add_get("/v1/balance", get_me_api)
+    app.router.add_get("/api/v1/balance", get_me_api)
+    
+    # 3. Catalog & Products routes
     app.router.add_get("/api/products", get_products_api)
+    app.router.add_get("/v1/products", get_products_api)
+    app.router.add_get("/api/v1/products", get_products_api)
+    app.router.add_get("/api/catalog", get_products_api)
+    app.router.add_get("/v1/catalog", get_products_api)
+    app.router.add_get("/api/v1/catalog", get_products_api)
+    
+    # 4. Product Details
     app.router.add_get("/api/products/{id}", get_product_detail_api)
+    app.router.add_get("/v1/products/{id}", get_product_detail_api)
+    app.router.add_get("/api/v1/products/{id}", get_product_detail_api)
+    
+    # 5. Order / Buy / Purchase routes
     app.router.add_post("/api/buy", buy_api)
+    app.router.add_post("/api/order", buy_api)
+    app.router.add_post("/api/orders", buy_api)
+    app.router.add_post("/v1/orders", buy_api)
+    app.router.add_post("/api/v1/orders", buy_api)
+    app.router.add_post("/v1/purchases", buy_api)
+    app.router.add_post("/api/v1/purchases", buy_api)
+    app.router.add_post("/api/purchase", buy_api)
+    
+    # 6. Orders history & detail
     app.router.add_get("/api/orders", get_order_history_api)
+    app.router.add_get("/v1/orders", get_order_history_api)
+    app.router.add_get("/api/v1/orders", get_order_history_api)
     app.router.add_get("/api/orders/{id}", get_order_detail_api)
+    app.router.add_get("/v1/orders/{id}", get_order_detail_api)
+    app.router.add_get("/api/v1/orders/{id}", get_order_detail_api)
     
     return app
 

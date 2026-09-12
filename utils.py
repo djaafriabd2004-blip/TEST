@@ -8,24 +8,19 @@ logger = logging.getLogger(__name__)
 
 def normalize_provider_url(url: str) -> str:
     """
-    Normalizes a provider base URL by stripping trailing slashes, /docs, /api-docs, /api/v1, /api, or /v1
+    Normalizes a provider base URL by stripping trailing slashes, /docs, /api-docs, /api/v1, /api, or /v1, /products, /catalog
     to prevent double path issues.
     """
     if not url:
         return ""
     url = url.strip().rstrip('/')
-    if not url.startswith('http'):
+    if not url.startswith('http://') and not url.startswith('https://'):
         url = 'https://' + url
-    if url.endswith('/docs'):
-        url = url[:-5]
-    if url.endswith('/api-docs'):
-        url = url[:-9]
-    if url.endswith('/api/v1'):
-        url = url[:-7]
-    if url.endswith('/api'):
-        url = url[:-4]
-    if url.endswith('/v1'):
-        url = url[:-3]
+        
+    for suffix in ['/docs', '/api-docs', '/api/docs', '/api/v1/products', '/api/products', '/v1/products', '/products', '/api/v1/catalog', '/v1/catalog', '/catalog', '/api/v1', '/api', '/v1']:
+        if url.endswith(suffix):
+            url = url[:-len(suffix)].rstrip('/')
+            
     return url.rstrip('/')
 
 def extract_stock_from_dict(p, allow_boolean=True):
