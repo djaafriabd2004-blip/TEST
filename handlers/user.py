@@ -324,15 +324,10 @@ async def cb_download_orders_txt(callback: CallbackQuery, lang='en'):
 async def cmd_user_api(message: Message, lang='en'):
     user_id = message.from_user.id
     
-    from database import get_api_key, get_setting
+    from database import get_api_key
+    from utils import get_bot_api_base_url
     api_key = await get_api_key(user_id)
-    
-    import os
-    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
-    if not domain:
-        domain = await get_setting("api_domain", "your-bot-domain.com")
-    
-    api_base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    api_base_url = await get_bot_api_base_url()
     
     if not api_key:
         text = get_text('reseller_api_info_no_key', lang)
@@ -345,7 +340,8 @@ async def cmd_user_api(message: Message, lang='en'):
 async def cb_user_api_key_gen(callback: CallbackQuery, lang='en'):
     user_id = callback.from_user.id
     
-    from database import get_api_key, generate_api_key, get_setting
+    from database import get_api_key, generate_api_key
+    from utils import get_bot_api_base_url
     api_key = await get_api_key(user_id)
     if not api_key:
         api_key = await generate_api_key(user_id)
@@ -353,12 +349,7 @@ async def cb_user_api_key_gen(callback: CallbackQuery, lang='en'):
     else:
         await callback.answer("Already exists.")
         
-    import os
-    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
-    if not domain:
-        domain = await get_setting("api_domain", "your-bot-domain.com")
-        
-    api_base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    api_base_url = await get_bot_api_base_url()
     
     text = get_text('reseller_api_info_has_key', lang, api_key=api_key, api_base_url=api_base_url)
     await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="Markdown")
@@ -367,16 +358,12 @@ async def cb_user_api_key_gen(callback: CallbackQuery, lang='en'):
 async def cb_user_api_key_regen(callback: CallbackQuery, lang='en'):
     user_id = callback.from_user.id
     
-    from database import generate_api_key, get_setting
+    from database import generate_api_key
+    from utils import get_bot_api_base_url
     api_key = await generate_api_key(user_id)
     await callback.answer("🔄 API Key Regenerated!")
     
-    import os
-    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
-    if not domain:
-        domain = await get_setting("api_domain", "your-bot-domain.com")
-        
-    api_base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    api_base_url = await get_bot_api_base_url()
     
     text = get_text('reseller_api_info_has_key', lang, api_key=api_key, api_base_url=api_base_url)
     await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="Markdown")
@@ -402,15 +389,17 @@ async def cb_user_api_key_doc(callback: CallbackQuery, lang='en'):
     user_id = callback.from_user.id
     
     from database import get_api_key, get_setting
+    from utils import get_bot_api_base_url
     api_key = await get_api_key(user_id) or "YOUR_API_KEY_HERE"
     store_name = await get_setting("store_name", "Digital Store")
+    api_base_url = await get_bot_api_base_url()
     
     doc_content = f"""==================================================
         {store_name.upper()} - RESELLER API DOCUMENTATION
 ==================================================
 
 1. Base URL:
-   https://worker-production-53ca.up.railway.app
+   {api_base_url}
 
 2. Authentication:
    Header Name: X-API-Key
@@ -444,7 +433,7 @@ headers = {{
     "X-API-Key": "{api_key}",
     "Content-Type": "application/json"
 }}
-res = requests.get("https://worker-production-53ca.up.railway.app/api/products", headers=headers)
+res = requests.get("{api_base_url}/api/products", headers=headers)
 print(res.json())
 """
     file = BufferedInputFile(doc_content.encode('utf-8'), filename="api_documentation.txt")

@@ -447,3 +447,23 @@ async def start_auto_sales_proof_loop(bot):
         except Exception as e:
             proof_logger.error(f"Error in auto sales proof loop: {e}")
             await asyncio.sleep(60)
+
+async def get_bot_api_base_url() -> str:
+    """
+    Dynamically resolves the public base URL of the bot REST API.
+    Prioritizes server environment variables (Railway, Render, etc.),
+    then database settings, with a universal fallback.
+    """
+    import os
+    from database import get_setting
+    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RAILWAY_STATIC_URL") or os.getenv("APP_URL") or ""
+    if not domain or domain == "worker-production-53ca.up.railway.app":
+        db_domain = await get_setting("api_domain", "")
+        if db_domain and db_domain != "worker-production-53ca.up.railway.app":
+            domain = db_domain
+    if not domain or domain == "worker-production-53ca.up.railway.app":
+        domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "your-bot-domain.up.railway.app")
+    if not domain.startswith("http://") and not domain.startswith("https://"):
+        return f"https://{domain}"
+    return domain
+

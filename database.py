@@ -236,13 +236,16 @@ async def db_init():
             'cryptobot_use_testnet': '0',
             'cryptotransfer_enabled': '1',
             'cryptobot_enabled': '1',
-            'api_domain': 'worker-production-53ca.up.railway.app',
+            'api_domain': '',
             'binance_api_proxy': '',
             'binance_api_base_url': 'https://api.binance.com',
             'binance_pay_base_url': 'https://bpay.binanceapi.com',
         }
         for key, val in default_settings.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
+            
+        # Clear legacy hardcoded railway domain if present so it auto-detects dynamically
+        await db.execute("UPDATE settings SET value = '' WHERE key = 'api_domain' AND value = 'worker-production-53ca.up.railway.app';")
             
         # Clean up any invalid language codes in users table
         await db.execute("UPDATE users SET language = 'en' WHERE language NOT IN ('en', 'ar', 'ru');")
