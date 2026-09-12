@@ -2722,7 +2722,7 @@ async def fetch_provider_products(base_url, api_key):
     try:
         adapter = get_provider_adapter(base_url, api_key)
         catalog = await adapter.fetch_catalog()
-        if catalog:
+        if catalog is not None:
             return catalog
     except Exception as e:
         logger.error(f"Error fetching provider products from {base_url}: {e}")
@@ -2842,6 +2842,13 @@ async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='e
     
     if products is None:
         await callback.message.edit_text("❌ Failed to fetch products from provider bot. Please make sure the URL and API key are correct.", reply_markup=keyboards.get_admin_back_keyboard())
+    elif len(products) == 0:
+        empty_msg = {
+            'ar': "📭 لا توجد أي منتجات معروضة للبيع في متجر هذا المزود حالياً.\n(تأكد من إضافة وتفعيل منتجات في البوت المزود أولاً).",
+            'en': "📭 No products available in this provider's store currently.\n(Make sure to add products in the provider bot first).",
+            'ru': "📭 В магазине этого поставщика пока нет доступных товаров."
+        }
+        await callback.message.edit_text(empty_msg.get(lang, empty_msg['en']), reply_markup=keyboards.get_admin_back_keyboard(), parse_mode="Markdown")
     else:
         await state.update_data(prov_products=products, prov_id=prov['id'])
         await callback.message.edit_text(get_text('prov_select_product', lang), reply_markup=keyboards.get_provider_products_keyboard(products, lang))
@@ -2871,6 +2878,31 @@ async def process_provider_key(message: Message, state: FSMContext, lang='en'):
     
     if products is None:
         await message.answer("❌ Failed to connect to provider bot. Please verify the URL and Reseller API key, and try again by clicking 'Pull External Product'.")
+        await state.clear()
+    elif len(products) == 0:
+        # Fetch remote store name and save provider
+        store_name = await fetch_provider_store_name(url, key)
+        from database import save_provider
+        await save_provider(url, key, store_name=store_name)
+        
+        empty_msg = {
+            'ar': (
+                f"✅ *تم الاتصال وحفظ المزود بنجاح! ({store_name})*\n\n"
+                f"⚠️ *ملاحظة:* متجر المزود لا يحتوي على أي منتجات حالياً (0 منتج).\n"
+                f"قم بإضافة منتجات داخل البوت المزود، ثم اضغط '🔌 سحب منتج خارجي' لاستيرادها فوراً!"
+            ),
+            'en': (
+                f"✅ *Connected and saved provider successfully! ({store_name})*\n\n"
+                f"⚠️ *Note:* The provider store currently has no products (0 products).\n"
+                f"Please add products in the provider bot, then click 'Pull External Product' to import them!"
+            ),
+            'ru': (
+                f"✅ *Поставщик успешно подключен! ({store_name})*\n\n"
+                f"⚠️ В магазине поставщика пока нет товаров (0 товаров).\n"
+                f"Добавьте товары в боте поставщика, затем нажмите 'Импортировать товары'!"
+            )
+        }
+        await message.answer(empty_msg.get(lang, empty_msg['en']), reply_markup=keyboards.get_admin_back_keyboard(), parse_mode="Markdown")
         await state.clear()
     else:
         # Fetch remote store name

@@ -55,13 +55,20 @@ class BaseProviderAdapter:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            try:
+                                data = await resp.json()
+                            except Exception:
+                                continue
                             raw_list = extract_products_list_from_json(data)
                             if raw_list:
                                 return self._standardize_catalog(raw_list)
+                            elif isinstance(data, dict) and data.get('ok') is True:
+                                return []
+                            elif isinstance(data, list) and len(data) == 0:
+                                return []
                 except Exception as e:
                     logger.debug(f"Catalog probe {url} failed: {e}")
-            return []
+            return None
 
         if session:
             return await _req(session)
