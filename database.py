@@ -1794,13 +1794,14 @@ async def broadcast_new_product_to_users(bot, product_id):
             name = prod_name_ar if lang == 'ar' else prod_name_en
             desc = desc_ar_short if lang == 'ar' else desc_en_short
             
+            desc_clean = (desc or '').strip()
             text_dict = {
                 'ar': (
                     f"🔥 *منتج جديد متوفر الآن في المتجر!*\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *المنتج:* `{name}`\n"
                     f"💵 *السعر:* `${price:.2f} USD`\n"
-                    + (f"\n📝 *الوصف:*\n_{desc}_\n" if desc else "\n") +
+                    + (f"\n📝 *الوصف:*\n_{desc_clean}_\n" if desc_clean else "") +
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"👇 اضغط على الزر أدناه لمعاينة وشراء المنتج:"
                 ),
@@ -1809,7 +1810,7 @@ async def broadcast_new_product_to_users(bot, product_id):
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *Product:* `{name}`\n"
                     f"💵 *Price:* `${price:.2f} USD`\n"
-                    + (f"\n📝 *Description:*\n_{desc}_\n" if desc else "\n") +
+                    + (f"\n📝 *Description:*\n_{desc_clean}_\n" if desc_clean else "") +
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"👇 Click the button below to view and purchase:"
                 ),
@@ -1818,7 +1819,7 @@ async def broadcast_new_product_to_users(bot, product_id):
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"🛍 *Товар:* `{name}`\n"
                     f"💵 *Цена:* `${price:.2f} USD`\n"
-                    + (f"\n📝 *Описание:*\n_{desc}_\n" if desc else "\n") +
+                    + (f"\n📝 *Описание:*\n_{desc_clean}_\n" if desc_clean else "") +
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"👇 Нажмите кнопку ниже для просмотра и покупки:"
                 )

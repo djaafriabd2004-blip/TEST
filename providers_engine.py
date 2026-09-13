@@ -252,10 +252,6 @@ class BaseProviderAdapter:
             name_ar = p.get("name_ar") or p_name
             name_en = p.get("name_en") or p_name
             name_ru = p.get("name_ru") or p_name
-            desc_ar = p.get("description_ar") or p.get("description") or f"Imported Product: {p_name}"
-            desc_en = p.get("description_en") or p.get("description") or f"Imported Product: {p_name}"
-            desc_ru = p.get("description_ru") or p.get("description") or f"Imported Product: {p_name}"
-            
             try:
                 price_val = float(p.get("price") or p.get("unit_price") or p.get("price_usd") or p.get("rate") or 0.0)
             except Exception:
@@ -271,10 +267,10 @@ class BaseProviderAdapter:
                 "name_ar": name_ar,
                 "name_en": name_en,
                 "name_ru": name_ru,
-                "description": desc_en,
-                "description_ar": desc_ar,
-                "description_en": desc_en,
-                "description_ru": desc_ru,
+                "description": "",
+                "description_ar": "",
+                "description_en": "",
+                "description_ru": "",
                 "price": price_val,
                 "stock": stock_val,
                 "custom_emoji_id": p.get("custom_emoji_id")

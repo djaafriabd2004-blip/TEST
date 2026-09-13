@@ -3017,9 +3017,9 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
         name_ar=prod.get('name_ar', prod.get('name_en')),
         name_en=prod.get('name_en'),
         name_ru=prod.get('name_ru', prod.get('name_en')),
-        description_ar=prod.get('description_ar', prod.get('description_en')),
-        description_en=prod.get('description_en'),
-        description_ru=prod.get('description_ru', prod.get('description_en')),
+        description_ar="",
+        description_en="",
+        description_ru="",
         price=price,
         custom_emoji_id=prod.get('custom_emoji_id'),
         provider_id=prov_id,
@@ -3039,15 +3039,13 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
             bot_info = await message.bot.get_me()
             bot_username = bot_info.username
             product_name = prod.get('name_en') or prod.get('name_ar') or "Product"
-            product_desc = prod.get('description_en') or prod.get('description_ar') or ""
             escaped_name = html.escape(product_name)
-            escaped_desc = html.escape(product_desc)
             announce_text = (
                 f"🔥 <b>NEW PRODUCT AVAILABLE</b> 🔥\n"
                 f"──────────────────\n"
                 f"📦 <b>Name:</b> <code>{escaped_name}</code>\n"
-                f"💵 <b>Price:</b> <code>${price:.2f} USD</code>\n\n"
-                + (f"📝 <b>Description:</b>\n<i>{escaped_desc}</i>\n──────────────────\n" if escaped_desc else "──────────────────\n") +
+                f"💵 <b>Price:</b> <code>${price:.2f} USD</code>\n"
+                f"──────────────────\n"
                 f"👉 <i>Get it now:</i> @{bot_username}"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[

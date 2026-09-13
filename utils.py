@@ -266,14 +266,14 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
     tier_str = f"\n\n{tier_text}" if tier_text else ""
 
     if not desc_entities:
-        text = get_text(
-            'product_details',
-            lang,
-            name=name,
-            desc=desc,
-            price=price_str_markdown,
-            stock=stock_count
-        ) + tier_str
+        desc_clean = (desc or "").strip()
+        desc_line = (f"\n\n📝 *الوصف:* {desc_clean}" if lang == 'ar' else (f"\n\n📝 *Описание:* {desc_clean}" if lang == 'ru' else f"\n\n📝 *Description:* {desc_clean}")) if desc_clean else ""
+        if lang == 'ar':
+            text = f"🛍️ *المنتج:* {name}{desc_line}\n\n💵 *السعر:* {price_str_markdown}\n📦 *المخزون:* `{stock_count}` متوفر" + tier_str
+        elif lang == 'ru':
+            text = f"🛍️ *Товар:* {name}{desc_line}\n\n💵 *Цена:* {price_str_markdown}\n📦 *В наличии:* `{stock_count}` шт." + tier_str
+        else:
+            text = f"🛍️ *Product:* {name}{desc_line}\n\n💵 *Price:* {price_str_markdown}\n📦 *Stock:* `{stock_count}` available" + tier_str
         return text, None, "Markdown"
 
     # Rich formatting with MessageEntities (preserves Telegram Premium Custom Emojis)
