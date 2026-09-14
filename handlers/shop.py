@@ -78,10 +78,12 @@ async def cb_product_view(callback: CallbackQuery, lang='en'):
         has_stock = stock_count > 0
         
         user_id = callback.from_user.id
-        discount_pct = await get_user_discount(user_id)
+        from database import get_user_product_price
+        custom_price = await get_user_product_price(user_id, product_id)
+        discount_pct = await get_user_discount(user_id) if not custom_price else 0.0
         
         from utils import format_product_message
-        text, entities, parse_mode = format_product_message(product, lang, stock_count, discount_pct)
+        text, entities, parse_mode = format_product_message(product, lang, stock_count, discount_pct=discount_pct, custom_price=custom_price)
         
         is_sub = False
         if not has_stock:
@@ -165,9 +167,9 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         await message.answer("Product not found.")
         return
         
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, qty)
-    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
+    from database import get_effective_product_price
+    unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
     
     # Render checkout payment method prompt
@@ -191,9 +193,9 @@ async def cb_checkout_balance(callback: CallbackQuery, bot: Bot, lang='en'):
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, qty)
-    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
+    from database import get_effective_product_price
+    unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(unit_price * qty, 2)
     
     if round(db_user['balance'], 2) < price_to_pay:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay), show_alert=True)
@@ -217,9 +219,9 @@ async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: B
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, qty)
-    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
+    from database import get_effective_product_price
+    unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(unit_price * qty, 2)
     
     # Verify stock availability again
     stock_count = await get_stock_count(product_id)
@@ -694,9 +696,8 @@ async def cb_product_preorder(callback: CallbackQuery, state: FSMContext, lang='
         return
         
     # Check if they already have balance
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, 1)
-    price_to_pay_per_item = round(unit_price * (1 - discount_pct / 100), 2)
+    from database import get_effective_product_price
+    price_to_pay_per_item = await get_effective_product_price(product, user_id, 1)
     
     if round(db_user['balance'], 2) < price_to_pay_per_item:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay_per_item), show_alert=True)
@@ -745,9 +746,8 @@ async def process_preorder_quantity(message: Message, state: FSMContext):
     await state.clear()
     
     # Calculate price
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, qty)
-    price_to_pay_per_item = round(unit_price * (1 - discount_pct / 100), 2)
+    from database import get_effective_product_price
+    price_to_pay_per_item = await get_effective_product_price(product, user_id, qty)
     total_price = round(price_to_pay_per_item * qty, 2)
     
     # Try creating pre-order

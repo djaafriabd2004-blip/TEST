@@ -149,7 +149,12 @@ async def cb_admin_menu(callback: CallbackQuery, lang='en'):
     )
     await callback.answer()
 
-@router.message(F.text == "📊 Statistics")
+@router.message(F.text.in_([
+    get_text('btn_admin_stats', 'en'),
+    get_text('btn_admin_stats', 'ar'),
+    get_text('btn_admin_stats', 'ru'),
+    "📊 Statistics", "📊 الإحصائيات", "📊 Статистика"
+]))
 async def msg_admin_statistics(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
@@ -252,12 +257,17 @@ async def cb_admin_dl_sales_24h(callback: CallbackQuery, lang='en'):
         logger.error(f"Failed to send 24h sales report: {e}")
         await callback.answer("❌ Error generating report file.", show_alert=True)
 
-@router.message(F.text == "🔍 Inspect User")
-async def msg_admin_inspect_user(message: Message, state: FSMContext):
+@router.message(F.text.in_([
+    get_text('btn_admin_inspect_user', 'en'),
+    get_text('btn_admin_inspect_user', 'ar'),
+    get_text('btn_admin_inspect_user', 'ru'),
+    "🔍 Inspect User", "🔍 فحص مستخدم", "🔍 Проверка пользователя"
+]))
+async def msg_admin_inspect_user(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_inspect_user_id)
-    await message.answer("🔍 Enter the User ID to inspect:", reply_markup=keyboards.get_admin_reply_keyboard())
+    await message.answer("🔍 Enter the User ID to inspect:", reply_markup=keyboards.get_admin_reply_keyboard(lang))
 
 @router.message(AdminStates.waiting_for_inspect_user_id)
 async def process_inspect_user_id(message: Message, state: FSMContext):
@@ -366,7 +376,12 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
         except Exception:
             await message.answer(text, reply_markup=builder.as_markup())
 
-@router.message(F.text == "📦 Manage Products")
+@router.message(F.text.in_([
+    get_text('btn_admin_manage_products', 'en'),
+    get_text('btn_admin_manage_products', 'ar'),
+    get_text('btn_admin_manage_products', 'ru'),
+    "📦 Manage Products", "📦 إدارة المنتجات", "📦 Управление товарами"
+]))
 async def msg_admin_manage_products(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
@@ -376,9 +391,10 @@ async def msg_admin_manage_products(message: Message, lang='en'):
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Add Product", callback_data="admin_prod_add")
     for prod in products:
-        name = prod['name_en']
+        name_k = f'name_{lang}'
+        name = prod.get(name_k) or prod.get('name_en') or f"Product #{prod['id']}"
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     
     await message.answer(
@@ -387,17 +403,34 @@ async def msg_admin_manage_products(message: Message, lang='en'):
         parse_mode="Markdown"
     )
 
-@router.message(F.text.in_(["📥 Add Stock", "📦 Bulk Add Stock"]))
-async def msg_admin_stock_select_prod(message: Message, state: FSMContext):
+@router.message(F.text.in_([
+    get_text('btn_admin_add_stock', 'en'),
+    get_text('btn_admin_add_stock', 'ar'),
+    get_text('btn_admin_add_stock', 'ru'),
+    get_text('btn_admin_bulk_stock', 'en'),
+    get_text('btn_admin_bulk_stock', 'ar'),
+    get_text('btn_admin_bulk_stock', 'ru'),
+    "📥 Add Stock", "📥 إضافة ستوك", "📥 Добавить сток",
+    "📦 Bulk Add Stock", "📦 إضافة ستوك جماعي", "📦 Массовое добавление"
+]))
+async def msg_admin_stock_select_prod(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
-    action = "admin_add_stock" if message.text == "📥 Add Stock" else "admin_bulk_stock"
+    is_bulk = message.text in [
+        get_text('btn_admin_bulk_stock', 'en'),
+        get_text('btn_admin_bulk_stock', 'ar'),
+        get_text('btn_admin_bulk_stock', 'ru'),
+        "📦 Bulk Add Stock", "📦 إضافة ستوك جماعي", "📦 Массовое добавление"
+    ]
+    action = "admin_bulk_stock" if is_bulk else "admin_add_stock"
     products = await get_products()
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     for prod in products:
-        builder.button(text=f"{prod['name_en']}", callback_data=f"admin_stk_{action.split('_')[1]}_{prod['id']}")
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+        name_k = f'name_{lang}'
+        name = prod.get(name_k) or prod.get('name_en') or f"Product #{prod['id']}"
+        builder.button(text=f"{name}", callback_data=f"admin_stk_{action.split('_')[1]}_{prod['id']}")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     
     await message.answer(
@@ -406,7 +439,12 @@ async def msg_admin_stock_select_prod(message: Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-@router.message(F.text == "⏳ Pending Deposits")
+@router.message(F.text.in_([
+    get_text('btn_admin_pending_deposits', 'en'),
+    get_text('btn_admin_pending_deposits', 'ar'),
+    get_text('btn_admin_pending_deposits', 'ru'),
+    "⏳ Pending Deposits", "⏳ الإيداعات المعلقة", "⏳ Ожидающие платежи"
+]))
 async def msg_admin_pending_deposits(message: Message):
     if not is_user_admin(message.from_user.id):
         return
@@ -451,26 +489,38 @@ async def msg_admin_pending_deposits(message: Message):
         await message.answer(msg_text, reply_markup=kb, parse_mode="Markdown")
 
 @router.message(F.text.in_([
-    "📢 Channels Settings", 
-    "🎧 Support Settings", 
-    "💳 Charge Section", 
-    "👥 Referral System",
-    "🔑 API Keys Settings",
-    "🎨 Button Emojis"
+    get_text('btn_admin_channels', 'en'), get_text('btn_admin_channels', 'ar'), get_text('btn_admin_channels', 'ru'),
+    get_text('btn_admin_support', 'en'), get_text('btn_admin_support', 'ar'), get_text('btn_admin_support', 'ru'),
+    get_text('btn_admin_charge', 'en'), get_text('btn_admin_charge', 'ar'), get_text('btn_admin_charge', 'ru'),
+    get_text('btn_admin_referral', 'en'), get_text('btn_admin_referral', 'ar'), get_text('btn_admin_referral', 'ru'),
+    get_text('btn_admin_api_keys', 'en'), get_text('btn_admin_api_keys', 'ar'), get_text('btn_admin_api_keys', 'ru'),
+    get_text('btn_admin_button_emojis', 'en'), get_text('btn_admin_button_emojis', 'ar'), get_text('btn_admin_button_emojis', 'ru'),
+    "📢 Channels Settings", "📢 إعدادات القنوات", "📢 Настройки каналов",
+    "🎧 Support Settings", "🎧 إعدادات الدعم", "🎧 Настройки поддержки",
+    "💳 Charge Section", "💳 إعدادات الدفع", "💳 Настройки оплаты",
+    "👥 Referral System", "👥 نظام الإحالة", "👥 Реферальная система",
+    "🔑 API Keys Settings", "🔑 إعدادات مفاتيح API", "🔑 Настройки API ключей",
+    "🎨 Button Emojis", "🎨 إيموجيات الأزرار", "🎨 Эмодзи кнопок"
 ]))
-async def msg_admin_settings_menu(message: Message):
+async def msg_admin_settings_menu(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     
-    mapping = {
-        "📢 Channels Settings": "admin_channels",
-        "🎧 Support Settings": "admin_support_settings",
-        "💳 Charge Section": "admin_charge_settings",
-        "👥 Referral System": "admin_referral_settings",
-        "🔑 API Keys Settings": "admin_api_keys_settings",
-        "🎨 Button Emojis": "admin_emoji_settings"
-    }
-    menu = mapping[message.text]
+    t = message.text
+    if t in [get_text('btn_admin_channels', 'en'), get_text('btn_admin_channels', 'ar'), get_text('btn_admin_channels', 'ru'), "📢 Channels Settings", "📢 إعدادات القنوات", "📢 Настройки каналов"]:
+        menu = "admin_channels"
+    elif t in [get_text('btn_admin_support', 'en'), get_text('btn_admin_support', 'ar'), get_text('btn_admin_support', 'ru'), "🎧 Support Settings", "🎧 إعدادات الدعم", "🎧 Настройки поддержки"]:
+        menu = "admin_support_settings"
+    elif t in [get_text('btn_admin_charge', 'en'), get_text('btn_admin_charge', 'ar'), get_text('btn_admin_charge', 'ru'), "💳 Charge Section", "💳 إعدادات الدفع", "💳 Настройки оплаты"]:
+        menu = "admin_charge_settings"
+    elif t in [get_text('btn_admin_referral', 'en'), get_text('btn_admin_referral', 'ar'), get_text('btn_admin_referral', 'ru'), "👥 Referral System", "👥 نظام الإحالة", "👥 Реферальная система"]:
+        menu = "admin_referral_settings"
+    elif t in [get_text('btn_admin_api_keys', 'en'), get_text('btn_admin_api_keys', 'ar'), get_text('btn_admin_api_keys', 'ru'), "🔑 API Keys Settings", "🔑 إعدادات مفاتيح API", "🔑 Настройки API ключей"]:
+        menu = "admin_api_keys_settings"
+    elif t in [get_text('btn_admin_button_emojis', 'en'), get_text('btn_admin_button_emojis', 'ar'), get_text('btn_admin_button_emojis', 'ru'), "🎨 Button Emojis", "🎨 إيموجيات الأزرار", "🎨 Эмодзи кнопок"]:
+        menu = "admin_emoji_settings"
+    else:
+        menu = "admin_channels"
     
     text = ""
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -628,14 +678,24 @@ async def msg_admin_settings_menu(message: Message):
     
     await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
-@router.message(F.text == "📣 Broadcast")
+@router.message(F.text.in_([
+    get_text('btn_admin_broadcast', 'en'),
+    get_text('btn_admin_broadcast', 'ar'),
+    get_text('btn_admin_broadcast', 'ru'),
+    "📣 Broadcast", "📣 رسالة جماعية", "📣 Рассылка"
+]))
 async def msg_admin_broadcast_trigger(message: Message, state: FSMContext):
     if not is_user_admin(message.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_broadcast)
     await message.answer("📣 Send the message you want to broadcast to *all users* (can contain formatting or markdown):")
 
-@router.message(F.text == "🔙 Back to Main Menu")
+@router.message(F.text.in_([
+    get_text('btn_admin_back_to_menu', 'en'),
+    get_text('btn_admin_back_to_menu', 'ar'),
+    get_text('btn_admin_back_to_menu', 'ru'),
+    "🔙 Back to Main Menu", "🔙 العودة للقائمة الرئيسية", "🔙 Главное меню"
+]))
 async def msg_admin_back_to_user_menu(message: Message):
     if not is_user_admin(message.from_user.id):
         return
@@ -1965,50 +2025,247 @@ async def cb_admin_pay_reject(callback: CallbackQuery, bot: Bot):
     await callback.message.edit_text(updated_text, reply_markup=None, parse_mode="Markdown")
     await callback.answer("Transaction rejected!")
 
+# --- Custom Product Prices Management ---
+@router.message(F.text.in_([
+    get_text('btn_admin_custom_prices', 'en'),
+    get_text('btn_admin_custom_prices', 'ar'),
+    get_text('btn_admin_custom_prices', 'ru'),
+    "🎯 Custom Product Prices"
+]))
+async def msg_admin_custom_prices_menu(message: Message, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    from database import get_all_custom_product_prices
+    custom_prices = await get_all_custom_product_prices()
+    text = get_text('admin_custom_prices_title', lang)
+    if not custom_prices:
+        text += "\n\n" + get_text('admin_custom_price_no_items', lang)
+    await message.answer(
+        text,
+        reply_markup=keyboards.get_admin_custom_prices_keyboard(custom_prices, lang),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_custom_prices_menu")
+async def cb_admin_custom_prices_menu(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    from database import get_all_custom_product_prices
+    custom_prices = await get_all_custom_product_prices()
+    text = get_text('admin_custom_prices_title', lang)
+    if not custom_prices:
+        text += "\n\n" + get_text('admin_custom_price_no_items', lang)
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_admin_custom_prices_keyboard(custom_prices, lang),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_custom_price_add")
+async def cb_admin_custom_price_add(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    await state.set_state(AdminStates.waiting_for_custom_price_user_id)
+    await callback.message.answer(get_text('admin_custom_price_user_prompt', lang), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(AdminStates.waiting_for_custom_price_user_id)
+async def process_custom_price_user_id(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        await state.clear()
+        return
+    val = message.text.strip()
+    try:
+        user_id = int(val)
+    except ValueError:
+        await message.answer("❌ Invalid User ID. Please enter a valid numerical User ID:")
+        return
+    
+    from database import get_user, get_products
+    db_user = await get_user(user_id)
+    if not db_user:
+        await message.answer("❌ User not found in the database. The user must start/use the bot at least once. Please check the ID and try again:")
+        return
+        
+    products = await get_products()
+    if not products:
+        await message.answer("❌ No products available in the store.")
+        await state.clear()
+        return
+        
+    await state.update_data(cp_user_id=user_id)
+    user_name = escape_md(db_user['first_name'])
+    if db_user.get('username'):
+        user_name += f" (@{escape_md(db_user['username'])})"
+    
+    prompt = get_text('admin_custom_price_select_prod', lang, user_id=user_id, user_name=user_name)
+    await message.answer(
+        prompt,
+        reply_markup=keyboards.get_admin_select_product_for_custom_price_keyboard(products, user_id, lang),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("admin_cp_set_"))
+async def cb_admin_cp_select_product(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    # admin_cp_set_{user_id}_{product_id}
+    parts = callback.data.split("_")
+    user_id = int(parts[3])
+    prod_id = int(parts[4])
+    
+    from database import get_product
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+        
+    prod_name = product.get(f'name_{lang}') or product.get('name_en') or f"Product #{prod_id}"
+    orig_price = float(product.get('price', 0.0))
+    
+    await state.update_data(cp_user_id=user_id, cp_product_id=prod_id, cp_orig_price=orig_price, cp_prod_name=prod_name)
+    await state.set_state(AdminStates.waiting_for_custom_price_value)
+    
+    prompt = get_text('admin_custom_price_val_prompt', lang, product_name=prod_name, original_price=orig_price, user_id=user_id)
+    await callback.message.answer(prompt, parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(AdminStates.waiting_for_custom_price_value)
+async def process_custom_price_value(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        await state.clear()
+        return
+        
+    val = message.text.strip().replace("$", "")
+    try:
+        custom_price = float(val)
+        if custom_price < 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Invalid price. Please enter a valid positive number (e.g. `4.50`):")
+        return
+        
+    data = await state.get_data()
+    user_id = data.get("cp_user_id")
+    prod_id = data.get("cp_product_id")
+    await state.clear()
+    
+    if not user_id or not prod_id:
+        await message.answer("❌ Session expired. Please try again.")
+        return
+        
+    from database import set_user_product_price, get_user, get_product
+    await set_user_product_price(user_id, prod_id, custom_price)
+    
+    db_user = await get_user(user_id)
+    user_name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    prod = await get_product(prod_id)
+    prod_name = prod.get(f'name_{lang}') or prod.get('name_en') or f"Product #{prod_id}" if prod else f"Product #{prod_id}"
+    orig_price = float(prod.get('price', 0.0)) if prod else 0.0
+    
+    success_text = get_text('admin_custom_price_success', lang, user_id=user_id, user_name=user_name, product_name=prod_name, custom_price=custom_price, original_price=orig_price)
+    await message.answer(
+        success_text,
+        reply_markup=keyboards.get_admin_back_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("admin_cp_del_"))
+async def cb_admin_cp_del(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    parts = callback.data.split("_")
+    user_id = int(parts[3])
+    prod_id = int(parts[4])
+    
+    from database import delete_user_product_price, get_product, get_all_custom_product_prices
+    await delete_user_product_price(user_id, prod_id)
+    
+    prod = await get_product(prod_id)
+    prod_name = prod.get(f'name_{lang}') or prod.get('name_en') or f"Product #{prod_id}" if prod else f"Product #{prod_id}"
+    
+    del_msg = get_text('admin_custom_price_deleted', lang, product_name=prod_name, user_id=user_id)
+    await callback.answer(del_msg, show_alert=True)
+    
+    # Refresh view
+    custom_prices = await get_all_custom_product_prices()
+    text = get_text('admin_custom_prices_title', lang)
+    if not custom_prices:
+        text += "\n\n" + get_text('admin_custom_price_no_items', lang)
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_admin_custom_prices_keyboard(custom_prices, lang),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("admin_cp_sel_"))
+async def cb_admin_cp_sel(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    parts = callback.data.split("_")
+    user_id = int(parts[3])
+    prod_id = int(parts[4])
+    
+    from database import get_product, get_user_product_price
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+        
+    prod_name = product.get(f'name_{lang}') or product.get('name_en') or f"Product #{prod_id}"
+    orig_price = float(product.get('price', 0.0))
+    current_custom_price = await get_user_product_price(user_id, prod_id) or 0.0
+    
+    await state.update_data(cp_user_id=user_id, cp_product_id=prod_id, cp_orig_price=orig_price, cp_prod_name=prod_name)
+    await state.set_state(AdminStates.waiting_for_custom_price_value)
+    
+    prompt = get_text('admin_custom_price_val_prompt', lang, product_name=prod_name, original_price=orig_price, user_id=user_id)
+    prompt += f"\n*(Current Custom Price: ${current_custom_price:.2f})*"
+    await callback.message.answer(prompt, parse_mode="Markdown")
+    await callback.answer()
+
 # --- User Discounts Management ---
-@router.message(F.text == "👥 User Discounts")
-async def msg_admin_discounts_menu(message: Message):
+@router.message(F.text.in_([
+    get_text('btn_admin_user_discounts', 'en'),
+    get_text('btn_admin_user_discounts', 'ar'),
+    get_text('btn_admin_user_discounts', 'ru'),
+    "👥 User Discounts", "👥 خصومات المستخدمين", "👥 Скидки пользователей"
+]))
+async def msg_admin_discounts_menu(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
         
     from database import get_all_user_discounts
     discounts = await get_all_user_discounts()
     
-    text = (
-        "👥 *User Discounts Configuration*\n\n"
-        "Here you can manage custom percentage discounts for specific users. "
-        "A user with a discount will automatically get the corresponding price deduction at checkout."
-    )
+    text = get_text('admin_discounts_title', lang)
     
     await message.answer(
         text,
-        reply_markup=keyboards.get_admin_discounts_keyboard(discounts),
+        reply_markup=keyboards.get_admin_discounts_keyboard(discounts, lang),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_discounts_menu")
-async def cb_admin_discounts_menu(callback: CallbackQuery):
+async def cb_admin_discounts_menu(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
         
     from database import get_all_user_discounts
     discounts = await get_all_user_discounts()
     
-    text = (
-        "👥 *User Discounts Configuration*\n\n"
-        "Here you can manage custom percentage discounts for specific users. "
-        "A user with a discount will automatically get the corresponding price deduction at checkout."
-    )
+    text = get_text('admin_discounts_title', lang)
     
     await callback.message.edit_text(
         text,
-        reply_markup=keyboards.get_admin_discounts_keyboard(discounts),
+        reply_markup=keyboards.get_admin_discounts_keyboard(discounts, lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_discount_del_"))
-async def cb_admin_discount_del(callback: CallbackQuery):
+async def cb_admin_discount_del(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
         
@@ -2021,11 +2278,10 @@ async def cb_admin_discount_del(callback: CallbackQuery):
     # Refresh view
     from database import get_all_user_discounts
     discounts = await get_all_user_discounts()
+    text = get_text('admin_discounts_title', lang)
     await callback.message.edit_text(
-        "👥 *User Discounts Configuration*\n\n"
-        "Here you can manage custom percentage discounts for specific users. "
-        "A user with a discount will automatically get the corresponding price deduction at checkout.",
-        reply_markup=keyboards.get_admin_discounts_keyboard(discounts),
+        text,
+        reply_markup=keyboards.get_admin_discounts_keyboard(discounts, lang),
         parse_mode="Markdown"
     )
 
@@ -2148,7 +2404,12 @@ async def process_edit_discount_percent(message: Message, state: FSMContext):
     )
 
 # --- Edit Store Name ---
-@router.message(F.text == "✏️ Edit Store Name")
+@router.message(F.text.in_([
+    get_text('btn_admin_edit_store_name', 'en'),
+    get_text('btn_admin_edit_store_name', 'ar'),
+    get_text('btn_admin_edit_store_name', 'ru'),
+    "✏️ Edit Store Name", "✏️ تعديل اسم المتجر", "✏️ Изменить имя магазина"
+]))
 async def msg_admin_edit_store_name(message: Message, state: FSMContext):
     if not is_user_admin(message.from_user.id):
         return
@@ -2182,49 +2443,61 @@ async def process_admin_store_name(message: Message, state: FSMContext):
     )
 
 # --- User Balances Management ---
-@router.message(F.text == "👥 Manage Users")
-async def msg_admin_manage_users(message: Message, state: FSMContext):
+@router.message(F.text.in_([
+    get_text('btn_admin_manage_users', 'en'),
+    get_text('btn_admin_manage_users', 'ar'),
+    get_text('btn_admin_manage_users', 'ru'),
+    "👥 Manage Users", "👥 إدارة المستخدمين", "👥 Управление пользователями"
+]))
+async def msg_admin_manage_users(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     await state.clear()
+    title = get_text('admin_manage_users_title', lang)
     await message.answer(
-        "👥 *Manage Users*\nSelect an option below:",
-        reply_markup=keyboards.get_admin_manage_users_keyboard(),
+        title,
+        reply_markup=keyboards.get_admin_manage_users_keyboard(lang),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_manage_users")
-async def cb_admin_manage_users(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_manage_users(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.clear()
+    title = get_text('admin_manage_users_title', lang)
     await callback.message.edit_text(
-        "👥 *Manage Users*\nSelect an option below:",
-        reply_markup=keyboards.get_admin_manage_users_keyboard(),
+        title,
+        reply_markup=keyboards.get_admin_manage_users_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 # --- Ban Management Menu & Handlers ---
-@router.message(F.text == "🚫 Ban / Unban System")
-async def msg_admin_ban_unban_system(message: Message, state: FSMContext):
+@router.message(F.text.in_([
+    get_text('btn_admin_ban_system', 'en'),
+    get_text('btn_admin_ban_system', 'ar'),
+    get_text('btn_admin_ban_system', 'ru'),
+    "🚫 Ban / Unban System", "🚫 نظام الحظر / فك الحظر", "🚫 Система банов"
+]))
+async def msg_admin_ban_unban_system(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     await state.clear()
     await message.answer(
         "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
-        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(lang),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_ban_unban_menu")
-async def cb_admin_ban_unban_menu(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_ban_unban_menu(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.clear()
     await callback.message.edit_text(
         "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
-        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
@@ -3059,7 +3332,12 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
     await message.answer(text, parse_mode="Markdown")
     await state.clear()
 
-@router.message(F.text == "🔌 Pull External Product")
+@router.message(F.text.in_([
+    get_text('btn_admin_pull_external', 'en'),
+    get_text('btn_admin_pull_external', 'ar'),
+    get_text('btn_admin_pull_external', 'ru'),
+    "🔌 Pull External Product", "🔌 سحب منتج خارجي", "🔌 Импорт товара"
+]))
 async def msg_admin_pull_external(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
@@ -3071,7 +3349,12 @@ async def msg_admin_pull_external(message: Message, state: FSMContext, lang='en'
     await message.answer(text, reply_markup=keyboards.get_providers_list_keyboard(providers, lang), parse_mode="Markdown")
 
 # --- Admin Pre-orders Management Handlers ---
-@router.message(F.text == "⏳ Manage Pre-orders")
+@router.message(F.text.in_([
+    get_text('btn_admin_manage_preorders', 'en'),
+    get_text('btn_admin_manage_preorders', 'ar'),
+    get_text('btn_admin_manage_preorders', 'ru'),
+    "⏳ Manage Pre-orders", "⏳ إدارة الحجوزات", "⏳ Управление предзаказами"
+]))
 async def msg_admin_preorders_summary(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return

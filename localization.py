@@ -547,12 +547,200 @@ LOCALIZATION = {
     'btn_use_saved': {
         'en': "🔄 Use Saved Provider",
         'ar': "🔄 استخدام الموزع المحفوظ",
-        'ru': "🔄 إستخدام المحفوظ"
+        'ru': "🔄 Использовать сохраненного"
     },
     'btn_setup_new_prov': {
         'en': "⚙️ Setup New Provider",
         'ar': "⚙️ إعداد موزع جديد",
-        'ru': "⚙️ إعداد جديد"
+        'ru': "⚙️ Настроить нового"
+    },
+    # Admin Reply Keyboards
+    'btn_admin_stats': {
+        'en': "📊 Statistics",
+        'ar': "📊 الإحصائيات",
+        'ru': "📊 Статистика"
+    },
+    'btn_admin_inspect_user': {
+        'en': "🔍 Inspect User",
+        'ar': "🔍 فحص مستخدم",
+        'ru': "🔍 Проверка пользователя"
+    },
+    'btn_admin_manage_products': {
+        'en': "📦 Manage Products",
+        'ar': "📦 إدارة المنتجات",
+        'ru': "📦 Управление товарами"
+    },
+    'btn_admin_add_stock': {
+        'en': "📥 Add Stock",
+        'ar': "📥 إضافة ستوك",
+        'ru': "📥 Добавить сток"
+    },
+    'btn_admin_bulk_stock': {
+        'en': "📦 Bulk Add Stock",
+        'ar': "📦 إضافة ستوك جماعي",
+        'ru': "📦 Массовое добавление"
+    },
+    'btn_admin_pending_deposits': {
+        'en': "⏳ Pending Deposits",
+        'ar': "⏳ الإيداعات المعلقة",
+        'ru': "⏳ Ожидающие платежи"
+    },
+    'btn_admin_manage_preorders': {
+        'en': "⏳ Manage Pre-orders",
+        'ar': "⏳ إدارة الحجوزات",
+        'ru': "⏳ Управление предзаказами"
+    },
+    'btn_admin_channels': {
+        'en': "📢 Channels Settings",
+        'ar': "📢 إعدادات القنوات",
+        'ru': "📢 Настройки каналов"
+    },
+    'btn_admin_support': {
+        'en': "🎧 Support Settings",
+        'ar': "🎧 إعدادات الدعم",
+        'ru': "🎧 Настройки поддержки"
+    },
+    'btn_admin_charge': {
+        'en': "💳 Charge Section",
+        'ar': "💳 إعدادات الدفع",
+        'ru': "💳 Настройки оплаты"
+    },
+    'btn_admin_referral': {
+        'en': "👥 Referral System",
+        'ar': "👥 نظام الإحالة",
+        'ru': "👥 Реферальная система"
+    },
+    'btn_admin_api_keys': {
+        'en': "🔑 API Keys Settings",
+        'ar': "🔑 إعدادات مفاتيح API",
+        'ru': "🔑 Настройки API ключей"
+    },
+    'btn_admin_manage_users': {
+        'en': "👥 Manage Users",
+        'ar': "👥 إدارة المستخدمين",
+        'ru': "👥 Управление пользователями"
+    },
+    'btn_admin_ban_system': {
+        'en': "🚫 Ban / Unban System",
+        'ar': "🚫 نظام الحظر / فك الحظر",
+        'ru': "🚫 Система банов"
+    },
+    'btn_admin_broadcast': {
+        'en': "📣 Broadcast",
+        'ar': "📣 رسالة جماعية",
+        'ru': "📣 Рассылка"
+    },
+    'btn_admin_edit_store_name': {
+        'en': "✏️ Edit Store Name",
+        'ar': "✏️ تعديل اسم المتجر",
+        'ru': "✏️ Изменить имя магазина"
+    },
+    'btn_admin_button_emojis': {
+        'en': "🎨 Button Emojis",
+        'ar': "🎨 إيموجيات الأزرار",
+        'ru': "🎨 Эмодзи кнопок"
+    },
+    'btn_admin_pull_external': {
+        'en': "🔌 Pull External Product",
+        'ar': "🔌 سحب منتج خارجي",
+        'ru': "🔌 Импорт товара"
+    },
+    'btn_admin_back_to_menu': {
+        'en': "🔙 Back to Main Menu",
+        'ar': "🔙 العودة للقائمة الرئيسية",
+        'ru': "🔙 Главное меню"
+    },
+    # Admin User Management Submenus
+    'btn_admin_custom_prices': {
+        'en': "🎯 Custom Product Prices",
+        'ar': "🎯 تخصيص أسعار المنتجات",
+        'ru': "🎯 Индивидуальные цены"
+    },
+    'btn_admin_user_discounts': {
+        'en': "👥 User Discounts",
+        'ar': "👥 خصومات المستخدمين",
+        'ru': "👥 Скидки пользователей"
+    },
+    'btn_admin_edit_balances': {
+        'en': "💰 Edit Balances",
+        'ar': "💰 تعديل الأرصدة",
+        'ru': "💰 Изменить баланс"
+    },
+    'btn_admin_show_balances': {
+        'en': "👥 Show Balances",
+        'ar': "👥 عرض الأرصدة",
+        'ru': "👥 Показать балансы"
+    },
+    'btn_admin_add_custom_price': {
+        'en': "➕ Set Custom Price",
+        'ar': "➕ تخصيص سعر لمنتج",
+        'ru': "➕ Установить спеццену"
+    },
+    'btn_admin_add_discount': {
+        'en': "➕ Add Discount",
+        'ar': "➕ إضافة خصم جديد",
+        'ru': "➕ Добавить скидку"
+    },
+    'btn_admin_back_to_panel': {
+        'en': "🔙 Back to Admin Menu",
+        'ar': "🔙 العودة للوحة الإدارة",
+        'ru': "🔙 В админ-панель"
+    },
+    'btn_admin_back': {
+        'en': "🔙 Back",
+        'ar': "🔙 رجوع",
+        'ru': "🔙 Назад"
+    },
+    'btn_admin_delete': {
+        'en': "🗑️ Delete",
+        'ar': "🗑️ حذف",
+        'ru': "🗑️ Удалить"
+    },
+    # Custom Product Prices Texts
+    'admin_custom_prices_title': {
+        'en': "🎯 *Custom Product Prices Configuration*\n\nHere you can set custom fixed prices for specific users on specific products. When configured, the user will pay this exact custom price instead of the standard price.",
+        'ar': "🎯 *إدارة الأسعار المخصصة للمستخدمين*\n\nهنا يمكنك تحديد سعر مخصص وثابت لمستخدم معين على منتج محدد. سيتم محاسبة هذا المستخدم بالسعر المخصص له بدلاً من السعر العام للمنتج.",
+        'ru': "🎯 *Настройка индивидуальных цен*\n\nЗдесь вы можете установить специальную цену на конкретный товар для выбранного пользователя. При покупке пользователю будет рассчитана указанная цена."
+    },
+    'admin_custom_price_user_prompt': {
+        'en': "🎯 *Set Custom Price:*\n\nPlease send the **User ID** (e.g. `123456789`) of the user you want to set a custom price for:",
+        'ar': "🎯 *تخصيص سعر لمستخدم:*\n\nيرجى إرسال **معرف المستخدم (User ID)** (مثال: `123456789`):",
+        'ru': "🎯 *Установка спеццены:*\n\nОтправьте **ID пользователя** (например, `123456789`):"
+    },
+    'admin_custom_price_select_prod': {
+        'en': "📦 *Select the Product* to set custom price for user `{user_id}` ({user_name}):",
+        'ar': "📦 *اختر المنتج* لضبط السعر المخصص للمستخدم `{user_id}` ({user_name}):",
+        'ru': "📦 *Выберите товар* для спеццены пользователю `{user_id}` ({user_name}):"
+    },
+    'admin_custom_price_val_prompt': {
+        'en': "💵 Product: *{product_name}*\n📊 Original Price: `${original_price:.2f} USD`\n👤 User: `{user_id}`\n\n✍️ Enter the **new custom price** in USD (e.g. `4.50`):",
+        'ar': "💵 المنتج: *{product_name}*\n📊 السعر الأصلي: `${original_price:.2f} USD`\n👤 المستخدم: `{user_id}`\n\n✍️ أدخل **السعر المخصص الجديد** بالدولار (مثال: `4.50`):",
+        'ru': "💵 Товар: *{product_name}*\n📊 Обычная цена: `${original_price:.2f} USD`\n👤 Пользователь: `{user_id}`\n\n✍️ Введите **новую спеццену** в USD (например, `4.50`):"
+    },
+    'admin_custom_price_success': {
+        'en': "✅ Custom price set successfully!\n\n👤 User: `{user_id}` ({user_name})\n🛍️ Product: *{product_name}*\n💵 Custom Price: `${custom_price:.2f} USD` (Original: `${original_price:.2f} USD`)",
+        'ar': "✅ تم تخصيص السعر بنجاح!\n\n👤 المستخدم: `{user_id}` ({user_name})\n🛍️ المنتج: *{product_name}*\n💵 السعر المخصص: `${custom_price:.2f} USD` (السعر الأصلي: `${original_price:.2f} USD`)",
+        'ru': "✅ Спеццена успешно установлена!\n\n👤 Пользователь: `{user_id}` ({user_name})\n🛍️ Товар: *{product_name}*\n💵 Спеццена: `${custom_price:.2f} USD` (Обычная: `${original_price:.2f} USD`)"
+    },
+    'admin_custom_price_deleted': {
+        'en': "✅ Custom price deleted successfully for product *{product_name}* (User: `{user_id}`).",
+        'ar': "✅ تم حذف السعر المخصص بنجاح للمنتج *{product_name}* (المستخدم: `{user_id}`).",
+        'ru': "✅ Спеццена успешно удалена для товара *{product_name}* (Пользователь: `{user_id}`)."
+    },
+    'admin_custom_price_no_items': {
+        'en': "📭 No custom product prices set yet. Click below to add one.",
+        'ar': "📭 لا توجد أسعار مخصصة مضافة حالياً. اضغط على الزر أدناه لإضافة سعر مخصص.",
+        'ru': "📭 Индивидуальные цены пока не установлены. Нажмите кнопку ниже для добавления."
+    },
+    'admin_discounts_title': {
+        'en': "👥 *User Discounts Configuration*\n\nHere you can manage custom percentage discounts for specific users. A user with a discount will automatically get the corresponding price deduction at checkout.",
+        'ar': "👥 *إدارة خصومات المستخدمين النسبية*\n\nهنا يمكنك تعيين نسبة مئوية مخصصة للخصم لمستخدم معين. سيتم تطبيق الخصم تلقائياً عند الدفع.",
+        'ru': "👥 *Настройка скидок пользователей*\n\nЗдесь вы можете управлять процентными скидками для пользователей. Скидка применяется автоматически при покупке."
+    },
+    'admin_manage_users_title': {
+        'en': "👥 *User Management*\n\nSelect an option below to manage discounts, custom pricing, balances, or user bans:",
+        'ar': "👥 *إدارة المستخدمين*\n\nاختر أحد الخيارات أدناه لإدارة الخصومات، الأسعار المخصصة، الأرصدة، أو الحظر:",
+        'ru': "👥 *Управление пользователями*\n\nВыберите опцию для управления скидками, спецценами, балансами или банами:"
     }
 }
 

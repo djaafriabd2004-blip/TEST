@@ -54,6 +54,9 @@ class AdminStates(StatesGroup):
     waiting_for_ban_user_id = State()
     waiting_for_ban_reason = State()
     waiting_for_unban_user_id = State()
+    waiting_for_custom_price_user_id = State()
+    waiting_for_custom_price_product_id = State()
+    waiting_for_custom_price_value = State()
 
 class ProvidersStates(StatesGroup):
     waiting_for_url = State()

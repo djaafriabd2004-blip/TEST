@@ -76,7 +76,9 @@ async def get_me_api(request):
     })
 
 async def get_products_api(request):
-    from database import get_products, get_all_stock_counts
+    user = request.get("user")
+    user_id = user["user_id"] if user else None
+    from database import get_products, get_all_stock_counts, get_effective_product_price
     products = await get_products()
     stock_counts = await get_all_stock_counts(products, use_cache=True)
     result = []
@@ -87,11 +89,20 @@ async def get_products_api(request):
         p_dict["stock_count"] = s_cnt
         p_dict["quantity"] = s_cnt
         p_dict["inStock"] = bool(s_cnt > 0)
+        
+        orig_price = float(p_dict.get("price", 0.0))
+        p_dict["original_price"] = orig_price
+        if user_id:
+            eff_price = await get_effective_product_price(p, user_id, 1)
+            p_dict["price"] = eff_price
+            
         result.append(p_dict)
     return web.json_response({"ok": True, "products": result})
 
 async def get_product_detail_api(request):
-    from database import get_product, get_stock_count
+    user = request.get("user")
+    user_id = user["user_id"] if user else None
+    from database import get_product, get_stock_count, get_effective_product_price
     try:
         product_id = int(request.match_info["id"])
     except ValueError:
@@ -107,6 +118,13 @@ async def get_product_detail_api(request):
     p_dict["stock_count"] = s_cnt
     p_dict["quantity"] = s_cnt
     p_dict["inStock"] = bool(s_cnt > 0)
+    
+    orig_price = float(p_dict.get("price", 0.0))
+    p_dict["original_price"] = orig_price
+    if user_id:
+        eff_price = await get_effective_product_price(product, user_id, 1)
+        p_dict["price"] = eff_price
+        
     return web.json_response({"ok": True, "product": p_dict})
 
 async def buy_api(request):

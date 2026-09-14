@@ -232,7 +232,7 @@ def get_utf16_len(text: str) -> int:
     """Returns length of text in UTF-16 code units (as required by Telegram Bot API)."""
     return len(text.encode('utf-16-le')) // 2
 
-def format_product_message(product, lang, stock_count, discount_pct=0.0):
+def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_price=None):
     """
     Constructs (text, entities, parse_mode) for displaying a product.
     If product has stored description entities (e.g. Premium Custom Emojis, bold, etc.),
@@ -247,7 +247,17 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0):
 
     # Format price string
     prod_price = float(prod_dict.get('price', 0.0))
-    if discount_pct > 0:
+    if custom_price is not None and custom_price > 0:
+        if lang == 'ar':
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (سعر خاص بك 🎯)"
+            price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (سعر خاص بك 🎯)"
+        elif lang == 'ru':
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (Ваша спеццена 🎯)"
+            price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (Ваша спеццена 🎯)"
+        else:
+            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (Your Special Price 🎯)"
+            price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (Your Special Price 🎯)"
+    elif discount_pct > 0:
         price_val = prod_price * (1 - discount_pct / 100)
         if lang == 'ar':
             price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* (خصم {discount_pct:.0f}%)"

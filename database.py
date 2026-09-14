@@ -169,6 +169,20 @@ async def db_init():
         );
         """)
         
+        # User Custom Product Prices Table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS user_product_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            product_id INTEGER NOT NULL,
+            custom_price REAL NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, product_id),
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+        );
+        """)
+        
         # Stock Notifications Table
         await db.execute("""
         CREATE TABLE IF NOT EXISTS stock_notifications (
@@ -767,22 +781,15 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 raise Exception("Product not found")
 
         from datetime import datetime
-        from utils import get_product_unit_price
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        unit_price = get_product_unit_price(product, quantity)
+        final_price_per_item = await get_effective_product_price(product, user_id, quantity)
+        total_price = round(final_price_per_item * quantity, 2)
         
         async with db.execute("SELECT balance FROM users WHERE user_id = ?;", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user:
                 raise Exception("User not found")
-            
-        async with db.execute("SELECT discount_percent FROM user_discounts WHERE user_id = ?;", (user_id,)) as disc_cursor:
-            disc_row = await disc_cursor.fetchone()
-            discount = float(disc_row['discount_percent']) if disc_row and disc_row['discount_percent'] is not None else 0.0
-            
-        final_price_per_item = round(unit_price * (1 - discount / 100.0), 2)
-        total_price = round(final_price_per_item * quantity, 2)
         
         if not skip_balance_check and round(user['balance'], 2) < total_price:
             raise Exception("Insufficient balance")
@@ -949,11 +956,7 @@ async def create_pre_order(user_id, product_id, quantity=1):
             if not user:
                 raise Exception("User not found")
                 
-        from database import get_user_discount
-        discount_percent = await get_user_discount(user_id)
-        from utils import get_product_unit_price
-        unit_price = get_product_unit_price(product, quantity)
-        final_price_per_item = round(unit_price * (1 - discount_percent / 100), 2)
+        final_price_per_item = await get_effective_product_price(product, user_id, quantity)
         total_price = round(final_price_per_item * quantity, 2)
         
         # 3. Check user balance
@@ -1373,6 +1376,88 @@ async def get_all_user_discounts():
         """
         async with db.execute(query) as cursor:
             return await cursor.fetchall()
+
+# User Custom Product Prices Helpers
+async def get_user_product_price(user_id, product_id):
+    """Retrieves custom price for a specific user and product if set."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT custom_price FROM user_product_prices WHERE user_id = ? AND product_id = ?;",
+            (user_id, product_id)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return float(row[0]) if row and row[0] is not None and float(row[0]) > 0 else None
+
+async def set_user_product_price(user_id, product_id, custom_price):
+    """Sets or updates custom price for a specific user and product."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO user_product_prices (user_id, product_id, custom_price)
+               VALUES (?, ?, ?);""",
+            (user_id, product_id, float(custom_price))
+        )
+        await db.commit()
+
+async def delete_user_product_price(user_id, product_id):
+    """Deletes custom price for a specific user and product."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "DELETE FROM user_product_prices WHERE user_id = ? AND product_id = ?;",
+            (user_id, product_id)
+        )
+        await db.commit()
+
+async def get_all_custom_product_prices():
+    """Retrieves all custom product prices with user and product details."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        query = """
+            SELECT upp.id, upp.user_id, upp.product_id, upp.custom_price, upp.created_at,
+                   u.username, u.first_name,
+                   p.name_en, p.name_ar, p.name_ru, p.price as original_price
+            FROM user_product_prices upp
+            LEFT JOIN users u ON upp.user_id = u.user_id
+            LEFT JOIN products p ON upp.product_id = p.id
+            ORDER BY upp.id DESC;
+        """
+        async with db.execute(query) as cursor:
+            return await cursor.fetchall()
+
+async def get_user_custom_prices(user_id):
+    """Retrieves all custom prices configured for a specific user."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        query = """
+            SELECT upp.product_id, upp.custom_price,
+                   p.name_en, p.name_ar, p.name_ru, p.price as original_price
+            FROM user_product_prices upp
+            LEFT JOIN products p ON upp.product_id = p.id
+            WHERE upp.user_id = ?;
+        """
+        async with db.execute(query, (user_id,)) as cursor:
+            return await cursor.fetchall()
+
+async def get_effective_product_price(product, user_id, qty=1) -> float:
+    """
+    Calculates the final unit price for a user:
+    1. Highest priority: User's custom fixed price for this product.
+    2. Second priority: Tier/bulk quantity price.
+    3. Third priority: User general percentage discount.
+    """
+    if not product:
+        return 0.0
+    prod_dict = dict(product) if not isinstance(product, dict) else product
+    prod_id = prod_dict.get('id')
+    
+    if user_id and prod_id:
+        custom_p = await get_user_product_price(user_id, prod_id)
+        if custom_p is not None and custom_p > 0:
+            return round(custom_p, 2)
+            
+    from utils import get_product_unit_price
+    unit_price = get_product_unit_price(product, qty)
+    discount = await get_user_discount(user_id) if user_id else 0.0
+    return round(unit_price * (1.0 - discount / 100.0), 2)
 
 async def get_stats():
     async with aiosqlite.connect(DB_NAME) as db:
