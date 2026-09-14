@@ -202,14 +202,15 @@ def get_admin_custom_prices_keyboard(custom_prices, lang='en') -> InlineKeyboard
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_add_custom_price', lang), callback_data="admin_custom_price_add")
     for cp in custom_prices:
-        user_id = cp['user_id']
-        prod_id = cp['product_id']
-        custom_price = cp['custom_price']
+        cp_dict = dict(cp)
+        user_id = cp_dict['user_id']
+        prod_id = cp_dict['product_id']
+        custom_price = cp_dict['custom_price']
         name_k = f'name_{lang}'
-        prod_name = cp.get(name_k) or cp.get('name_en') or f"Product #{prod_id}"
-        user_name = cp.get('first_name') or f"ID: {user_id}"
-        if cp.get('username'):
-            user_name += f" (@{cp['username']})"
+        prod_name = cp_dict.get(name_k) or cp_dict.get('name_en') or f"Product #{prod_id}"
+        user_name = cp_dict.get('first_name') or f"ID: {user_id}"
+        if cp_dict.get('username'):
+            user_name += f" (@{cp_dict['username']})"
         builder.button(text=f"👤 {user_name} | {prod_name}: ${custom_price:.2f}", callback_data=f"admin_cp_sel_{user_id}_{prod_id}")
         builder.button(text=get_text('btn_admin_delete', lang), callback_data=f"admin_cp_del_{user_id}_{prod_id}")
         
@@ -224,10 +225,11 @@ def get_admin_custom_prices_keyboard(custom_prices, lang='en') -> InlineKeyboard
 def get_admin_select_product_for_custom_price_keyboard(products, user_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for prod in products:
+        prod_dict = dict(prod)
         name_k = f'name_{lang}'
-        prod_name = prod.get(name_k) or prod.get('name_en') or f"Product #{prod['id']}"
-        price = prod.get('price', 0.0)
-        builder.button(text=f"🛍️ {prod_name} (${price:.2f})", callback_data=f"admin_cp_set_{user_id}_{prod['id']}")
+        prod_name = prod_dict.get(name_k) or prod_dict.get('name_en') or f"Product #{prod_dict['id']}"
+        price = float(prod_dict.get('price', 0.0))
+        builder.button(text=f"🛍️ {prod_name} (${price:.2f})", callback_data=f"admin_cp_set_{user_id}_{prod_dict['id']}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_custom_prices_menu")
     builder.adjust(1)
     return builder.as_markup()

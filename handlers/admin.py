@@ -11,6 +11,7 @@ from database import (
     get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users
 )
 from localization import get_text
+from utils import get_product_name
 from handlers.states import ProductStates, StockStates, AdminStates
 import keyboards
 try:
@@ -286,13 +287,13 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
         await message.answer("❌ User not found in the database.")
         return
 
-    u = report['user']
+    u = dict(report['user']) if report['user'] else {}
     name = escape_md(u.get('first_name', ''))
     username = f"@{escape_md(u.get('username', ''))}" if u.get('username') else "N/A"
     joined = u.get('joined_at', 'N/A')
-    ref_by = escape_md(report['referred_by_name']) if report['referred_by_name'] else "None"
+    ref_by = escape_md(report['referred_by_name']) if report.get('referred_by_name') else "None"
 
-    is_banned = dict(u).get('is_banned', 0) == 1
+    is_banned = u.get('is_banned', 0) == 1
     ban_status = f"🔴 BANNED (Reason: {u.get('ban_reason', 'N/A')})" if is_banned else "🟢 Active"
 
     # Build report text
@@ -391,8 +392,7 @@ async def msg_admin_manage_products(message: Message, lang='en'):
     builder = InlineKeyboardBuilder()
     builder.button(text="➕ Add Product", callback_data="admin_prod_add")
     for prod in products:
-        name_k = f'name_{lang}'
-        name = prod.get(name_k) or prod.get('name_en') or f"Product #{prod['id']}"
+        name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
@@ -427,8 +427,7 @@ async def msg_admin_stock_select_prod(message: Message, state: FSMContext, lang=
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     for prod in products:
-        name_k = f'name_{lang}'
-        name = prod.get(name_k) or prod.get('name_en') or f"Product #{prod['id']}"
+        name = get_product_name(prod, lang)
         builder.button(text=f"{name}", callback_data=f"admin_stk_{action.split('_')[1]}_{prod['id']}")
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
@@ -2096,7 +2095,7 @@ async def process_custom_price_user_id(message: Message, state: FSMContext, lang
         
     await state.update_data(cp_user_id=user_id)
     user_name = escape_md(db_user['first_name'])
-    if db_user.get('username'):
+    if db_user['username']:
         user_name += f" (@{escape_md(db_user['username'])})"
     
     prompt = get_text('admin_custom_price_select_prod', lang, user_id=user_id, user_name=user_name)
@@ -2121,8 +2120,8 @@ async def cb_admin_cp_select_product(callback: CallbackQuery, state: FSMContext,
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    prod_name = product.get(f'name_{lang}') or product.get('name_en') or f"Product #{prod_id}"
-    orig_price = float(product.get('price', 0.0))
+    prod_name = get_product_name(product, lang)
+    orig_price = float(product['price'])
     
     await state.update_data(cp_user_id=user_id, cp_product_id=prod_id, cp_orig_price=orig_price, cp_prod_name=prod_name)
     await state.set_state(AdminStates.waiting_for_custom_price_value)
@@ -2161,8 +2160,8 @@ async def process_custom_price_value(message: Message, state: FSMContext, lang='
     db_user = await get_user(user_id)
     user_name = db_user['first_name'] if db_user else f"ID: {user_id}"
     prod = await get_product(prod_id)
-    prod_name = prod.get(f'name_{lang}') or prod.get('name_en') or f"Product #{prod_id}" if prod else f"Product #{prod_id}"
-    orig_price = float(prod.get('price', 0.0)) if prod else 0.0
+    prod_name = get_product_name(prod, lang) if prod else f"Product #{prod_id}"
+    orig_price = float(prod['price']) if prod else 0.0
     
     success_text = get_text('admin_custom_price_success', lang, user_id=user_id, user_name=user_name, product_name=prod_name, custom_price=custom_price, original_price=orig_price)
     await message.answer(
@@ -2183,7 +2182,7 @@ async def cb_admin_cp_del(callback: CallbackQuery, lang='en'):
     await delete_user_product_price(user_id, prod_id)
     
     prod = await get_product(prod_id)
-    prod_name = prod.get(f'name_{lang}') or prod.get('name_en') or f"Product #{prod_id}" if prod else f"Product #{prod_id}"
+    prod_name = get_product_name(prod, lang) if prod else f"Product #{prod_id}"
     
     del_msg = get_text('admin_custom_price_deleted', lang, product_name=prod_name, user_id=user_id)
     await callback.answer(del_msg, show_alert=True)
@@ -2213,8 +2212,8 @@ async def cb_admin_cp_sel(callback: CallbackQuery, state: FSMContext, lang='en')
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    prod_name = product.get(f'name_{lang}') or product.get('name_en') or f"Product #{prod_id}"
-    orig_price = float(product.get('price', 0.0))
+    prod_name = get_product_name(product, lang)
+    orig_price = float(product['price'])
     current_custom_price = await get_user_product_price(user_id, prod_id) or 0.0
     
     await state.update_data(cp_user_id=user_id, cp_product_id=prod_id, cp_orig_price=orig_price, cp_prod_name=prod_name)
