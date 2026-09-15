@@ -741,6 +741,516 @@ LOCALIZATION = {
         'en': "👥 *User Management*\n\nSelect an option below to manage discounts, custom pricing, balances, or user bans:",
         'ar': "👥 *إدارة المستخدمين*\n\nاختر أحد الخيارات أدناه لإدارة الخصومات، الأسعار المخصصة، الأرصدة، أو الحظر:",
         'ru': "👥 *Управление пользователями*\n\nВыберите опцию для управления скидками, спецценами, балансами или банами:"
+    },
+    # Admin Product Management
+    'admin_prod_mgmt_title': {
+        'en': "📦 *Product Management*\nSelect a product to edit/delete or add a new one:",
+        'ar': "📦 *إدارة المنتجات*\nاختر منتجاً لتعديله/حذفه أو أضف منتجاً جديداً:",
+        'ru': "📦 *Управление товарами*\nВыберите товар для редактирования/удаления или добавьте новый:"
+    },
+    'admin_prod_add_name_prompt': {
+        'en': "✏️ Enter Product Name:",
+        'ar': "✏️ أدخل اسم المنتج:",
+        'ru': "✏️ Введите название товара:"
+    },
+    'admin_prod_add_desc_prompt': {
+        'en': "✏️ Enter Product Description:",
+        'ar': "✏️ أدخل وصف المنتج:",
+        'ru': "✏️ Введите описание товара:"
+    },
+    'admin_prod_add_price_prompt': {
+        'en': "✏️ Enter Product Price in *USD* (e.g. 5.50):",
+        'ar': "✏️ أدخل سعر المنتج بـ *USD* (مثال: 5.50):",
+        'ru': "✏️ Введите цену товара в *USD* (например: 5.50):"
+    },
+    'admin_prod_add_emoji_prompt': {
+        'en': "🎨 Now, send an animated Premium Custom Emoji for this product's icon, or type /skip to use no emoji.",
+        'ar': "🎨 أرسل الآن إيموجي مميز (Premium Custom Emoji) كأيقونة للمنتج، أو أرسل /skip لتخطي ذلك.",
+        'ru': "🎨 Отправьте анимированный кастомный эмодзи для иконки товара или отправьте /skip для пропуска."
+    },
+    'admin_prod_add_success': {
+        'en': "✅ Product added successfully!",
+        'ar': "✅ تم إضافة المنتج بنجاح!",
+        'ru': "✅ Товар успешно добавлен!"
+    },
+    'admin_prod_del_success': {
+        'en': "✅ Product deleted successfully!",
+        'ar': "✅ تم حذف المنتج بنجاح!",
+        'ru': "✅ Товар успешно удален!"
+    },
+    'admin_prod_edit_fields_title': {
+        'en': "✏️ *Editing Product:* {name}\nSelect which field you want to edit:",
+        'ar': "✏️ *تعديل المنتج:* {name}\nاختر الحقل الذي ترغب في تعديله:",
+        'ru': "✏️ *Редактирование товара:* {name}\nВыберите поле для изменения:"
+    },
+    'admin_prod_edit_val_prompt': {
+        'en': "✏️ Enter the new value for *{field}*:",
+        'ar': "✏️ أدخل القيمة الجديدة لـ *{field}*:",
+        'ru': "✏️ Введите новое значение для *{field}*:"
+    },
+    'admin_prod_edit_success': {
+        'en': "✅ Product *{field}* updated successfully!",
+        'ar': "✅ تم تحديث *{field}* المنتج بنجاح!",
+        'ru': "✅ Поле *{field}* успешно обновлено!"
+    },
+    'admin_prod_edit_emoji_prompt': {
+        'en': "🎨 Send the new animated Premium Custom Emoji for *{name}*, or send `remove` to delete the emoji:",
+        'ar': "🎨 أرسل الإيموجي المميز الجديد للمنتج *{name}*، أو أرسل `remove` لإزالة الإيموجي:",
+        'ru': "🎨 Отправьте новый кастомный эмодзи для *{name}* или отправьте `remove` для удаления эмодзи:"
+    },
+    'admin_prod_edit_emoji_success': {
+        'en': "✅ Product emoji updated successfully!",
+        'ar': "✅ تم تحديث إيموجي المنتج بنجاح!",
+        'ru': "✅ Эмодзи товара успешно обновлен!"
+    },
+    
+    # Tier Prices
+    'admin_tier_prices_title': {
+        'en': "🏷️ *Bulk Quantity Prices (Tier Prices)*\nProduct: *{name}*\nBase Price: `${price:.2f}`\n\n{tiers_text}\nManage quantity price discounts below:",
+        'ar': "🏷️ *أسعار الجملة والكميات (Tier Prices)*\nالمنتج: *{name}*\nالسعر الأساسي: `${price:.2f}`\n\n{tiers_text}\nتحكم في أسعار الخصم للكميات أدناه:",
+        'ru': "🏷️ *Оптовые цены (Tier Prices)*\nТовар: *{name}*\nБазовая цена: `${price:.2f}`\n\n{tiers_text}\nУправление оптовыми ценами ниже:"
+    },
+    'admin_tier_min_qty_prompt': {
+        'en': "🔢 Enter the **Minimum Quantity** for this tier (e.g. `5` for 5+ items):",
+        'ar': "🔢 أدخل **الحد الأدنى للكمية** لهذا السعر (مثال: `5` لطلب 5 قطع أو أكثر):",
+        'ru': "🔢 Введите **минимальное количество** для скидки (например: `5`):"
+    },
+    'admin_tier_unit_price_prompt': {
+        'en': "💵 Enter the **Unit Price in USD** for quantity {qty}+ (e.g. `4.20`):",
+        'ar': "💵 أدخل **سعر الحبة بالدولار** للكمية {qty}+ (مثال: `4.20`):",
+        'ru': "💵 Введите **цену за штуку в USD** при заказе от {qty}+ (например: `4.20`):"
+    },
+    'admin_tier_add_success': {
+        'en': "✅ Tier price added: {qty}+ ➔ `${unit_price:.2f} USD` each.",
+        'ar': "✅ تمت إضافة سعر الكمية: {qty}+ ⬅️ `${unit_price:.2f} USD` لكل حبة.",
+        'ru': "✅ Оптовая цена добавлена: от {qty}+ ➔ `${unit_price:.2f} USD` за шт."
+    },
+    'admin_tier_clear_success': {
+        'en': "✅ All tier prices cleared for this product.",
+        'ar': "✅ تم مسح جميع أسعار الجملة لهذا المنتج.",
+        'ru': "✅ Все оптовые цены для этого товара удалены."
+    },
+
+    # Admin Stock
+    'admin_stock_select_prod_prompt': {
+        'en': "📥 *Select Product for Stock adding*:",
+        'ar': "📥 *اختر المنتج لإضافة المخزون*:",
+        'ru': "📥 *Выберите товар для добавления стока*:"
+    },
+    'admin_stock_data_prompt': {
+        'en': "📥 Send the stock data for *{name}* (single item or accounts):",
+        'ar': "📥 أرسل بيانات المخزون للمنتج *{name}*:",
+        'ru': "📥 Отправьте данные стока для товара *{name}*:"
+    },
+    'admin_bulk_stock_prompt': {
+        'en': "📦 Send the bulk stock data for *{name}* (one account/key per line):",
+        'ar': "📦 أرسل المخزون الجماعي للمنتج *{name}* (كل حساب أو كود في سطر مستقل):",
+        'ru': "📦 Отправьте данные массового стока для *{name}* (по одной строке на товар):"
+    },
+    'admin_stock_add_success': {
+        'en': "✅ Stock item added successfully for *{name}*!\nTotal stock: `{stock}`",
+        'ar': "✅ تم إضافة عنصر المخزون بنجاح للمنتج *{name}*!\nإجمالي المتوفر: `{stock}`",
+        'ru': "✅ Сток успешно добавлен для товара *{name}*!\nВсего в наличии: `{stock}`"
+    },
+    'admin_bulk_stock_add_success': {
+        'en': "✅ Bulk stock added successfully!\nAdded `{count}` items for *{name}*.\nTotal stock: `{stock}`",
+        'ar': "✅ تم إضافة المخزون الجماعي بنجاح!\nتمت إضافة `{count}` عنصر للمنتج *{name}*.\nإجمالي المتوفر: `{stock}`",
+        'ru': "✅ Массовый сток успешно добавлен!\nДобавлено `{count}` шт. для *{name}*.\nВсего в наличии: `{stock}`"
+    },
+
+    # User Inspection
+    'admin_inspect_prompt': {
+        'en': "🔍 Enter the **User ID** to inspect:",
+        'ar': "🔍 أدخل **معرف المستخدم (User ID)** لفحصه:",
+        'ru': "🔍 Введите **ID пользователя** для проверки:"
+    },
+    'admin_inspect_invalid_id': {
+        'en': "❌ Invalid User ID. Please enter a valid numeric User ID:",
+        'ar': "❌ معرف مستخدم غير صالح. يرجى إدخال أرقام فقط:",
+        'ru': "❌ Неверный ID пользователя. Введите числовой ID:"
+    },
+    'admin_inspect_not_found': {
+        'en': "❌ User not found in the database.",
+        'ar': "❌ المستخدم غير موجود في قاعدة البيانات.",
+        'ru': "❌ Пользователь не найден в базе данных."
+    },
+    
+    # Balances
+    'admin_user_bal_prompt': {
+        'en': "💰 Enter the **User ID** to edit balance:",
+        'ar': "💰 أدخل **معرف المستخدم (User ID)** لتعديل رصيده:",
+        'ru': "💰 Введите **ID пользователя** для изменения баланса:"
+    },
+    'admin_user_new_bal_prompt': {
+        'en': "👤 User: *{name}* (`{user_id}`)\nCurrent Balance: `${current_balance:.2f} USD`\n\n✍️ Enter the **new balance** in USD (e.g. `10.50`):",
+        'ar': "👤 المستخدم: *{name}* (`{user_id}`)\nالرصيد الحالي: `${current_balance:.2f} USD`\n\n✍️ أدخل **الرصيد الجديد** بالدولار (مثال: `10.50`):",
+        'ru': "👤 Пользователь: *{name}* (`{user_id}`)\nТекущий баланс: `${current_balance:.2f} USD`\n\n✍️ Введите **новый баланс** в USD (например: `10.50`):"
+    },
+    'admin_user_bal_updated': {
+        'en': "✅ Balance updated successfully for *{name}*!\nNew Balance: `${balance:.2f} USD`",
+        'ar': "✅ تم تحديث الرصيد بنجاح للمستخدم *{name}*!\nالرصيد الجديد: `${balance:.2f} USD`",
+        'ru': "✅ Баланс успешно обновлен для *{name}*!\nНовый баланс: `${balance:.2f} USD`"
+    },
+
+    # Broadcast
+    'admin_broadcast_prompt': {
+        'en': "📣 Send the message you want to broadcast to *all users* (can contain formatting, photos, or media):",
+        'ar': "📣 أرسل الرسالة التي ترغب في نشرها لجميع المستخدمين (يمكن أن تحتوي على نصوص، صور، أو وسائط):",
+        'ru': "📣 Отправьте сообщение для рассылки всем пользователям (поддерживаются текст, фото и медиа):"
+    },
+    'admin_broadcast_started': {
+        'en': "🚀 Broadcast started... sending to users in background.",
+        'ar': "🚀 بدأت عملية الإرسال الجماعي... جاري الإرسال للمستخدمين في الخلفية.",
+        'ru': "🚀 Рассылка запущена... отправка сообщений в фоновом режиме."
+    },
+    'admin_broadcast_finished': {
+        'en': "✅ Broadcast completed!\n\n📬 Successfully Sent: `{sent}`\n❌ Failed: `{failed}`\n👥 Total Users: `{total}`",
+        'ar': "✅ اكتملت عملية الإرسال الجماعي!\n\n📬 تم الإرسال بنجاح إلى: `{sent}`\n❌ فشل الإرسال إلى: `{failed}`\n👥 إجمالي المستخدمين: `{total}`",
+        'ru': "✅ Рассылка завершена!\n\n📬 Успешно доставлено: `{sent}`\n❌ Ошибок: `{failed}`\n👥 Всего пользователей: `{total}`"
+    },
+
+    # Store Name
+    'admin_store_name_current': {
+        'en': "🏫 *Current Store Name:* `{name}`\n\n✍️ Please enter the new name for the store:",
+        'ar': "🏫 *اسم المتجر الحالي:* `{name}`\n\n✍️ يرجى إدخال الاسم الجديد للمتجر:",
+        'ru': "🏫 *Текущее название магазина:* `{name}`\n\n✍️ Введите новое название магазина:"
+    },
+    'admin_store_name_success': {
+        'en': "✅ Store name successfully updated to: `{name}`",
+        'ar': "✅ تم تحديث اسم المتجر بنجاح إلى: `{name}`",
+        'ru': "✅ Название магазина успешно обновлено на: `{name}`"
+    },
+
+    # Buttons
+    'btn_admin_add_product': {
+        'en': "➕ Add Product",
+        'ar': "➕ إضافة منتج جديد",
+        'ru': "➕ Добавить товар"
+    },
+    'btn_admin_edit_details': {
+        'en': "📝 Edit Details",
+        'ar': "📝 تعديل البيانات",
+        'ru': "📝 Изменить данные"
+    },
+    'btn_admin_tier_prices_btn': {
+        'en': "🏷️ Tier Prices (Bulk)",
+        'ar': "🏷️ أسعار الجملة والكميات",
+        'ru': "🏷️ Оптовые цены"
+    },
+    'btn_admin_edit_emoji_btn': {
+        'en': "🎨 Edit Emoji",
+        'ar': "🎨 تعديل الإيموجي",
+        'ru': "🎨 Изменить эмодзи"
+    },
+    'btn_admin_delete_product_btn': {
+        'en': "🗑️ Delete Product",
+        'ar': "🗑️ حذف المنتج",
+        'ru': "🗑️ Удалить товар"
+    },
+    'btn_admin_add_tier_btn': {
+        'en': "➕ Add Quantity Tier Price",
+        'ar': "➕ إضافة سعر كمية جديد",
+        'ru': "➕ Добавить оптовую цену"
+    },
+    'btn_admin_clear_tiers_btn': {
+        'en': "🗑️ Clear All Tier Prices",
+        'ar': "🗑️ مسح جميع أسعار الجملة",
+        'ru': "🗑️ Очистить все оптовые цены"
+    },
+    'btn_admin_reply_ticket_btn': {
+        'en': "✍️ Reply to User",
+        'ar': "✍️ الرد على المستخدم",
+        'ru': "✍️ Ответить пользователю"
+    },
+    'btn_admin_approve': {
+        'en': "✅ Approve",
+        'ar': "✅ قبول الإيداع",
+        'ru': "✅ Одобрить"
+    },
+    'btn_admin_reject': {
+        'en': "❌ Reject",
+        'ar': "❌ رفض الإيداع",
+        'ru': "❌ Отклонить"
+    },
+    'btn_admin_cancel_refund_btn': {
+        'en': "❌ Cancel & Refund",
+        'ar': "❌ إلغاء وإرجاع الرصيد",
+        'ru': "❌ Отменить и вернуть средства"
+    },
+    'btn_admin_edit_bal_btn': {
+        'en': "✏️ Edit Balance",
+        'ar': "✏️ تعديل الرصيد",
+        'ru': "✏️ Изменить баланс"
+    },
+    'btn_admin_gen_api_key': {
+        'en': "➕ Generate API Key",
+        'ar': "➕ إنشاء مفتاح API",
+        'ru': "➕ Создать API ключ"
+    },
+    'btn_admin_rev_api_key': {
+        'en': "❌ Revoke API Key",
+        'ar': "❌ إلغاء مفتاح API",
+        'ru': "❌ Отозвать API ключ"
+    },
+    'btn_admin_ban_user_btn': {
+        'en': "🔴 Ban User",
+        'ar': "🔴 حظر مستخدم",
+        'ru': "🔴 Заблокировать"
+    },
+    'btn_admin_unban_user_btn': {
+        'en': "🟢 Unban User",
+        'ar': "🟢 فك حظر مستخدم",
+        'ru': "🟢 Разблокировать"
+    },
+    'btn_admin_show_banned_btn': {
+        'en': "📋 Show Banned Users",
+        'ar': "📋 عرض المحظورين",
+        'ru': "📋 Список заблокированных"
+    },
+    'btn_admin_skip_reason_btn': {
+        'en': "⏭️ Skip Reason",
+        'ar': "⏭️ تخطي السبب",
+        'ru': "⏭️ Пропустить причину"
+    },
+    'btn_admin_field_name': {
+        'en': "✏️ Name",
+        'ar': "✏️ الاسم",
+        'ru': "✏️ Название"
+    },
+    'btn_admin_field_desc': {
+        'en': "✏️ Description",
+        'ar': "✏️ الوصف",
+        'ru': "✏️ Описание"
+    },
+    'btn_admin_field_price': {
+        'en': "✏️ Price",
+        'ar': "✏️ السعر",
+        'ru': "✏️ Цена"
+    },
+    'admin_invalid_price': {
+        'en': "❌ Invalid price. Enter a positive decimal number:",
+        'ar': "❌ سعر غير صالح. يرجى إدخال رقم عشري موجب:",
+        'ru': "❌ Неверная цена. Введите положительное число:"
+    },
+    'admin_stats_title': {
+        'en': "📊 *{store_name} — Statistics*\n━━━━━━━━━━━━━━━━━━━━\n\n👥 *Users*\n├ Total: `{total_users}`\n└ Joined Today: `{users_today}`\n\n💰 *Deposits*\n├ Total: `{total_deposit_count}` — `${total_deposits:.2f}`\n└ Today: `${deposits_today:.2f}`\n\n🛍 *Orders (Sales)*\n├ Total: `{total_orders}` — `${total_order_revenue:.2f}`\n└ Today: `{orders_today}` — `${order_revenue_today:.2f}`\n\n⏳ *Pending Deposits:* `{pending_count}`\n━━━━━━━━━━━━━━━━━━━━",
+        'ar': "📊 *{store_name} — الإحصائيات*\n━━━━━━━━━━━━━━━━━━━━\n\n👥 *المستخدمين*\n├ الإجمالي: `{total_users}`\n└ المنضمين اليوم: `{users_today}`\n\n💰 *الإيداعات*\n├ الإجمالي: `{total_deposit_count}` — `${total_deposits:.2f}`\n└ اليوم: `${deposits_today:.2f}`\n\n🛍 *الطلبات (المبيعات)*\n├ الإجمالي: `{total_orders}` — `${total_order_revenue:.2f}`\n└ اليوم: `{orders_today}` — `${order_revenue_today:.2f}`\n\n⏳ *الإيداعات المعلقة:* `{pending_count}`\n━━━━━━━━━━━━━━━━━━━━",
+        'ru': "📊 *{store_name} — Статистика*\n━━━━━━━━━━━━━━━━━━━━\n\n👥 *Пользователи*\n├ Всего: `{total_users}`\n└ Сегодня: `{users_today}`\n\n💰 *Пополнения*\n├ Всего: `{total_deposit_count}` — `${total_deposits:.2f}`\n└ Сегодня: `${deposits_today:.2f}`\n\n🛍 *Заказы (Продажи)*\n├ Всего: `{total_orders}` — `${total_order_revenue:.2f}`\n└ Сегодня: `{orders_today}` — `${order_revenue_today:.2f}`\n\n⏳ *Ожидающие депозиты:* `{pending_count}`\n━━━━━━━━━━━━━━━━━━━━"
+    },
+    'admin_user_report_title': {
+        'en': "🔍 *User Inspection Report*\n━━━━━━━━━━━━━━━━━━━━\n\n👤 *Profile*\n├ Name: {name}\n├ Username: {username}\n├ ID: `{user_id}`\n├ Status: {ban_status}\n├ Balance: `${balance:.2f} USD`\n├ Discount: `{discount:.0f}%`\n├ Language: `{language}`\n└ Joined: `{joined}`\n\n💰 *Deposits*\n├ Completed: `{deposits_count}` — `${deposits_total:.2f}`\n└ Pending: `{pending_count}` — `${pending_total:.2f}`\n\n🛍 *Purchases*\n├ Total Orders: `{orders_count}`\n└ Total Spent: `${orders_total:.2f}`\n\n👥 *Referrals*\n├ Referred by: {referred_by}\n├ Referrals count: `{referral_count}`\n└ Referral earnings: `${ref_earnings:.2f}`",
+        'ar': "🔍 *تقرير فحص المستخدم*\n━━━━━━━━━━━━━━━━━━━━\n\n👤 *الملف الشخصي*\n├ الاسم: {name}\n├ المعرف: {username}\n├ ID: `{user_id}`\n├ الحالة: {ban_status}\n├ الرصيد: `${balance:.2f} USD`\n├ الخصم: `{discount:.0f}%`\n├ اللغة: `{language}`\n└ تاريخ الانضمام: `{joined}`\n\n💰 *الإيداعات*\n├ المكتملة: `{deposits_count}` — `${deposits_total:.2f}`\n└ المعلقة: `{pending_count}` — `${pending_total:.2f}`\n\n🛍 *المشتريات*\n├ إجمالي الطلبات: `{orders_count}`\n└ إجمالي المشتريات: `${orders_total:.2f}`\n\n👥 *الإحالات*\n├ أحاله: {referred_by}\n├ عدد الإحالات: `{referral_count}`\n└ أرباح الإحالات: `${ref_earnings:.2f}`",
+        'ru': "🔍 *Отчет проверки пользователя*\n━━━━━━━━━━━━━━━━━━━━\n\n👤 *Профиль*\n├ Имя: {name}\n├ Юзернейм: {username}\n├ ID: `{user_id}`\n├ Статус: {ban_status}\n├ Баланс: `${balance:.2f} USD`\n├ Скидка: `{discount:.0f}%`\n├ Язык: `{language}`\n└ Регистрация: `{joined}`\n\n💰 *Пополнения*\n├ Завершенные: `{deposits_count}` — `${deposits_total:.2f}`\n└ Ожидающие: `{pending_count}` — `${pending_total:.2f}`\n\n🛍 *Покупки*\n├ Всего заказов: `{orders_count}`\n└ Всего потрачено: `${orders_total:.2f}`\n\n👥 *Рефералы*\n├ Пригласил: {referred_by}\n├ Количество рефералов: `{referral_count}`\n└ Доход с рефералов: `${ref_earnings:.2f}`"
+    },
+    'admin_discount_user_prompt': {
+        'en': "👥 Please enter the **User ID** of the user you want to grant a discount to:",
+        'ar': "👥 الرجاء إدخال **معرف المستخدم (User ID)** لمنحه الخصم:",
+        'ru': "👥 Введите **ID пользователя**, которому хотите выдать скидку:"
+    },
+    'admin_discount_pct_prompt': {
+        'en': "👤 Found User: *{name}* (`{user_id}`)\n\nNow, enter the Discount Percentage (e.g. `15` for 15%):",
+        'ar': "👤 تم العثور على المستخدم: *{name}* (`{user_id}`)\n\nأدخل الآن نسبة الخصم المئوية (مثال: `15` لـ 15%):",
+        'ru': "👤 Пользователь: *{name}* (`{user_id}`)\n\nВведите процент скидки (например `15` для 15%):"
+    },
+    'admin_discount_success': {
+        'en': "✅ Successfully set discount of **{percent}%** for *{name}*!",
+        'ar': "✅ تم تعيين خصم بنسبة **{percent}%** بنجاح للمستخدم *{name}*!",
+        'ru': "✅ Скидка **{percent}%** успешно установлена для *{name}*!"
+    },
+    'admin_discount_deleted': {
+        'en': "✅ Discount deleted successfully!",
+        'ar': "✅ تم حذف الخصم بنجاح!",
+        'ru': "✅ Скидка успешно удалена!"
+    },
+    'admin_ban_menu_title': {
+        'en': "🚫 *Ban / Unban Management System*\nSelect an option below to manage user bans:",
+        'ar': "🚫 *نظام إدارة حظر وفك حظر المستخدمين*\nاختر خياراً من الأسفل لإدارة الحظر:",
+        'ru': "🚫 *Система управления банами*\nВыберите действие ниже:"
+    },
+    'admin_ban_user_prompt': {
+        'en': "🔴 *Ban User*\n\nPlease enter the numeric **Telegram User ID** to ban:",
+        'ar': "🔴 *حظر مستخدم*\n\nيرجى إدخال **معرف المستخدم الرقمي (User ID)** المراد حظره:",
+        'ru': "🔴 *Блокировка пользователя*\n\nВведите числовой **ID пользователя** для бана:"
+    },
+    'admin_ban_reason_prompt': {
+        'en': "📝 User `{user_id}` selected.\nPlease enter the **Ban Reason** (or send /skip):",
+        'ar': "📝 تم اختيار المستخدم `{user_id}`.\nيرجى إدخال **سبب الحظر** (أو أرسل /skip للتخطي):",
+        'ru': "📝 Выбран пользователь `{user_id}`.\nВведите **причину блокировки** (или отправьте /skip):"
+    },
+    'admin_ban_success': {
+        'en': "🔴 *User banned successfully!*\n\n👤 ID: `{user_id}`\n💬 Reason: {reason}",
+        'ar': "🔴 *تم حظر المستخدم بنجاح!*\n\n👤 المعرف: `{user_id}`\n💬 السبب: {reason}",
+        'ru': "🔴 *Пользователь успешно заблокирован!*\n\n👤 ID: `{user_id}`\n💬 Причина: {reason}"
+    },
+    'admin_unban_user_prompt': {
+        'en': "🟢 *Unban User*\n\nPlease enter the numeric **Telegram User ID** to unban:",
+        'ar': "🟢 *فك حظر مستخدم*\n\nيرجى إدخال **معرف المستخدم الرقمي (User ID)** المراد فك حظره:",
+        'ru': "🟢 *Разблокировка пользователя*\n\nВведите числовой **ID пользователя** для разбана:"
+    },
+    'admin_unban_success': {
+        'en': "🟢 *User unbanned successfully!*\n\n👤 ID: `{user_id}`",
+        'ar': "🟢 *تم إلغاء حظر المستخدم بنجاح!*\n\n👤 المعرف: `{user_id}`",
+        'ru': "🟢 *Пользователь успешно разблокирован!*\n\n👤 ID: `{user_id}`"
+    },
+    'admin_no_banned_users': {
+        'en': "✨ No banned users at the moment.",
+        'ar': "✨ لا يوجد أي مستخدم محظور حالياً.",
+        'ru': "✨ В данный момент нет заблокированных пользователей."
+    },
+    'admin_banned_list_title': {
+        'en': "📋 *Currently Banned Users:*\n━━━━━━━━━━━━━━━━━━━━\n",
+        'ar': "📋 *قائمة المستخدمين المحظورين حالياً:*\n━━━━━━━━━━━━━━━━━━━━\n",
+        'ru': "📋 *Список заблокированных пользователей:*\n━━━━━━━━━━━━━━━━━━━━\n"
+    },
+    'admin_preorders_summary_title': {
+        'en': "⏳ *Active Pre-orders Summary*\n\nHere you can see all products that users have reserved due to being out of stock. Select a product to view individual reservations or cancel them:",
+        'ar': "⏳ *ملخص الحجوزات المسبقة النشطة*\n\nهنا يمكنك رؤية جميع المنتجات المحجوزة من قبل المستخدمين لعدم توفرها. اختر منتجاً لعرض الحجوزات أو إلغائها:",
+        'ru': "⏳ *Сводка активных предзаказов*\n\nЗдесь показаны все товары, забронированные пользователями из-за отсутствия в наличии. Выберите товар для просмотра или отмены:"
+    },
+    'admin_preorders_no_active': {
+        'en': "📭 No active pre-orders/reservations at the moment.",
+        'ar': "📭 لا توجد أي حجوزات نشطة حالياً.",
+        'ru': "📭 В данный момент нет активных предзаказов."
+    },
+    'admin_preorders_prod_title': {
+        'en': "📦 *Reservations for:* `{name}`\nSelect a specific user's reservation to view actions:",
+        'ar': "📦 *الحجوزات للمنتج:* `{name}`\nاختر حجز مستخدم معين لعرض الإجراءات:",
+        'ru': "📦 *Предзаказы для:* `{name}`\nВыберите бронь пользователя для просмотра действий:"
+    },
+    'admin_preorder_detail_title': {
+        'en': "⏳ *Pre-order Reservation Details*\n\n🆔 *Pre-order ID:* `{id}`\n📦 *Product:* `{name}`\n👤 *User:* {buyer} [ID: `{user_id}`]\n🔢 *Quantity:* `{qty}`\n💰 *Amount Locked:* `${price:.2f} USD`\n📅 *Created At:* `{date}`\n\n⚠️ *Admin Action:* You can cancel this reservation. Doing so will immediately delete the pre-order and refund the amount back to the user's wallet.",
+        'ar': "⏳ *تفاصيل الحجز المسبق*\n\n🆔 *معرف الحجز:* `{id}`\n📦 *المنتج:* `{name}`\n👤 *المستخدم:* {buyer} [ID: `{user_id}`]\n🔢 *الكمية:* `{qty}`\n💰 *المبلغ المعلق:* `${price:.2f} USD`\n📅 *تاريخ الحجز:* `{date}`\n\n⚠️ *إجراء الإدارة:* يمكنك إلغاء هذا الحجز، وسيتم حذفه فوراً وإعادة المبلغ كاملاً إلى محفظة المستخدم.",
+        'ru': "⏳ *Детали предзаказа*\n\n🆔 *ID предзаказа:* `{id}`\n📦 *Товар:* `{name}`\n👤 *Пользователь:* {buyer} [ID: `{user_id}`]\n🔢 *Количество:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n📅 *Создано:* `{date}`\n\n⚠️ *Действие админа:* Вы можете отменить бронь. Предзаказ будет удален, а средства возвращены на баланс пользователя."
+    },
+    'admin_pending_no_deposits': {
+        'en': "📭 No pending deposits at the moment.",
+        'ar': "📭 لا توجد أي إيداعات معلقة في الوقت الحالي.",
+        'ru': "📭 В данный момент нет ожидающих депозитов."
+    },
+    'admin_pending_found': {
+        'en': "⏳ Found {count} pending deposit request(s):",
+        'ar': "⏳ تم العثور على {count} طلب إيداع معلق:",
+        'ru': "⏳ Найдено {count} ожидающих запросов на депозит:"
+    },
+    'admin_settings_channels_title': {
+        'en': "📢 *Channel Settings*\n\n🔗 *Compulsory Join Channels:*\n{channels_list}\n📣 *News Channel:* `{news_ch}`\n📢 *Auto Sales Proofs:* `{auto_proofs}`\n⏱️ *Proof Posting Interval:* `{proofs_min} - {proofs_max} minutes`\n\n💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\nThe bot will check them and display each channel as an individual button to the user!",
+        'ar': "📢 *إعدادات القنوات*\n\n🔗 *قنوات الاشتراك الإجباري:*\n{channels_list}\n📣 *قناة الأخبار/التحديثات:* `{news_ch}`\n📢 *نشر إثباتات المبيعات تلقائياً:* `{auto_proofs}`\n⏱️ *الفاصل الزمني للنشر:* `{proofs_min} - {proofs_max} دقيقة`\n\n💡 *ملاحظة:* عند إضافة القنوات، افصل بينها بفاصلة (مثال: `@channel1, @channel2`)\nسيقوم البوت بالتحقق منها وعرض كل قناة كزر منفصل للمستخدم!",
+        'ru': "📢 *Настройки каналов*\n\n🔗 *Обязательные каналы для подписки:*\n{channels_list}\n📣 *Канал новостей:* `{news_ch}`\n📢 *Авто-публикация продаж:* `{auto_proofs}`\n⏱️ *Интервал публикаций:* `{proofs_min} - {proofs_max} минут`\n\n💡 *Совет:* При добавлении каналов вводите их через запятую (напр. `@channel1, @channel2`)."
+    },
+    'admin_settings_support_title': {
+        'en': "🎧 *Support Settings*\n\n👤 *Support Handle:* `{support}`",
+        'ar': "🎧 *إعدادات الدعم الفني*\n\n👤 *حساب الدعم:* `{support}`",
+        'ru': "🎧 *Настройки поддержки*\n\n👤 *Контакт поддержки:* `{support}`"
+    },
+    'admin_settings_charge_title': {
+        'en': "💳 *Deposit Settings*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Stars Exchange Rate:* 1 Star = `{stars_rate}` USD\n\n🤖 *Crypto Bot Gateway:* {cb_status}\n\n🪙 *Manual Crypto Transfer:* {ct_status}\n🪙 *USDT BEP20 Address:* `{usdt_addr}`\n🪙 *LTC Address:* `{ltc_addr}`\n🪙 *TON Address:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`",
+        'ar': "💳 *إعدادات شحن الرصيد*\n\n⭐️ *نجوم تيليجرام (Stars):* {stars_status}\n💱 *سعر صرف النجوم:* 1 نجمة = `{stars_rate}` دولار\n\n🤖 *بوابة Crypto Bot:* {cb_status}\n\n🪙 *التحويل اليدوي للعملات المشفرة:* {ct_status}\n🪙 *عنوان USDT BEP20:* `{usdt_addr}`\n🪙 *عنوان LTC:* `{ltc_addr}`\n🪙 *عنوان TON:* `{ton_addr}`\n🪙 *معرف / إيميل Binance Pay:* `{binance_addr}`",
+        'ru': "💳 *Настройки пополнения баланса*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Курс Stars:* 1 Star = `{stars_rate}` USD\n\n🤖 *Шлюз Crypto Bot:* {cb_status}\n\n🪙 *Ручной перевод крипты:* {ct_status}\n🪙 *Адрес USDT BEP20:* `{usdt_addr}`\n🪙 *Адрес LTC:* `{ltc_addr}`\n🪙 *Адрес TON:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`"
+    },
+    'admin_settings_referral_title': {
+        'en': "👥 *Referral System Settings*\n\n💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration",
+        'ar': "👥 *إعدادات نظام الإحالة*\n\n💰 *مكافأة الإحالة الثابتة:* `${fixed_bonus} USD` فور تسجيل الصديق بالبوت",
+        'ru': "👥 *Настройки реферальной системы*\n\n💰 *Фиксированный бонус:* `${fixed_bonus} USD` сразу после регистрации друга"
+    },
+    'admin_settings_api_keys_title': {
+        'en': "🔑 *API Keys & Proxy Configuration*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`",
+        'ar': "🔑 *إعدادات مفاتيح API والبروكسي*\n\n🔸 *مفتاح BscScan API:* `{bscscan_key}`\n🪙 *توكن Blockcypher API:* `{blockcypher_key}`\n💎 *مفتاح Toncenter API:* `{toncenter_key}`\n🤖 *توكن Crypto Bot:* `{cryptobot_key}`\n⚙️ *بيئة عمل Crypto Bot:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *مفتاح Binance API:* `{b_api_display}`\n🔶 *مفتاح Binance Secret:* `{b_secret_display}`\n🌐 *بروكسي بينانس:* `{binance_proxy}`",
+        'ru': "🔑 *Настройки API ключей и прокси*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Среда Crypto Bot:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`"
+    },
+    'admin_settings_emoji_title': {
+        'en': "🎨 *Emoji Settings*\n\nSelect an item to set its animated emoji:",
+        'ar': "🎨 *إعدادات الإيموجي*\n\nاختر عنصراً لتعيين الإيموجي المتحرك الخاص به:",
+        'ru': "🎨 *Настройки эмодзи*\n\nВыберите пункт для установки анимированного эмодзи:"
+    },
+    'btn_admin_set_force_join': {
+        'en': "✍️ Set Force Join Channels",
+        'ar': "✍️ تعيين قنوات الاشتراك الإجباري",
+        'ru': "✍️ Задать обязательные каналы"
+    },
+    'btn_admin_set_news_ch': {
+        'en': "✍️ Set News Channel",
+        'ar': "✍️ تعيين قناة الأخبار",
+        'ru': "✍️ Задать канал новостей"
+    },
+    'btn_admin_auto_proofs_toggle': {
+        'en': "📢 Auto Proofs: {status}",
+        'ar': "📢 نشر المبيعات: {status}",
+        'ru': "📢 Публикация продаж: {status}"
+    },
+    'btn_admin_proofs_interval': {
+        'en': "⏱️ Interval: {min_v}-{max_v} min",
+        'ar': "⏱️ الفاصل الزمني: {min_v}-{max_v} دقيقة",
+        'ru': "⏱️ Интервал: {min_v}-{max_v} мин"
+    },
+    'btn_admin_set_support': {
+        'en': "✍️ Edit Support Handle",
+        'ar': "✍️ تعديل حساب الدعم",
+        'ru': "✍️ Изменить контакт поддержки"
+    },
+    'btn_admin_toggle_stars': {
+        'en': "⭐️ Toggle Telegram Stars",
+        'ar': "⭐️ تفعيل/تعطيل نجوم تيليجرام",
+        'ru': "⭐️ Вкл/Выкл Telegram Stars"
+    },
+    'btn_admin_set_stars_rate': {
+        'en': "💱 Set Stars Exchange Rate",
+        'ar': "💱 تعيين سعر صرف النجوم",
+        'ru': "💱 Задать курс Stars"
+    },
+    'btn_admin_toggle_cryptobot': {
+        'en': "🤖 Toggle Crypto Bot",
+        'ar': "🤖 تفعيل/تعطيل Crypto Bot",
+        'ru': "🤖 Вкл/Выкл Crypto Bot"
+    },
+    'btn_admin_toggle_cryptotransfer': {
+        'en': "🪙 Toggle Crypto Transfer",
+        'ar': "🪙 تفعيل/تعطيل التحويل المشفر",
+        'ru': "🪙 Вкл/Выкл ручной перевод крипты"
+    },
+    'btn_admin_set_usdt_addr': {
+        'en': "✍️ Set USDT BEP20 Address",
+        'ar': "✍️ تعيين عنوان USDT BEP20",
+        'ru': "✍️ Задать адрес USDT BEP20"
+    },
+    'btn_admin_set_ltc_addr': {
+        'en': "✍️ Set LTC Address",
+        'ar': "✍️ تعيين عنوان LTC",
+        'ru': "✍️ Задать адрес LTC"
+    },
+    'btn_admin_set_ton_addr': {
+        'en': "✍️ Set TON Address",
+        'ar': "✍️ تعيين عنوان TON",
+        'ru': "✍️ Задать адрес TON"
+    },
+    'btn_admin_set_binance_addr': {
+        'en': "✍️ Set Binance ID/Email/Phone",
+        'ar': "✍️ تعيين معرف Binance / الإيميل",
+        'ru': "✍️ Задать Binance ID/Email/Phone"
+    },
+    'btn_admin_set_ref_bonus': {
+        'en': "✍️ Edit Fixed Bonus Reward",
+        'ar': "✍️ تعديل مكافأة الإحالة الثابتة",
+        'ru': "✍️ Изменить фиксированный бонус"
+    },
+    'btn_setup_new_prov': {
+        'en': "➕ Add New Provider",
+        'ar': "➕ إضافة مزود جديد",
+        'ru': "➕ Добавить нового поставщика"
+    },
+    'btn_prov_editkey': {
+        'en': "🔑 Update API Token",
+        'ar': "🔑 تعديل مفتاح API",
+        'ru': "🔑 Изменить токен API"
+    },
+    'btn_prov_pull': {
+        'en': "📥 Pull/Import Products",
+        'ar': "📥 سحب واستيراد المنتجات",
+        'ru': "📥 Импортировать товары"
+    },
+    'btn_prov_delete': {
+        'en': "❌ Delete Provider",
+        'ar': "❌ حذف المزود",
+        'ru': "❌ Удалить поставщика"
     }
 }
 

@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 
 def normalize_provider_url(url: str) -> str:
     """
-    Normalizes a provider base URL by stripping trailing slashes, /docs, /api-docs, /api/v1, /api, or /v1, /products, /catalog
+    Normalizes a provider base URL by stripping trailing slashes, /docs, /api-docs, /api/swagger, /swagger,
+    /api/reseller, /reseller, /api/v1, /api, or /v1, /products, /catalog
     to prevent double path issues.
     """
     if not url:
@@ -17,7 +18,14 @@ def normalize_provider_url(url: str) -> str:
     if not url.startswith('http://') and not url.startswith('https://'):
         url = 'https://' + url
         
-    for suffix in ['/docs', '/api-docs', '/api/docs', '/api/v1/products', '/api/products', '/v1/products', '/products', '/api/v1/catalog', '/v1/catalog', '/catalog', '/api/v1', '/api', '/v1']:
+    for suffix in [
+        '/api/swagger', '/swagger', '/api/reseller/openapi.json', '/openapi.json',
+        '/api/reseller', '/reseller',
+        '/docs', '/api-docs', '/api/docs', 
+        '/api/v1/products', '/api/products', '/v1/products', '/products', 
+        '/api/v1/catalog', '/v1/catalog', '/catalog', 
+        '/api/v1', '/api', '/v1'
+    ]:
         if url.endswith(suffix):
             url = url[:-len(suffix)].rstrip('/')
             

@@ -91,31 +91,31 @@ async def cmd_unban_user(message: Message, command: CommandObject):
     await message.answer(f"🟢 User `{target_id}` has been unbanned successfully.", parse_mode="Markdown")
 
 @router.callback_query(F.data.startswith("admin_actban_"))
-async def cb_admin_ban_user(callback: CallbackQuery):
+async def cb_admin_ban_user(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     target_id = int(callback.data.replace("admin_actban_", ""))
     await ban_user(target_id, "Banned by admin panel")
-    await callback.answer(f"🔴 User {target_id} banned!", show_alert=True)
+    await callback.answer(get_text('admin_ban_success', lang, user_id=target_id, reason="Admin panel"), show_alert=True)
     try:
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_actunban_{target_id}")
+        builder.button(text=get_text('btn_admin_unban_user_btn', lang), callback_data=f"admin_actunban_{target_id}")
         await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
     except Exception:
         pass
 
 @router.callback_query(F.data.startswith("admin_actunban_"))
-async def cb_admin_unban_user(callback: CallbackQuery):
+async def cb_admin_unban_user(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     target_id = int(callback.data.replace("admin_actunban_", ""))
     await unban_user(target_id)
-    await callback.answer(f"🟢 User {target_id} unbanned!", show_alert=True)
+    await callback.answer(get_text('admin_unban_success', lang, user_id=target_id), show_alert=True)
     try:
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_actban_{target_id}")
+        builder.button(text=get_text('btn_admin_ban_user_btn', lang), callback_data=f"admin_actban_{target_id}")
         await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
     except Exception:
         pass
@@ -163,20 +163,20 @@ async def msg_admin_statistics(message: Message, lang='en'):
     stats = await get_stats()
     store_name = await get_setting('store_name', 'Digital Store')
 
-    text = (
-        f"📊 *{store_name} — Statistics*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 *Users*\n"
-        f"├ Total: `{stats['total_users']}`\n"
-        f"└ Joined Today: `{stats['users_today']}`\n\n"
-        f"💰 *Deposits*\n"
-        f"├ Total: `{stats['total_deposit_count']}` — `${stats['total_deposits']:.2f}`\n"
-        f"└ Today: `${stats['deposits_today']:.2f}`\n\n"
-        f"🛍 *Orders (Sales)*\n"
-        f"├ Total: `{stats['total_orders']}` — `${stats['total_order_revenue']:.2f}`\n"
-        f"└ Today: `{stats['orders_today']}` — `${stats['order_revenue_today']:.2f}`\n\n"
-        f"⏳ *Pending Deposits:* `{stats['pending_count']}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
+    text = get_text(
+        'admin_stats_title',
+        lang,
+        store_name=store_name,
+        total_users=stats['total_users'],
+        users_today=stats['users_today'],
+        total_deposit_count=stats['total_deposit_count'],
+        total_deposits=stats['total_deposits'],
+        deposits_today=stats['deposits_today'],
+        total_orders=stats['total_orders'],
+        total_order_revenue=stats['total_order_revenue'],
+        orders_today=stats['orders_today'],
+        order_revenue_today=stats['order_revenue_today'],
+        pending_count=stats['pending_count']
     )
 
     await message.answer(text, parse_mode="Markdown", reply_markup=keyboards.get_admin_stats_keyboard(lang))
@@ -268,15 +268,15 @@ async def msg_admin_inspect_user(message: Message, state: FSMContext, lang='en')
     if not is_user_admin(message.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_inspect_user_id)
-    await message.answer("🔍 Enter the User ID to inspect:", reply_markup=keyboards.get_admin_reply_keyboard(lang))
+    await message.answer(get_text('admin_inspect_prompt', lang), reply_markup=keyboards.get_admin_reply_keyboard(lang), parse_mode="Markdown")
 
 @router.message(AdminStates.waiting_for_inspect_user_id)
-async def process_inspect_user_id(message: Message, state: FSMContext):
+async def process_inspect_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
     if not message.text or not message.text.strip().isdigit():
-        await message.answer("❌ Invalid User ID. Please enter a valid numeric User ID:")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
     user_id = int(message.text.strip())
 
@@ -284,7 +284,7 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
     report = await get_user_full_report(user_id)
 
     if not report:
-        await message.answer("❌ User not found in the database.")
+        await message.answer(get_text('admin_inspect_not_found', lang))
         return
 
     u = dict(report['user']) if report['user'] else {}
@@ -297,33 +297,32 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
     ban_status = f"🔴 BANNED (Reason: {u.get('ban_reason', 'N/A')})" if is_banned else "🟢 Active"
 
     # Build report text
-    text = (
-        f"🔍 *User Inspection Report*\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 *Profile*\n"
-        f"├ Name: {name}\n"
-        f"├ Username: {username}\n"
-        f"├ ID: `{user_id}`\n"
-        f"├ Status: {ban_status}\n"
-        f"├ Balance: `${u.get('balance', 0):.2f} USD`\n"
-        f"├ Discount: `{report['discount']:.0f}%`\n"
-        f"├ Language: `{u.get('language', 'en')}`\n"
-        f"└ Joined: `{joined}`\n\n"
-        f"💰 *Deposits*\n"
-        f"├ Completed: `{report['deposits_count']}` \u2014 `${report['deposits_total']:.2f}`\n"
-        f"└ Pending: `{report['pending_count']}` \u2014 `${report['pending_total']:.2f}`\n\n"
-        f"🛍 *Purchases*\n"
-        f"├ Total Orders: `{report['orders_count']}`\n"
-        f"└ Total Spent: `${report['orders_total']:.2f}`\n\n"
-        f"👥 *Referrals*\n"
-        f"├ Referred by: {ref_by}\n"
-        f"├ Referrals count: `{report['referral_count']}`\n"
-        f"└ Referral earnings: `${u.get('referral_balance_earned', 0):.2f}`\n"
+    text = get_text(
+        'admin_user_report_title',
+        lang,
+        name=name,
+        username=username,
+        user_id=user_id,
+        ban_status=ban_status,
+        balance=u.get('balance', 0),
+        discount=report['discount'],
+        language=u.get('language', 'en'),
+        joined=joined,
+        deposits_count=report['deposits_count'],
+        deposits_total=report['deposits_total'],
+        pending_count=report['pending_count'],
+        pending_total=report['pending_total'],
+        orders_count=report['orders_count'],
+        orders_total=report['orders_total'],
+        referred_by=ref_by,
+        referral_count=report['referral_count'],
+        ref_earnings=u.get('referral_balance_earned', 0)
     )
 
     # Recent deposits
     if report['recent_deposits']:
-        text += "\n📝 *Recent Deposits (last 5)*\n"
+        recent_dep_title = {"en": "\n📝 *Recent Deposits (last 5)*\n", "ar": "\n📝 *آخر 5 عمليات إيداع*\n", "ru": "\n📝 *Последние 5 депозитов*\n"}.get(lang, "\n📝 *Recent Deposits (last 5)*\n")
+        text += recent_dep_title
         for d in report['recent_deposits']:
             method = d['payment_method']
             if method.startswith('blockchain_'):
@@ -338,18 +337,20 @@ async def process_inspect_user_id(message: Message, state: FSMContext):
 
     # Recent orders
     if report['recent_orders']:
-        text += "\n📦 *Recent Orders (last 5)*\n"
+        recent_ord_title = {"en": "\n📦 *Recent Orders (last 5)*\n", "ar": "\n📦 *آخر 5 طلبات شراء*\n", "ru": "\n📦 *Последние 5 заказов*\n"}.get(lang, "\n📦 *Recent Orders (last 5)*\n")
+        text += recent_ord_title
         for o in report['recent_orders']:
-            text += f"├ 🛍 `{escape_md(o['product_name_en'])}` \u2014 `${o['price_paid']:.2f}` ({o['purchased_at'][:10]})\n"
+            p_name = o.get(f'product_name_{lang}') or o['product_name_en']
+            text += f"├ 🛍 `{escape_md(p_name)}` \u2014 `${o['price_paid']:.2f}` ({o['purchased_at'][:10]})\n"
 
     text += "\n━━━━━━━━━━━━━━━━━━━━"
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     if is_banned:
-        builder.button(text="🟢 Unban User / إلغاء حظر المستخدم", callback_data=f"admin_actunban_{user_id}")
+        builder.button(text=get_text('btn_admin_unban_user_btn', lang), callback_data=f"admin_actunban_{user_id}")
     else:
-        builder.button(text="🔴 Ban User / حظر المستخدم", callback_data=f"admin_actban_{user_id}")
+        builder.button(text=get_text('btn_admin_ban_user_btn', lang), callback_data=f"admin_actban_{user_id}")
 
     # Send (split if too long)
     if len(text) > 4000:
@@ -390,7 +391,7 @@ async def msg_admin_manage_products(message: Message, lang='en'):
     products = await get_products()
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Add Product", callback_data="admin_prod_add")
+    builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
     for prod in products:
         name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
@@ -398,7 +399,7 @@ async def msg_admin_manage_products(message: Message, lang='en'):
     builder.adjust(1)
     
     await message.answer(
-        "📦 *Product Management*\nSelect a product to edit/delete or add a new one:",
+        get_text('admin_prod_mgmt_title', lang),
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
@@ -433,7 +434,7 @@ async def msg_admin_stock_select_prod(message: Message, state: FSMContext, lang=
     builder.adjust(1)
     
     await message.answer(
-        "📥 *Select Product for Stock adding*:",
+        get_text('admin_stock_select_prod_prompt', lang),
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
@@ -444,16 +445,16 @@ async def msg_admin_stock_select_prod(message: Message, state: FSMContext, lang=
     get_text('btn_admin_pending_deposits', 'ru'),
     "⏳ Pending Deposits", "⏳ الإيداعات المعلقة", "⏳ Ожидающие платежи"
 ]))
-async def msg_admin_pending_deposits(message: Message):
+async def msg_admin_pending_deposits(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
         
     pending_payments = await get_all_pending_payments()
     if not pending_payments:
-        await message.answer("📭 No pending deposits at the moment.")
+        await message.answer(get_text('admin_pending_no_deposits', lang))
         return
         
-    await message.answer(f"⏳ Found {len(pending_payments)} pending deposit request(s):")
+    await message.answer(get_text('admin_pending_found', lang, count=len(pending_payments)))
     
     for payment in pending_payments:
         user_id = payment['user_id']
@@ -484,7 +485,7 @@ async def msg_admin_pending_deposits(message: Message):
             f"📅 *Date:* `{payment['created_at']}`\n\n"
             f"Transaction ID: `{payment['transaction_id']}`"
         )
-        kb = keyboards.get_admin_payment_approval_keyboard(payment['transaction_id'])
+        kb = keyboards.get_admin_payment_approval_keyboard(payment['transaction_id'], lang)
         await message.answer(msg_text, reply_markup=kb, parse_mode="Markdown")
 
 @router.message(F.text.in_([
@@ -501,6 +502,155 @@ async def msg_admin_pending_deposits(message: Message):
     "🔑 API Keys Settings", "🔑 إعدادات مفاتيح API", "🔑 Настройки API ключей",
     "🎨 Button Emojis", "🎨 إيموجيات الأزرار", "🎨 Эмодзи кнопок"
 ]))
+async def get_admin_settings_content(menu: str, lang: str = 'en'):
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    text = ""
+    
+    if menu == "admin_channels":
+        force_join = await get_setting("force_join_channels", "None")
+        news_ch = await get_setting("news_channel", "None")
+        auto_proofs = await get_setting("auto_proofs_enabled", "0")
+        proofs_icon = "🟢" if auto_proofs == "1" else "🔴"
+        proofs_min = await get_setting("auto_proofs_min_minutes", "5")
+        proofs_max = await get_setting("auto_proofs_max_minutes", "20")
+        
+        channels_list = ""
+        if force_join and force_join != "None":
+            ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
+            for idx, c in enumerate(ch_parts, 1):
+                channels_list += f"   {idx}. `{c}`\n"
+        else:
+            no_ch_dict = {
+                'en': "   (No channels set)\n",
+                'ar': "   (لم يتم تعيين قنوات)\n",
+                'ru': "   (Каналы не заданы)\n"
+            }
+            channels_list = no_ch_dict.get(lang, no_ch_dict['en'])
+            
+        text = get_text(
+            'admin_settings_channels_title',
+            lang,
+            channels_list=channels_list,
+            news_ch=news_ch,
+            auto_proofs="Enabled / مفعل" if auto_proofs == "1" else "Disabled / معطل",
+            proofs_min=proofs_min,
+            proofs_max=proofs_max
+        )
+        builder.button(text=get_text('btn_admin_set_force_join', lang), callback_data="admin_set_force_join")
+        builder.button(text=get_text('btn_admin_set_news_ch', lang), callback_data="admin_set_news_ch")
+        builder.button(text=get_text('btn_admin_auto_proofs_toggle', lang, status=proofs_icon), callback_data="admin_toggle_auto_proofs")
+        builder.button(text=get_text('btn_admin_proofs_interval', lang, min_v=proofs_min, max_v=proofs_max), callback_data="admin_set_proofs_interval")
+        
+    elif menu == "admin_support_settings":
+        support = await get_setting("support_username", "None")
+        text = get_text('admin_settings_support_title', lang, support=support)
+        builder.button(text=get_text('btn_admin_set_support', lang), callback_data="admin_set_support")
+        
+    elif menu == "admin_charge_settings":
+        stars = await get_setting("stars_enabled", "1")
+        stars_rate = await get_setting("stars_rate", "0.02")
+        usdt_addr = await get_setting("crypto_addr_usdt", "0x89846777ea91dee2b25f0fcbf54884a4f79923d8")
+        ltc_addr = await get_setting("crypto_addr_ltc", "LbEuNY2o5ePVyd7dqE4dTyNToAPDtcYMXR")
+        ton_addr = await get_setting("crypto_addr_ton", "UQC8zbAwkf9-f8SzyYYITLU8Et4g-Cf7ffyQJIhip9nupHGo")
+        binance_addr = await get_setting("crypto_addr_binance", "Not Configured")
+        cryptotransfer = await get_setting("cryptotransfer_enabled", "1")
+        cryptobot = await get_setting("cryptobot_enabled", "1")
+        
+        s_status = "✅ Enabled" if stars == "1" else "❌ Disabled"
+        ct_status = "✅ Enabled" if cryptotransfer == "1" else "❌ Disabled"
+        cb_status = "✅ Enabled" if cryptobot == "1" else "❌ Disabled"
+        
+        text = get_text(
+            'admin_settings_charge_title',
+            lang,
+            stars_status=s_status,
+            stars_rate=stars_rate,
+            cb_status=cb_status,
+            ct_status=ct_status,
+            usdt_addr=usdt_addr,
+            ltc_addr=ltc_addr,
+            ton_addr=ton_addr,
+            binance_addr=binance_addr
+        )
+        builder.button(text=get_text('btn_admin_toggle_stars', lang), callback_data="admin_toggle_stars")
+        builder.button(text=get_text('btn_admin_set_stars_rate', lang), callback_data="admin_set_stars_rate")
+        builder.button(text=get_text('btn_admin_toggle_cryptobot', lang), callback_data="admin_toggle_cryptobot")
+        builder.button(text=get_text('btn_admin_toggle_cryptotransfer', lang), callback_data="admin_toggle_cryptotransfer")
+        builder.button(text=get_text('btn_admin_set_usdt_addr', lang), callback_data="admin_set_crypto_addr_usdt")
+        builder.button(text=get_text('btn_admin_set_ltc_addr', lang), callback_data="admin_set_crypto_addr_ltc")
+        builder.button(text=get_text('btn_admin_set_ton_addr', lang), callback_data="admin_set_crypto_addr_ton")
+        builder.button(text=get_text('btn_admin_set_binance_addr', lang), callback_data="admin_set_crypto_addr_binance")
+        
+    elif menu == "admin_referral_settings":
+        fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
+        text = get_text('admin_settings_referral_title', lang, fixed_bonus=fixed_bonus)
+        builder.button(text=get_text('btn_admin_set_ref_bonus', lang), callback_data="admin_set_ref_pct")
+        
+    elif menu == "admin_api_keys_settings":
+        bscscan_key = (await get_setting("bscscan_api_key", "")) or "None"
+        blockcypher_key = (await get_setting("blockcypher_api_key", "")) or "None"
+        toncenter_key = (await get_setting("toncenter_api_key", "")) or "None"
+        cryptobot_key = (await get_setting("cryptobot_token", "")) or "None"
+        cryptobot_testnet = await get_setting("cryptobot_use_testnet", "0")
+        cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
+        
+        binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
+        binance_api_key = (await get_setting("binance_api_key", "")) or "None"
+        binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
+        b_api_display = f"{binance_api_key[:8]}...{binance_api_key[-4:]}" if binance_api_key and binance_api_key != "None" and len(binance_api_key) > 12 else binance_api_key
+        b_secret_display = f"{binance_secret_key[:8]}...{binance_secret_key[-4:]}" if binance_secret_key and binance_secret_key != "None" and len(binance_secret_key) > 12 else binance_secret_key
+        
+        text = get_text(
+            'admin_settings_api_keys_title',
+            lang,
+            bscscan_key=bscscan_key,
+            blockcypher_key=blockcypher_key,
+            toncenter_key=toncenter_key,
+            cryptobot_key=cryptobot_key,
+            cb_testnet_status=cb_testnet_status,
+            b_api_display=b_api_display,
+            b_secret_display=b_secret_display,
+            binance_proxy=binance_proxy
+        )
+        builder.button(text="✍️ Set BscScan API Key", callback_data="admin_set_bscscan_api_key")
+        builder.button(text="✍️ Set Blockcypher API Token", callback_data="admin_set_blockcypher_api_key")
+        builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
+        builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
+        builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
+        builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
+        builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
+        builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
+        
+    elif menu == "admin_emoji_settings":
+        emojis = await get_button_emojis()
+        welcome_eid = await get_setting('welcome_emoji_id', '')
+        btn_names = {
+            'shop': get_text('btn_shop', lang),
+            'orders': get_text('btn_my_orders', lang),
+            'charge': get_text('btn_charge', lang),
+            'referral': get_text('btn_referral', lang),
+            'support': get_text('btn_support', lang),
+            'language': get_text('btn_language', lang),
+            'admin': get_text('btn_admin_panel', lang),
+        }
+        w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
+        text = get_text('admin_settings_emoji_title', lang) + "\n\n"
+        text += f"🔷 *Welcome Emoji:* {w_status}\n"
+        text += "──────────────\n"
+        for key, name in btn_names.items():
+            emoji_id = emojis.get(key)
+            status = f"`{emoji_id[:12]}...`" if emoji_id else "❌ None"
+            text += f"▫️ {name}: {status}\n"
+        
+        builder.button(text="🔷 Welcome Emoji", callback_data="admin_set_btn_emoji_welcome")
+        for key, name in btn_names.items():
+            builder.button(text=f"🎨 {name}", callback_data=f"admin_set_btn_emoji_{key}")
+    
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
+    builder.adjust(1)
+    return text, builder.as_markup()
+
 async def msg_admin_settings_menu(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
@@ -521,161 +671,8 @@ async def msg_admin_settings_menu(message: Message, lang='en'):
     else:
         menu = "admin_channels"
     
-    text = ""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    
-    if menu == "admin_channels":
-        force_join = await get_setting("force_join_channels", "None")
-        news_ch = await get_setting("news_channel", "None")
-        auto_proofs = await get_setting("auto_proofs_enabled", "0")
-        proofs_icon = "🟢" if auto_proofs == "1" else "🔴"
-        proofs_min = await get_setting("auto_proofs_min_minutes", "5")
-        proofs_max = await get_setting("auto_proofs_max_minutes", "20")
-        
-        # Present channels as a clean list for the admin
-        channels_list = ""
-        if force_join and force_join != "None":
-            ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
-            for idx, c in enumerate(ch_parts, 1):
-                channels_list += f"   {idx}. `{c}`\n"
-        else:
-            channels_list = "   (No channels set)\n"
-            
-        text = (
-            f"📢 *Channel Settings*\n\n"
-            f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
-            f"📣 *News Channel:* `{news_ch}`\n"
-            f"📢 *Auto Sales Proofs:* `{'Enabled' if auto_proofs == '1' else 'Disabled'}`\n"
-            f"⏱️ *Proof Posting Interval:* `{proofs_min} - {proofs_max} minutes`\n\n"
-            f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
-            f"The bot will check them and display each channel as an individual button to the user!"
-        )
-        builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
-        builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
-        builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
-        builder.button(text=f"⏱️ الفاصل الزمني: {proofs_min}-{proofs_max} دقيقة", callback_data="admin_set_proofs_interval")
-        
-    elif menu == "admin_support_settings":
-        support = await get_setting("support_username", "None")
-        text = (
-            f"🎧 *Support Settings*\n\n"
-            f"👤 *Support Handle:* `{support}`"
-        )
-        builder.button(text="✍️ Edit Support Handle", callback_data="admin_set_support")
-        
-    elif menu == "admin_charge_settings":
-        stars = await get_setting("stars_enabled", "1")
-        stars_rate = await get_setting("stars_rate", "0.02")
-        usdt_addr = await get_setting("crypto_addr_usdt", "0x89846777ea91dee2b25f0fcbf54884a4f79923d8")
-        ltc_addr = await get_setting("crypto_addr_ltc", "LbEuNY2o5ePVyd7dqE4dTyNToAPDtcYMXR")
-        ton_addr = await get_setting("crypto_addr_ton", "UQC8zbAwkf9-f8SzyYYITLU8Et4g-Cf7ffyQJIhip9nupHGo")
-        binance_addr = await get_setting("crypto_addr_binance", "Not Configured")
-        cryptotransfer = await get_setting("cryptotransfer_enabled", "1")
-        cryptobot = await get_setting("cryptobot_enabled", "1")
-        
-        s_status = "✅ Enabled" if stars == "1" else "❌ Disabled"
-        ct_status = "✅ Enabled" if cryptotransfer == "1" else "❌ Disabled"
-        cb_status = "✅ Enabled" if cryptobot == "1" else "❌ Disabled"
-        
-        text = (
-            f"💳 *Deposit Settings*\n\n"
-            f"⭐️ *Telegram Stars:* {s_status}\n"
-            f"💱 *Stars Exchange Rate:* 1 Star = `{stars_rate}` USD\n\n"
-            f"🤖 *Crypto Bot Gateway:* {cb_status}\n\n"
-            f"🪙 *Manual Crypto Transfer:* {ct_status}\n"
-            f"🪙 *USDT BEP20 Address:* `{usdt_addr}`\n"
-            f"🪙 *LTC Address:* `{ltc_addr}`\n"
-            f"🪙 *TON Address:* `{ton_addr}`\n"
-            f"🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`"
-        )
-        builder.button(text="Toggle Telegram Stars", callback_data="admin_toggle_stars")
-        builder.button(text="Set Stars Exchange Rate", callback_data="admin_set_stars_rate")
-        builder.button(text="Toggle Crypto Bot", callback_data="admin_toggle_cryptobot")
-        builder.button(text="Toggle Crypto Transfer", callback_data="admin_toggle_cryptotransfer")
-        builder.button(text="✍️ Set USDT BEP20 Address", callback_data="admin_set_crypto_addr_usdt")
-        builder.button(text="✍️ Set LTC Address", callback_data="admin_set_crypto_addr_ltc")
-        builder.button(text="✍️ Set TON Address", callback_data="admin_set_crypto_addr_ton")
-        builder.button(text="✍️ Set Binance ID/Email/Phone", callback_data="admin_set_crypto_addr_binance")
-        
-    elif menu == "admin_referral_settings":
-        fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
-        text = (
-            f"👥 *Referral System Settings*\n\n"
-            f"💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration"
-        )
-        builder.button(text="✍️ Edit Fixed Bonus Reward", callback_data="admin_set_ref_pct")
-        
-    elif menu == "admin_api_keys_settings":
-        bscscan_key = (await get_setting("bscscan_api_key", "")) or "None"
-        blockcypher_key = (await get_setting("blockcypher_api_key", "")) or "None"
-        toncenter_key = (await get_setting("toncenter_api_key", "")) or "None"
-        cryptobot_key = (await get_setting("cryptobot_token", "")) or "None"
-        cryptobot_testnet = await get_setting("cryptobot_use_testnet", "0")
-        cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
-        
-        binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
-        binance_api_key = (await get_setting("binance_api_key", "")) or "None"
-        binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
-        # Mask keys for display
-        b_api_display = f"{binance_api_key[:8]}...{binance_api_key[-4:]}" if binance_api_key and binance_api_key != "None" and len(binance_api_key) > 12 else binance_api_key
-        b_secret_display = f"{binance_secret_key[:8]}...{binance_secret_key[-4:]}" if binance_secret_key and binance_secret_key != "None" and len(binance_secret_key) > 12 else binance_secret_key
-        
-        text = (
-            f"🔑 *API Keys & Proxy Configuration*\n\n"
-            f"🔸 *BscScan API Key:* `{bscscan_key}`\n"
-            f"🔗 [Get BscScan Key](https://bscscan.com/myapikey)\n\n"
-            f"🪙 *Blockcypher API Token:* `{blockcypher_key}`\n"
-            f"🔗 [Get Blockcypher Token](https://accounts.blockcypher.com/)\n\n"
-            f"💎 *Toncenter API Key:* `{toncenter_key}`\n"
-            f"🔗 [Get Toncenter Key](https://t.me/toncenter)\n\n"
-            f"🤖 *Crypto Bot Token:* `{cryptobot_key}`\n"
-            f"⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n"
-            f"🔗 [Get Crypto Bot Token](https://t.me/CryptoPayTestVar) (Testnet) or [@CryptoBot](https://t.me/CryptoBot?start=pay) (Mainnet)\n\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"🔶 *Binance API Key:* `{b_api_display}`\n"
-            f"🔶 *Binance Secret Key:* `{b_secret_display}`\n"
-            f"🌐 *Binance Proxy:* `{binance_proxy}`"
-        )
-        builder.button(text="✍️ Set BscScan API Key", callback_data="admin_set_bscscan_api_key")
-        builder.button(text="✍️ Set Blockcypher API Token", callback_data="admin_set_blockcypher_api_key")
-        builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
-        builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
-        builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
-        builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
-        builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
-        builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
-        
-    elif menu == "admin_emoji_settings":
-        emojis = await get_button_emojis()
-        welcome_eid = await get_setting('welcome_emoji_id', '')
-        btn_names = {
-            'shop': '🛒 Shop / المتجر',
-            'orders': '📦 My Orders / مشترياتي',
-            'charge': '💳 Charge / شحن الرصيد',
-            'referral': '👥 Referral / الإحالة',
-            'support': '🎧 Support / الدعم',
-            'language': '🌐 Language / اللغة',
-            'admin': '⚙️ Admin / الإدارة',
-        }
-        w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
-        text = "🎨 *Emoji Settings*\n\n"
-        text += f"🔷 *Welcome Emoji:* {w_status}\n"
-        text += "──────────────\n"
-        for key, name in btn_names.items():
-            emoji_id = emojis.get(key)
-            status = f"`{emoji_id[:12]}...`" if emoji_id else "❌ None"
-            text += f"▫️ {name}: {status}\n"
-        text += "\nSelect an item to set its animated emoji:"
-        
-        builder.button(text="🔷 Welcome Emoji / إيموجي الترحيب", callback_data="admin_set_btn_emoji_welcome")
-        for key, name in btn_names.items():
-            builder.button(text=f"🎨 {name}", callback_data=f"admin_set_btn_emoji_{key}")
-    
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
-    builder.adjust(1)
-    
-    await message.answer(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    text, reply_markup = await get_admin_settings_content(menu, lang)
+    await message.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 @router.message(F.text.in_([
     get_text('btn_admin_broadcast', 'en'),
@@ -683,11 +680,11 @@ async def msg_admin_settings_menu(message: Message, lang='en'):
     get_text('btn_admin_broadcast', 'ru'),
     "📣 Broadcast", "📣 رسالة جماعية", "📣 Рассылка"
 ]))
-async def msg_admin_broadcast_trigger(message: Message, state: FSMContext):
+async def msg_admin_broadcast_trigger(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_broadcast)
-    await message.answer("📣 Send the message you want to broadcast to *all users* (can contain formatting or markdown):")
+    await message.answer(get_text('admin_broadcast_prompt', lang), parse_mode="Markdown")
 
 @router.message(F.text.in_([
     get_text('btn_admin_back_to_menu', 'en'),
@@ -748,17 +745,17 @@ async def cb_admin_manage_products(callback: CallbackQuery, lang='en'):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     
-    builder.button(text="➕ Add Product", callback_data="admin_prod_add")
+    builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
     
     for prod in products:
-        name = prod['name_en']
+        name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
         
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     
     await callback.message.edit_text(
-        "📦 *Product Management*\nSelect a product to edit/delete or add a new one:",
+        get_text('admin_prod_mgmt_title', lang),
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
@@ -780,7 +777,7 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
         from utils import format_product_message
         text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
         
-        kb = keyboards.get_admin_product_edit_keyboard(prod_id)
+        kb = keyboards.get_admin_product_edit_keyboard(prod_id, lang)
         if entities:
             try:
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)
@@ -807,26 +804,26 @@ async def cb_admin_prod_del(callback: CallbackQuery, lang='en'):
         return
     prod_id = int(callback.data.replace("admin_prod_del_", ""))
     await delete_product(prod_id)
-    await callback.answer("Product deleted successfully!", show_alert=True)
+    await callback.answer(get_text('admin_prod_del_success', lang), show_alert=True)
     await cb_admin_manage_products(callback, lang)
 
 # --- Add Product FSM ---
 @router.callback_query(F.data == "admin_prod_add")
-async def cb_admin_prod_add(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_prod_add(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.set_state(ProductStates.waiting_for_name)
-    await callback.message.answer("✏️ Enter Product Name:")
+    await callback.message.answer(get_text('admin_prod_add_name_prompt', lang))
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_name)
-async def add_prod_name(message: Message, state: FSMContext):
+async def add_prod_name(message: Message, state: FSMContext, lang='en'):
     await state.update_data(name=message.text.strip())
     await state.set_state(ProductStates.waiting_for_desc)
-    await message.answer("✏️ Enter Product Description:")
+    await message.answer(get_text('admin_prod_add_desc_prompt', lang))
 
 @router.message(ProductStates.waiting_for_desc)
-async def add_prod_desc(message: Message, state: FSMContext):
+async def add_prod_desc(message: Message, state: FSMContext, lang='en'):
     desc_text = (message.text or message.caption or "").strip()
     entities = message.entities or message.caption_entities
     from utils import serialize_entities
@@ -834,23 +831,23 @@ async def add_prod_desc(message: Message, state: FSMContext):
     
     await state.update_data(desc=desc_text, desc_entities=entities_json)
     await state.set_state(ProductStates.waiting_for_price)
-    await message.answer("✏️ Enter Product Price in *USD* (e.g. 5.50):")
+    await message.answer(get_text('admin_prod_add_price_prompt', lang), parse_mode="Markdown")
 
 @router.message(ProductStates.waiting_for_price)
 async def add_prod_price(message: Message, state: FSMContext, bot: Bot, lang='en'):
     try:
-        price = float(message.text)
+        price = float(message.text.strip().replace("$", ""))
         if price < 0:
             raise ValueError()
     except ValueError:
-        await message.answer("❌ Invalid price. Enter a positive decimal number:")
+        await message.answer(get_text('admin_invalid_price', lang))
         return
         
     await state.update_data(price=price)
     await state.set_state(ProductStates.waiting_for_custom_emoji)
     await message.answer(
-        "🎨 Now, send an animated Premium Custom Emoji for this product's icon, or type /skip to use no emoji.",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_prod_add_emoji_prompt', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang)
     )
 
 @router.message(ProductStates.waiting_for_custom_emoji)
@@ -889,8 +886,8 @@ async def add_prod_custom_emoji(message: Message, state: FSMContext, bot: Bot, l
     )
     
     await message.answer(
-        "✅ Product added successfully!",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_prod_add_success', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang)
     )
     
     # Broadcast to all users in private chat
@@ -925,9 +922,8 @@ async def add_prod_custom_emoji(message: Message, state: FSMContext, bot: Bot, l
             logger.error(f"Failed to log new product announcement: {e}")
 
 # --- Edit Product FSM ---
-# --- Edit Product FSM ---
 @router.callback_query(F.data.startswith("admin_edit_fields_"))
-async def cb_admin_edit_fields(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_edit_fields(callback: CallbackQuery, state: FSMContext, lang='en'):
     prod_id = int(callback.data.replace("admin_edit_fields_", ""))
     product = await get_product(prod_id)
     if not product:
@@ -936,21 +932,22 @@ async def cb_admin_edit_fields(callback: CallbackQuery, state: FSMContext):
         
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text="✏️ Name / الاسم", callback_data=f"admin_edit_spec_{prod_id}_name")
-    builder.button(text="✏️ Description / الوصف", callback_data=f"admin_edit_spec_{prod_id}_desc")
-    builder.button(text="✏️ Price / السعر", callback_data=f"admin_edit_spec_{prod_id}_price")
-    builder.button(text="🔙 Back to Product Details", callback_data=f"admin_prod_view_{prod_id}")
+    builder.button(text=get_text('btn_admin_field_name', lang), callback_data=f"admin_edit_spec_{prod_id}_name")
+    builder.button(text=get_text('btn_admin_field_desc', lang), callback_data=f"admin_edit_spec_{prod_id}_desc")
+    builder.button(text=get_text('btn_admin_field_price', lang), callback_data=f"admin_edit_spec_{prod_id}_price")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_prod_view_{prod_id}")
     builder.adjust(1)
     
+    prod_name = get_product_name(product, lang)
     await callback.message.edit_text(
-        f"✏️ *Editing Product:* {product['name_en']}\nSelect which field you want to edit:",
+        get_text('admin_prod_edit_fields_title', lang, name=prod_name),
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_edit_spec_"))
-async def cb_admin_edit_specific(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_edit_specific(callback: CallbackQuery, state: FSMContext, lang='en'):
     parts = callback.data.split("_")
     prod_id = int(parts[3])
     field = "_".join(parts[4:])
@@ -963,21 +960,22 @@ async def cb_admin_edit_specific(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_prod_id=prod_id, edit_field=field)
     
     field_labels = {
-        "name": "Name / الاسم",
-        "desc": "Description / الوصف",
-        "price": "Price / السعر"
+        "name": get_text('btn_admin_field_name', lang),
+        "desc": get_text('btn_admin_field_desc', lang),
+        "price": get_text('btn_admin_field_price', lang)
     }
     
     field_label = field_labels.get(field, field)
     await state.set_state(ProductStates.waiting_for_edit_specific_value)
     
     await callback.message.answer(
-        f"✏️ Enter new value for *{field_label}*:"
+        get_text('admin_prod_edit_val_prompt', lang, field=field_label),
+        parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_edit_specific_value)
-async def process_edit_specific_value(message: Message, state: FSMContext, bot: Bot):
+async def process_edit_specific_value(message: Message, state: FSMContext, bot: Bot, lang='en'):
     data = await state.get_data()
     prod_id = data.get("edit_prod_id")
     field = data.get("edit_field")
@@ -1026,11 +1024,11 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
         description_entities_ru = entities_json
     elif field == "price":
         try:
-            price = float(val)
+            price = float(val.replace("$", ""))
             if price < 0:
                 raise ValueError()
         except ValueError:
-            await message.answer("❌ Invalid price. Enter a positive number:")
+            await message.answer(get_text('admin_invalid_price', lang))
             return
             
     await state.clear()
@@ -1051,13 +1049,21 @@ async def process_edit_specific_value(message: Message, state: FSMContext, bot: 
         description_entities_ru=description_entities_ru
     )
     
+    field_labels = {
+        "name": get_text('btn_admin_field_name', lang),
+        "desc": get_text('btn_admin_field_desc', lang),
+        "price": get_text('btn_admin_field_price', lang)
+    }
+    field_label = field_labels.get(field, field)
+    
     await message.answer(
-        f"✅ Product updated successfully!",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_prod_edit_success', lang, field=field_label),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
+        parse_mode="Markdown"
     )
 
 @router.callback_query(F.data.startswith("admin_edit_emoji_"))
-async def cb_admin_edit_emoji(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_edit_emoji(callback: CallbackQuery, state: FSMContext, lang='en'):
     prod_id = int(callback.data.replace("admin_edit_emoji_", ""))
     product = await get_product(prod_id)
     if not product:
@@ -1067,13 +1073,15 @@ async def cb_admin_edit_emoji(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_prod_id=prod_id)
     await state.set_state(ProductStates.waiting_for_edit_custom_emoji)
     
+    prod_name = get_product_name(product, lang)
     await callback.message.answer(
-        "🎨 Send a new animated Premium Custom Emoji for this product's icon, or type /skip to remove the current emoji."
+        get_text('admin_prod_edit_emoji_prompt', lang, name=prod_name),
+        parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_edit_custom_emoji)
-async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
+async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot, lang='en'):
     data = await state.get_data()
     prod_id = data.get("edit_prod_id")
     
@@ -1089,7 +1097,7 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
         return
         
     custom_emoji_id = None
-    if message.text != '/skip' and message.entities:
+    if message.text != '/skip' and message.text != 'remove' and message.entities:
         for entity in message.entities:
             if entity.type == 'custom_emoji':
                 custom_emoji_id = entity.custom_emoji_id
@@ -1114,13 +1122,13 @@ async def process_edit_emoji(message: Message, state: FSMContext, bot: Bot):
     
     await state.clear()
     await message.answer(
-        "✅ Product emoji updated successfully!",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_prod_edit_emoji_success', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang)
     )
 
 # --- Product Tier Prices Management ---
 @router.callback_query(F.data.startswith("admin_prod_tiers_"))
-async def cb_admin_prod_tiers(callback: CallbackQuery):
+async def cb_admin_prod_tiers(callback: CallbackQuery, lang='en'):
     prod_id = int(callback.data.replace("admin_prod_tiers_", ""))
     product = await get_product(prod_id)
     if not product:
@@ -1128,25 +1136,22 @@ async def cb_admin_prod_tiers(callback: CallbackQuery):
         return
         
     from utils import format_product_tier_prices_text
-    tiers_text = format_product_tier_prices_text(product, lang='ar')
+    tiers_text = format_product_tier_prices_text(product, lang=lang)
     if not tiers_text:
-        tiers_text = "❌ لا توجد أسعار جملة مضافة لهذا المنتج حالياً."
+        tiers_text = {"en": "❌ No tier prices added yet.", "ar": "❌ لا توجد أسعار جملة مضافة لهذا المنتج حالياً.", "ru": "❌ Оптовые цены пока не настроены."}.get(lang, "❌ No tier prices added yet.")
         
-    text = (
-        f"🏷️ *إدارة أسعار الجملة حسب الكمية للمنتج:*\n`{product['name_en']}`\n\n"
-        f"{tiers_text}\n\n"
-        f"💡 يمكن إضافة فئات أسعار ثابتة جديدة (مثلاً: عند شراء 5 قطع يصبح سعر القطعة $8.50)."
-    )
+    prod_name = get_product_name(product, lang)
+    text = get_text('admin_tier_prices_title', lang, name=prod_name, price=product['price'], tiers_text=tiers_text)
     
     await callback.message.edit_text(
         text,
-        reply_markup=keyboards.get_admin_tier_prices_keyboard(prod_id),
+        reply_markup=keyboards.get_admin_tier_prices_keyboard(prod_id, lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_add_tier_"))
-async def cb_admin_add_tier(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_add_tier(callback: CallbackQuery, state: FSMContext, lang='en'):
     prod_id = int(callback.data.replace("admin_add_tier_", ""))
     product = await get_product(prod_id)
     if not product:
@@ -1157,39 +1162,38 @@ async def cb_admin_add_tier(callback: CallbackQuery, state: FSMContext):
     await state.update_data(tier_prod_id=prod_id)
     
     await callback.message.answer(
-        f"📥 *الخطوة 1 من 2: الكمية الدنيا*\n\n"
-        f"الرجاء إدخال الحد الأدنى للكمية المطلوبة لتطبيق السعر (مثال: `5` أو `10` أو `50`):",
+        get_text('admin_tier_min_qty_prompt', lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(ProductStates.waiting_for_tier_min_qty)
-async def process_tier_min_qty(message: Message, state: FSMContext):
+async def process_tier_min_qty(message: Message, state: FSMContext, lang='en'):
     try:
         min_qty = int(message.text.strip())
         if min_qty <= 1:
             raise ValueError()
     except ValueError:
-        await message.answer("❌ كمية غير صالحة. يجب أن يكون الحد الأدنى للكمية رقماً صحيحاً أكبر من 1 (مثال: `5`):")
+        err_msg = {"en": "❌ Invalid quantity. Minimum quantity must be a positive integer greater than 1 (e.g. `5`):", "ar": "❌ كمية غير صالحة. يجب أن يكون الحد الأدنى للكمية رقماً صحيحاً أكبر من 1 (مثال: `5`):", "ru": "❌ Неверное количество. Минимальное количество должно быть больше 1 (например `5`):"}.get(lang, "❌ Invalid quantity.")
+        await message.answer(err_msg, parse_mode="Markdown")
         return
         
     await state.update_data(tier_min_qty=min_qty)
     await state.set_state(ProductStates.waiting_for_tier_unit_price)
     
     await message.answer(
-        f"💵 *الخطوة 2 من 2: سعر القطعة الثابت*\n\n"
-        f"الرجاء إدخال سعر القطعة الثابت للكميات ابتداءً من *{min_qty}+* قطعة بالدولار USD (مثال: `8.50`):",
+        get_text('admin_tier_unit_price_prompt', lang, qty=min_qty),
         parse_mode="Markdown"
     )
 
 @router.message(ProductStates.waiting_for_tier_unit_price)
-async def process_tier_unit_price(message: Message, state: FSMContext):
+async def process_tier_unit_price(message: Message, state: FSMContext, lang='en'):
     try:
-        unit_price = float(message.text.strip())
+        unit_price = float(message.text.strip().replace("$", ""))
         if unit_price <= 0:
             raise ValueError()
     except ValueError:
-        await message.answer("❌ سعر غير صالحة. الرجاء إدخال قيمة رقمية صحيحة أكبر من 0 (مثال: `8.50`):")
+        await message.answer(get_text('admin_invalid_price', lang))
         return
         
     data = await state.get_data()
@@ -1198,12 +1202,12 @@ async def process_tier_unit_price(message: Message, state: FSMContext):
     await state.clear()
     
     if not prod_id or not min_qty:
-        await message.answer("❌ حدث خطأ، يرجى المحاولة مرة أخرى.")
+        await message.answer("❌ Session expired. Try again.")
         return
         
     product = await get_product(prod_id)
     if not product:
-        await message.answer("❌ المنتج غير موجود.")
+        await message.answer("❌ Product not found.")
         return
         
     prod_dict = dict(product) if product else {}
@@ -1226,28 +1230,27 @@ async def process_tier_unit_price(message: Message, state: FSMContext):
     await update_product_tier_prices(prod_id, json.dumps(tiers))
     
     await message.answer(
-        f"✅ *تم حفظ سعر الجملة بنجاح!*\n\n"
-        f"🔹 عند شراء *{min_qty}+* قطعة ⬅️ السعر الثابت: `${unit_price:.2f} USD` للقطعة.",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_tier_add_success', lang, qty=min_qty, unit_price=unit_price),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data.startswith("admin_clear_tiers_"))
-async def cb_admin_clear_tiers(callback: CallbackQuery):
+async def cb_admin_clear_tiers(callback: CallbackQuery, lang='en'):
     prod_id = int(callback.data.replace("admin_clear_tiers_", ""))
     from database import update_product_tier_prices
     await update_product_tier_prices(prod_id, None)
     
     await callback.message.edit_text(
-        "✅ *تم مسح جميع أسعار الجملة لهذا المنتج بنجاح!*",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_tier_clear_success', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 # --- Stock Settings ---
 @router.callback_query(F.data.in_(["admin_add_stock", "admin_bulk_stock"]))
-async def cb_admin_stock_select_prod(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_stock_select_prod(callback: CallbackQuery, state: FSMContext, lang='en'):
     action = callback.data
     products = await get_products()
     
@@ -1255,20 +1258,21 @@ async def cb_admin_stock_select_prod(callback: CallbackQuery, state: FSMContext)
     builder = InlineKeyboardBuilder()
     
     for prod in products:
-        builder.button(text=f"{prod['name_en']}", callback_data=f"admin_stk_{action.split('_')[1]}_{prod['id']}")
+        name = get_product_name(prod, lang)
+        builder.button(text=f"{name}", callback_data=f"admin_stk_{action.split('_')[1]}_{prod['id']}")
         
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     
     await callback.message.edit_text(
-        "📥 *Select Product for Stock adding*:",
+        get_text('admin_stock_select_prod_prompt', lang),
         reply_markup=builder.as_markup(),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_stk_"))
-async def cb_admin_stock_prod_selected(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_stock_prod_selected(callback: CallbackQuery, state: FSMContext, lang='en'):
     parts = callback.data.split("_")
     # format: admin_stk_add_PRODID or admin_stk_bulk_PRODID
     action_type = parts[2]
@@ -1277,19 +1281,19 @@ async def cb_admin_stock_prod_selected(callback: CallbackQuery, state: FSMContex
     await state.update_data(stock_prod_id=prod_id)
     
     product = await get_product(prod_id)
-    prod_name = product['name_en'] if product else "Product"
+    prod_name = get_product_name(product, lang) if product else "Product"
     
     if action_type == "add":
         await state.set_state(StockStates.waiting_for_stock_data)
-        await callback.message.answer(f"📥 *Add Stock to {prod_name}*:\nPlease send the item credentials/text:")
+        await callback.message.answer(get_text('admin_stock_data_prompt', lang, name=prod_name), parse_mode="Markdown")
     else:
         await state.set_state(StockStates.waiting_for_bulk_stock)
-        await callback.message.answer(f"📦 *Bulk Add Stock to {prod_name}*:\nPlease send a list of items (one item per line):")
+        await callback.message.answer(get_text('admin_bulk_stock_prompt', lang, name=prod_name), parse_mode="Markdown")
         
     await callback.answer()
 
 @router.message(StockStates.waiting_for_stock_data)
-async def process_single_stock(message: Message, state: FSMContext):
+async def process_single_stock(message: Message, state: FSMContext, lang='en'):
     data = await state.get_data()
     prod_id = data.get("stock_prod_id")
     await state.clear()
@@ -1310,7 +1314,15 @@ async def process_single_stock(message: Message, state: FSMContext):
     from database import process_pending_pre_orders
     await process_pending_pre_orders(message.bot, prod_id)
     
-    await message.answer("✅ Stock item added successfully!", reply_markup=keyboards.get_admin_back_keyboard())
+    product = await get_product(prod_id)
+    prod_name = get_product_name(product, lang) if product else "Product"
+    total_stock = await get_stock_count(prod_id)
+    
+    await message.answer(
+        get_text('admin_stock_add_success', lang, name=prod_name, stock=total_stock),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
+        parse_mode="Markdown"
+    )
     
     # Notify admins about restock
     from database import notify_admins_stock_change
@@ -1321,7 +1333,6 @@ async def process_single_stock(message: Message, state: FSMContext):
     await broadcast_restock_to_users(message.bot, prod_id, 1)
     
     # Send News Channel announcement
-    product = await get_product(prod_id)
     news_channel = await get_setting('news_channel', '')
     if news_channel and product:
         try:
@@ -1329,8 +1340,8 @@ async def process_single_stock(message: Message, state: FSMContext):
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             bot_info = await message.bot.get_me()
             bot_username = bot_info.username
-            prod_name = product['name_en'] or product['name_ar'] or "Product"
-            escaped_prod_name = html.escape(prod_name)
+            prod_name_en = product['name_en'] or product['name_ar'] or "Product"
+            escaped_prod_name = html.escape(prod_name_en)
             announce_text = (
                 f"⚡️ <b>PRODUCT RESTOCKED</b> ⚡️\n"
                 f"──────────────────\n"
@@ -1410,19 +1421,19 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
     from database import process_pending_pre_orders
     await process_pending_pre_orders(message.bot, prod_id)
     
-    success_msg = (
-        f"✅ Bulk added {len(lines)} stock items successfully!\n"
-        f"✅ تم إضافة {len(lines)} منتج (مخزون) بنجاح!"
+    product = await get_product(prod_id)
+    prod_name = get_product_name(product, lang) if product else "Product"
+    total_stock = await get_stock_count(prod_id)
+    
+    await message.answer(
+        get_text('admin_bulk_stock_add_success', lang, count=len(lines), name=prod_name, stock=total_stock),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
+        parse_mode="Markdown"
     )
-    await message.answer(success_msg, reply_markup=keyboards.get_admin_back_keyboard())
     
     # Notify admins about restock
     from database import notify_admins_stock_change
     await notify_admins_stock_change(message.bot, prod_id, 'refill', len(lines))
-    
-    product = await get_product(prod_id)
-    prod_name = product['name_en'] if product else "Product"
-    prod_name_ar = product['name_ar'] if product else "منتج"
     
     # Broadcast restock notification to all subscribed users in private chats
     from database import broadcast_restock_to_users
@@ -1436,7 +1447,7 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             bot_info = await bot.get_me()
             bot_username = bot_info.username
-            escaped_prod_name = html.escape(prod_name)
+            escaped_prod_name = html.escape(product['name_en'] or product['name_ar'] or "Product")
             announce_text = (
                 f"⚡️ <b>PRODUCT RESTOCKED</b> ⚡️\n"
                 f"──────────────────\n"
@@ -1459,181 +1470,41 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
     "admin_charge_settings", "admin_referral_settings",
     "admin_api_keys_settings", "admin_emoji_settings"
 ]))
-async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None):
+async def cb_admin_settings_menu(callback: CallbackQuery, menu: str = None, lang='en'):
     menu = menu or callback.data
-    text = ""
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    
-    if menu == "admin_channels":
-        force_join = await get_setting("force_join_channels", "None")
-        news_ch = await get_setting("news_channel", "None")
-        
-        # Present channels as a clean list for the admin
-        channels_list = ""
-        if force_join and force_join != "None":
-            ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
-            for idx, c in enumerate(ch_parts, 1):
-                channels_list += f"   {idx}. `{c}`\n"
-        else:
-            channels_list = "   (No channels set)\n"
-            
-        text = (
-            f"📢 *Channel Settings*\n\n"
-            f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
-            f"📣 *News Channel:* `{news_ch}`\n\n"
-            f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
-            f"The bot will check them and display each channel as an individual button to the user!"
-        )
-        builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
-        builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
-        
-    elif menu == "admin_support_settings":
-        support = await get_setting("support_username", "None")
-        text = (
-            f"🎧 *Support Settings*\n\n"
-            f"👤 *Support Handle:* `{support}`"
-        )
-        builder.button(text="✍️ Edit Support Handle", callback_data="admin_set_support")
-        
-    elif menu == "admin_charge_settings":
-        stars = await get_setting("stars_enabled", "1")
-        stars_rate = await get_setting("stars_rate", "0.02")
-        usdt_addr = await get_setting("crypto_addr_usdt", "0x89846777ea91dee2b25f0fcbf54884a4f79923d8")
-        ltc_addr = await get_setting("crypto_addr_ltc", "LbEuNY2o5ePVyd7dqE4dTyNToAPDtcYMXR")
-        ton_addr = await get_setting("crypto_addr_ton", "UQC8zbAwkf9-f8SzyYYITLU8Et4g-Cf7ffyQJIhip9nupHGo")
-        binance_addr = await get_setting("crypto_addr_binance", "Not Configured")
-        cryptotransfer = await get_setting("cryptotransfer_enabled", "1")
-        cryptobot = await get_setting("cryptobot_enabled", "1")
-        
-        s_status = "✅ Enabled" if stars == "1" else "❌ Disabled"
-        ct_status = "✅ Enabled" if cryptotransfer == "1" else "❌ Disabled"
-        cb_status = "✅ Enabled" if cryptobot == "1" else "❌ Disabled"
-        
-        text = (
-            f"💳 *Deposit Settings*\n\n"
-            f"⭐️ *Telegram Stars:* {s_status}\n"
-            f"💱 *Stars Exchange Rate:* 1 Star = `{stars_rate}` USD\n\n"
-            f"🤖 *Crypto Bot Gateway:* {cb_status}\n\n"
-            f"🪙 *Manual Crypto Transfer:* {ct_status}\n"
-            f"🪙 *USDT BEP20 Address:* `{usdt_addr}`\n"
-            f"🪙 *LTC Address:* `{ltc_addr}`\n"
-            f"🪙 *TON Address:* `{ton_addr}`\n"
-            f"🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`"
-        )
-        builder.button(text="Toggle Telegram Stars", callback_data="admin_toggle_stars")
-        builder.button(text="Set Stars Exchange Rate", callback_data="admin_set_stars_rate")
-        builder.button(text="Toggle Crypto Bot", callback_data="admin_toggle_cryptobot")
-        builder.button(text="Toggle Crypto Transfer", callback_data="admin_toggle_cryptotransfer")
-        builder.button(text="✍️ Set USDT BEP20 Address", callback_data="admin_set_crypto_addr_usdt")
-        builder.button(text="✍️ Set LTC Address", callback_data="admin_set_crypto_addr_ltc")
-        builder.button(text="✍️ Set TON Address", callback_data="admin_set_crypto_addr_ton")
-        builder.button(text="✍️ Set Binance ID/Email/Phone", callback_data="admin_set_crypto_addr_binance")
-        
-    elif menu == "admin_referral_settings":
-        fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
-        text = (
-            f"👥 *Referral System Settings*\n\n"
-            f"💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration"
-        )
-        builder.button(text="✍️ Edit Fixed Bonus Reward", callback_data="admin_set_ref_pct")
-        
-    elif menu == "admin_api_keys_settings":
-        bscscan_key = (await get_setting("bscscan_api_key", "")) or "None"
-        blockcypher_key = (await get_setting("blockcypher_api_key", "")) or "None"
-        toncenter_key = (await get_setting("toncenter_api_key", "")) or "None"
-        cryptobot_key = (await get_setting("cryptobot_token", "")) or "None"
-        cryptobot_testnet = await get_setting("cryptobot_use_testnet", "0")
-        cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
-        
-        binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
-        binance_api_key = (await get_setting("binance_api_key", "")) or "None"
-        binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
-        # Mask keys for display
-        b_api_display = f"{binance_api_key[:8]}...{binance_api_key[-4:]}" if binance_api_key and binance_api_key != "None" and len(binance_api_key) > 12 else binance_api_key
-        b_secret_display = f"{binance_secret_key[:8]}...{binance_secret_key[-4:]}" if binance_secret_key and binance_secret_key != "None" and len(binance_secret_key) > 12 else binance_secret_key
-        
-        text = (
-            f"🔑 *API Keys & Proxy Configuration*\n\n"
-            f"🔸 *BscScan API Key:* `{bscscan_key}`\n"
-            f"🔗 [Get BscScan Key](https://bscscan.com/myapikey)\n\n"
-            f"🪙 *Blockcypher API Token:* `{blockcypher_key}`\n"
-            f"🔗 [Get Blockcypher Token](https://accounts.blockcypher.com/)\n\n"
-            f"💎 *Toncenter API Key:* `{toncenter_key}`\n"
-            f"🔗 [Get Toncenter Key](https://t.me/toncenter)\n\n"
-            f"🤖 *Crypto Bot Token:* `{cryptobot_key}`\n"
-            f"⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n"
-            f"🔗 [Get Crypto Bot Token](https://t.me/CryptoPayTestVar) (Testnet) or [@CryptoBot](https://t.me/CryptoBot?start=pay) (Mainnet)\n\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"🔶 *Binance API Key:* `{b_api_display}`\n"
-            f"🔶 *Binance Secret Key:* `{b_secret_display}`\n"
-            f"🌐 *Binance Proxy:* `{binance_proxy}`"
-        )
-        builder.button(text="✍️ Set BscScan API Key", callback_data="admin_set_bscscan_api_key")
-        builder.button(text="✍️ Set Blockcypher API Token", callback_data="admin_set_blockcypher_api_key")
-        builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
-        builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
-        builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
-        builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
-        builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
-        builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
-        
-    elif menu == "admin_emoji_settings":
-        emojis = await get_button_emojis()
-        welcome_eid = await get_setting('welcome_emoji_id', '')
-        btn_names = {
-            'shop': '🛒 Shop / المتجر',
-            'orders': '📦 My Orders / مشترياتي',
-            'charge': '💳 Charge / شحن الرصيد',
-            'referral': '👥 Referral / الإحالة',
-            'support': '🎧 Support / الدعم',
-            'language': '🌐 Language / اللغة',
-            'admin': '⚙️ Admin / الإدارة',
-        }
-        w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
-        text = "🎨 *Emoji Settings*\n\n"
-        text += f"🔷 *Welcome Emoji:* {w_status}\n"
-        text += "──────────────\n"
-        for key, name in btn_names.items():
-            emoji_id = emojis.get(key)
-            status = f"`{emoji_id[:12]}...`" if emoji_id else "❌ None"
-            text += f"▫️ {name}: {status}\n"
-        text += "\nSelect an item to set its animated emoji:"
-        
-        builder.button(text="🔷 Welcome Emoji / إيموجي الترحيب", callback_data="admin_set_btn_emoji_welcome")
-        for key, name in btn_names.items():
-            builder.button(text=f"🎨 {name}", callback_data=f"admin_set_btn_emoji_{key}")
-    
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
-    builder.adjust(1)
-    
-    await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    text, reply_markup = await get_admin_settings_content(menu, lang)
+    await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     await callback.answer()
 
 # --- Button Emoji Settings ---
 @router.callback_query(F.data.startswith("admin_set_btn_emoji_"))
-async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lang='en'):
     btn_key = callback.data.replace("admin_set_btn_emoji_", "")
     btn_names = {
-        'welcome': '🔷 Welcome / الترحيب',
-        'shop': '🛒 Shop / المتجر',
-        'orders': '📦 My Orders / مشترياتي',
-        'charge': '💳 Charge / شحن الرصيد',
-        'referral': '👥 Referral / الإحالة',
-        'support': '🎧 Support / الدعم',
-        'language': '🌐 Language / اللغة',
-        'admin': '⚙️ Admin / الإدارة',
+        'welcome': {'en': "🔷 Welcome", 'ar': "🔷 الترحيب", 'ru': "🔷 Приветствие"},
+        'shop': {'en': "🛒 Shop", 'ar': "🛒 المتجر", 'ru': "🛒 Магазин"},
+        'orders': {'en': "📦 My Orders", 'ar': "📦 مشترياتي", 'ru': "📦 Мои заказы"},
+        'charge': {'en': "💳 Charge", 'ar': "💳 شحن الرصيد", 'ru': "💳 Пополнить"},
+        'referral': {'en': "👥 Referral", 'ar': "👥 الإحالة", 'ru': "👥 Рефералы"},
+        'support': {'en': "🎧 Support", 'ar': "🎧 الدعم", 'ru': "🎧 Поддержка"},
+        'language': {'en': "🌐 Language", 'ar': "🌐 اللغة", 'ru': "🌐 Язык"},
+        'admin': {'en': "⚙️ Admin", 'ar': "⚙️ الإدارة", 'ru': "⚙️ Админ-панель"},
     }
-    name = btn_names.get(btn_key, btn_key)
+    name_dict = btn_names.get(btn_key, {'en': btn_key, 'ar': btn_key, 'ru': btn_key})
+    name = name_dict.get(lang, name_dict['en'])
     await state.update_data(btn_emoji_key=btn_key)
     await state.set_state(AdminStates.waiting_for_btn_emoji)
-    await callback.message.answer(
-        f"🎨 Send an animated Premium Custom Emoji for *{name}*, or type /skip to remove the current emoji."
-    )
+    
+    prompt_dict = {
+        'en': f"🎨 Send an animated Premium Custom Emoji for *{name}*, or type /skip to remove the current emoji.",
+        'ar': f"🎨 أرسل إيموجي مميز ومتحرك (Premium Custom Emoji) لـ *{name}*، أو أرسل /skip لإزالة الإيموجي الحالي.",
+        'ru': f"🎨 Отправьте анимированный эмодзи (Telegram Premium) для *{name}*, или введите /skip для удаления эмодзи."
+    }
+    await callback.message.answer(prompt_dict.get(lang, prompt_dict['en']), parse_mode="Markdown")
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_btn_emoji)
-async def process_btn_emoji(message: Message, state: FSMContext):
+async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
     data = await state.get_data()
     btn_key = data.get("btn_emoji_key")
     await state.clear()
@@ -1656,20 +1527,30 @@ async def process_btn_emoji(message: Message, state: FSMContext):
         await set_setting(f"btn_emoji_{btn_key}", custom_emoji_id)
     
     if custom_emoji_id:
+        success_dict = {
+            'en': f"✅ Emoji set successfully for *{btn_key}* button!\nID: `{custom_emoji_id}`\n\n💡 Send /start to see the changes.",
+            'ar': f"✅ تم تعيين الإيموجي بنجاح للزر *{btn_key}*!\nالمعرف: `{custom_emoji_id}`\n\n💡 أرسل /start لمشاهدة التغييرات.",
+            'ru': f"✅ Эмодзи успешно установлен для кнопки *{btn_key}*!\nID: `{custom_emoji_id}`\n\n💡 Введите /start чтобы увидеть изменения."
+        }
         await message.answer(
-            f"✅ Emoji set successfully for *{btn_key}* button!\nID: `{custom_emoji_id}`\n\n💡 Send /start to see the changes.",
-            reply_markup=keyboards.get_admin_back_keyboard(),
+            success_dict.get(lang, success_dict['en']),
+            reply_markup=keyboards.get_admin_back_keyboard(lang),
             parse_mode="Markdown"
         )
     else:
+        removed_dict = {
+            'en': f"✅ Emoji removed from *{btn_key}* button.\n\n💡 Send /start to see the changes.",
+            'ar': f"✅ تم إزالة الإيموجي من الزر *{btn_key}*.\n\n💡 أرسل /start لمشاهدة التغييرات.",
+            'ru': f"✅ Эмодзи удален с кнопки *{btn_key}*.\n\n💡 Введите /start чтобы увидеть изменения."
+        }
         await message.answer(
-            f"✅ Emoji removed from *{btn_key}* button.\n\n💡 Send /start to see the changes.",
-            reply_markup=keyboards.get_admin_back_keyboard(),
+            removed_dict.get(lang, removed_dict['en']),
+            reply_markup=keyboards.get_admin_back_keyboard(lang),
             parse_mode="Markdown"
         )
 
 @router.callback_query(F.data == "admin_toggle_auto_proofs")
-async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
+async def cb_admin_toggle_auto_proofs(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     current = await get_setting("auto_proofs_enabled", "0")
@@ -1677,78 +1558,116 @@ async def cb_admin_toggle_auto_proofs(callback: CallbackQuery):
     await set_setting("auto_proofs_enabled", new_val)
     
     status_msg = "مفعل 🟢" if new_val == "1" else "معطل 🔴"
-    await callback.answer(f"📢 النشر التلقائي للمبيعات الآن: {status_msg}", show_alert=True)
+    await callback.answer(f"📢 {status_msg}", show_alert=False)
     
-    force_join = await get_setting("force_join_channels", "None")
-    news_ch = await get_setting("news_channel", "None")
-    proofs_icon = "🟢" if new_val == "1" else "🔴"
-    proofs_min = await get_setting("auto_proofs_min_minutes", "5")
-    proofs_max = await get_setting("auto_proofs_max_minutes", "20")
-    
-    channels_list = ""
-    if force_join and force_join != "None":
-        ch_parts = [c.strip() for c in force_join.split(",") if c.strip()]
-        for idx, c in enumerate(ch_parts, 1):
-            channels_list += f"   {idx}. `{c}`\n"
-    else:
-        channels_list = "   (No channels set)\n"
-        
-    text = (
-        f"📢 *Channel Settings*\n\n"
-        f"🔗 *Compulsory Join Channels:*\n{channels_list}\n"
-        f"📣 *News Channel:* `{news_ch}`\n"
-        f"📢 *Auto Sales Proofs:* `{'Enabled' if new_val == '1' else 'Disabled'}`\n"
-        f"⏱️ *Proof Posting Interval:* `{proofs_min} - {proofs_max} minutes`\n\n"
-        f"💡 *Tip:* When adding channels, enter them separated by a comma (e.g. `@channel1, @channel2`)\n"
-        f"The bot will check them and display each channel as an individual button to the user!"
-    )
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    builder.button(text="✍️ Set Force Join Channels", callback_data="admin_set_force_join")
-    builder.button(text="✍️ Set News Channel", callback_data="admin_set_news_ch")
-    builder.button(text=f"📢 نشر المبيعات: {proofs_icon}", callback_data="admin_toggle_auto_proofs")
-    builder.button(text=f"⏱️ الفاصل الزمني: {proofs_min}-{proofs_max} دقيقة", callback_data="admin_set_proofs_interval")
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
-    builder.adjust(1)
-    
+    text, reply_markup = await get_admin_settings_content("admin_channels", lang)
     try:
-        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     except Exception:
         pass
 
 # Settings FSM triggers
 @router.callback_query(F.data.startswith("admin_set_"))
-async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext, lang='en'):
     setting_key = callback.data.replace("admin_set_", "")
     await state.update_data(setting_key=setting_key)
     await state.set_state(AdminStates.waiting_for_setting_value)
     
     prompts = {
-        "force_join": "📢 Enter channels list (comma-separated, e.g. `@channel1,@my_channel` or leave blank to disable):",
-        "news_ch": "📣 Enter news channel username or ID (e.g. `@my_news_channel` or `-10012345678`):",
-        "support": "🎧 Enter support handler username (e.g. `@support_username`):",
-        "stars_rate": "💱 Enter exchange rate (USD value per 1 Star, e.g. `0.02`):",
-        "ref_pct": "👥 Enter fixed referral bonus in USD (awarded instantly on sign up, e.g. `1.50`):",
-        "crypto_addr_usdt": "🪙 Enter new USDT BEP20 address:",
-        "crypto_addr_ltc": "🪙 Enter new Litecoin (LTC) address:",
-        "crypto_addr_ton": "🪙 Enter new TON address:",
-        "crypto_addr_binance": "🪙 Enter new Binance Pay ID / Email / Phone:",
-        "bscscan_api_key": "🔸 Enter BscScan API Key (get from https://bscscan.com/myapikey):",
-        "blockcypher_api_key": "🪙 Enter Blockcypher API Token (get from https://accounts.blockcypher.com/):",
-        "toncenter_api_key": "💎 Enter Toncenter API Key (get from @toncenter bot: https://t.me/toncenter):",
-        "cryptobot_api_key": "🤖 Enter Crypto Bot API token (get from @CryptoPayTestVar or @CryptoBot):",
-        "binance_api_proxy": "🌐 Enter Binance API Proxy (e.g. `http://user:pass@ip:port` or `socks5://ip:port`, or leave blank to disable):",
-        "binance_api_key": "🔶 Enter your Binance API Key (get from https://www.binance.com/en/my/settings/api-management):",
-        "binance_secret_key": "🔶 Enter your Binance Secret Key:",
-        "proofs_interval": "⏱️ أدخل الفاصل الزمني بالدقائق للنشر التلقائي للمبيعات (مثال: `5-20` أو `10-30` أو `15`):"
+        "force_join": {
+            'en': "📢 Enter channels list (comma-separated, e.g. `@channel1,@my_channel` or leave blank to disable):",
+            'ar': "📢 أدخل قائمة القنوات مفصولة بفاصلة (مثال: `@channel1,@my_channel` أو اتركها فارغة للتعطيل):",
+            'ru': "📢 Введите список каналов через запятую (напр. `@channel1,@my_channel` или оставьте пустым):"
+        },
+        "news_ch": {
+            'en': "📣 Enter news channel username or ID (e.g. `@my_news_channel` or `-10012345678`):",
+            'ar': "📣 أدخل معرف قناة الأخبار أو الآيدي (مثال: `@my_news_channel` أو `-10012345678`):",
+            'ru': "📣 Введите юзернейм или ID новостного канала (напр. `@my_news_channel` или `-10012345678`):"
+        },
+        "support": {
+            'en': "🎧 Enter support handler username (e.g. `@support_username`):",
+            'ar': "🎧 أدخل يوزر حساب الدعم الفني (مثال: `@support_username`):",
+            'ru': "🎧 Введите юзернейм аккаунта поддержки (напр. `@support_username`):"
+        },
+        "stars_rate": {
+            'en': "💱 Enter exchange rate (USD value per 1 Star, e.g. `0.02`):",
+            'ar': "💱 أدخل سعر الصرف (قيمة النجمة بالدولار، مثال: `0.02`):",
+            'ru': "💱 Введите курс обмена (стоимость 1 Star в USD, напр. `0.02`):"
+        },
+        "ref_pct": {
+            'en': "👥 Enter fixed referral bonus in USD (awarded instantly on sign up, e.g. `1.50`):",
+            'ar': "👥 أدخل مكافأة الإحالة الثابتة بالدولار (تمنح فوراً عند التسجيل، مثال: `1.50`):",
+            'ru': "👥 Введите фиксированный реферальный бонус в USD (напр. `1.50`):"
+        },
+        "crypto_addr_usdt": {
+            'en': "🪙 Enter new USDT BEP20 address:",
+            'ar': "🪙 أدخل عنوان USDT BEP20 الجديد:",
+            'ru': "🪙 Введите новый адрес USDT BEP20:"
+        },
+        "crypto_addr_ltc": {
+            'en': "🪙 Enter new Litecoin (LTC) address:",
+            'ar': "🪙 أدخل عنوان Litecoin (LTC) الجديد:",
+            'ru': "🪙 Введите новый адрес Litecoin (LTC):"
+        },
+        "crypto_addr_ton": {
+            'en': "🪙 Enter new TON address:",
+            'ar': "🪙 أدخل عنوان TON الجديد:",
+            'ru': "🪙 Введите новый адрес TON:"
+        },
+        "crypto_addr_binance": {
+            'en': "🪙 Enter new Binance Pay ID / Email / Phone:",
+            'ar': "🪙 أدخل معرف / إيميل / رقم Binance Pay الجديد:",
+            'ru': "🪙 Введите новый Binance Pay ID / Email / Phone:"
+        },
+        "bscscan_api_key": {
+            'en': "🔸 Enter BscScan API Key (get from https://bscscan.com/myapikey):",
+            'ar': "🔸 أدخل مفتاح BscScan API:",
+            'ru': "🔸 Введите BscScan API Key:"
+        },
+        "blockcypher_api_key": {
+            'en': "🪙 Enter Blockcypher API Token (get from https://accounts.blockcypher.com/):",
+            'ar': "🪙 أدخل توكن Blockcypher API:",
+            'ru': "🪙 Введите Blockcypher API Token:"
+        },
+        "toncenter_api_key": {
+            'en': "💎 Enter Toncenter API Key (get from @toncenter bot: https://t.me/toncenter):",
+            'ar': "💎 أدخل مفتاح Toncenter API:",
+            'ru': "💎 Введите Toncenter API Key:"
+        },
+        "cryptobot_api_key": {
+            'en': "🤖 Enter Crypto Bot API token (get from @CryptoPayTestVar or @CryptoBot):",
+            'ar': "🤖 أدخل توكن Crypto Bot API:",
+            'ru': "🤖 Введите токен Crypto Bot API:"
+        },
+        "binance_api_proxy": {
+            'en': "🌐 Enter Binance API Proxy (e.g. `http://user:pass@ip:port` or `socks5://ip:port`, or leave blank to disable):",
+            'ar': "🌐 أدخل بروكسي بينانس (مثال: `http://user:pass@ip:port` أو اتركه فارغاً للتعطيل):",
+            'ru': "🌐 Введите прокси Binance (напр. `http://user:pass@ip:port` или оставьте пустым):"
+        },
+        "binance_api_key": {
+            'en': "🔶 Enter your Binance API Key (get from https://www.binance.com/en/my/settings/api-management):",
+            'ar': "🔶 أدخل مفتاح Binance API الخاص بك:",
+            'ru': "🔶 Введите ваш Binance API Key:"
+        },
+        "binance_secret_key": {
+            'en': "🔶 Enter your Binance Secret Key:",
+            'ar': "🔶 أدخل المفتاح السري Binance Secret Key:",
+            'ru': "🔶 Введите ваш Binance Secret Key:"
+        },
+        "proofs_interval": {
+            'en': "⏱️ Enter interval in minutes for auto sales proofs (e.g. `5-20` or `15`):",
+            'ar': "⏱️ أدخل الفاصل الزمني بالدقائق للنشر التلقائي للمبيعات (مثال: `5-20` أو `15`):",
+            'ru': "⏱️ Введите интервал в минутах для авто-публикации продаж (напр. `5-20` или `15`):"
+        }
     }
     
-    prompt = prompts.get(setting_key, "Enter new value:")
-    await callback.message.answer(prompt)
+    p_dict = prompts.get(setting_key, {'en': "Enter new value:", 'ar': "أدخل القيمة الجديدة:", 'ru': "Введите новое значение:"})
+    prompt = p_dict.get(lang, p_dict['en'])
+    await callback.message.answer(prompt, parse_mode="Markdown")
     await callback.answer()
  
 @router.message(AdminStates.waiting_for_setting_value)
-async def process_setting_value(message: Message, state: FSMContext):
+async def process_setting_value(message: Message, state: FSMContext, lang='en'):
     data = await state.get_data()
     setting_key = data.get("setting_key")
     await state.clear()
@@ -1766,7 +1685,7 @@ async def process_setting_value(message: Message, state: FSMContext):
                 max_v = max(min_v, max(v1, v2))
                 await set_setting("auto_proofs_min_minutes", str(min_v))
                 await set_setting("auto_proofs_max_minutes", str(max_v))
-                await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: من {min_v} إلى {max_v} دقيقة.", reply_markup=keyboards.get_admin_back_keyboard())
+                await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: من {min_v} إلى {max_v} دقيقة.", reply_markup=keyboards.get_admin_back_keyboard(lang))
             except Exception:
                 await message.answer("❌ صيغة غير صحيحة. يرجى إدخال أرقام صحيحة مثل `5-20` أو `15`.")
         else:
@@ -1775,7 +1694,7 @@ async def process_setting_value(message: Message, state: FSMContext):
                 if fixed_v > 0:
                     await set_setting("auto_proofs_min_minutes", str(fixed_v))
                     await set_setting("auto_proofs_max_minutes", str(fixed_v))
-                    await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: كل {fixed_v} دقيقة بالضبط.", reply_markup=keyboards.get_admin_back_keyboard())
+                    await message.answer(f"✅ تم ضبط الفاصل الزمني للنشر التلقائي: كل {fixed_v} دقيقة بالضبط.", reply_markup=keyboards.get_admin_back_keyboard(lang))
                 else:
                     raise ValueError()
             except Exception:
@@ -1816,61 +1735,61 @@ async def process_setting_value(message: Message, state: FSMContext):
             return
             
     await set_setting(db_key, val)
-    await message.answer(f"✅ Setting `{db_key}` updated to `{val}` successfully!", reply_markup=keyboards.get_admin_back_keyboard())
+    await message.answer(f"✅ Setting `{db_key}` updated to `{val}` successfully!", reply_markup=keyboards.get_admin_back_keyboard(lang))
  
 # Toggle Settings
 @router.callback_query(F.data == "admin_toggle_stars")
-async def cb_admin_toggle_payment(callback: CallbackQuery):
+async def cb_admin_toggle_payment(callback: CallbackQuery, lang='en'):
     method = "stars_enabled"
     current = await get_setting(method, "1")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)
     
-    await callback.answer(f"Toggled payment option!")
+    await callback.answer(f"✅")
     # Reload settings menu without mutating callback.data
-    await cb_admin_settings_menu(callback, menu="admin_charge_settings")
+    await cb_admin_settings_menu(callback, menu="admin_charge_settings", lang=lang)
 
 @router.callback_query(F.data == "admin_toggle_cryptotransfer")
-async def cb_admin_toggle_cryptotransfer(callback: CallbackQuery):
+async def cb_admin_toggle_cryptotransfer(callback: CallbackQuery, lang='en'):
     method = "cryptotransfer_enabled"
     current = await get_setting(method, "1")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)
     
-    await callback.answer(f"Toggled manual crypto transfer option!")
-    await cb_admin_settings_menu(callback, menu="admin_charge_settings")
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_charge_settings", lang=lang)
 
 @router.callback_query(F.data == "admin_toggle_cryptobot")
-async def cb_admin_toggle_cryptobot(callback: CallbackQuery):
+async def cb_admin_toggle_cryptobot(callback: CallbackQuery, lang='en'):
     method = "cryptobot_enabled"
     current = await get_setting(method, "1")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)
     
-    await callback.answer(f"Toggled Crypto Bot gateway option!")
-    await cb_admin_settings_menu(callback, menu="admin_charge_settings")
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_charge_settings", lang=lang)
 
 @router.callback_query(F.data == "admin_toggle_cryptobot_testnet")
-async def cb_admin_toggle_cryptobot_testnet(callback: CallbackQuery):
+async def cb_admin_toggle_cryptobot_testnet(callback: CallbackQuery, lang='en'):
     method = "cryptobot_use_testnet"
     current = await get_setting(method, "0")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)
     
-    await callback.answer(f"Toggled Crypto Bot testnet mode!")
-    await cb_admin_settings_menu(callback, menu="admin_api_keys_settings")
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_api_keys_settings", lang=lang)
 
 # --- Admin Broadcast ---
 @router.callback_query(F.data == "admin_broadcast")
-async def cb_admin_broadcast_trigger(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_broadcast_trigger(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_broadcast)
-    await callback.message.answer("📣 Send the message you want to broadcast to *all users* (can contain formatting or markdown):")
+    await callback.message.answer(get_text('admin_broadcast_prompt', lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_broadcast)
-async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot):
+async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot, lang='en'):
     user_id = message.from_user.id
     if not is_user_admin(user_id):
         await state.clear()
@@ -1883,7 +1802,7 @@ async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot)
         await message.answer("❌ No users found in the database.")
         return
         
-    wait_msg = await message.answer(f"⏳ Broadcasting to {len(users)} users...")
+    wait_msg = await message.answer(get_text('admin_broadcast_started', lang, count=len(users)), parse_mode="Markdown")
     
     success = 0
     fail = 0
@@ -1911,10 +1830,8 @@ async def process_admin_broadcast(message: Message, state: FSMContext, bot: Bot)
         await asyncio.sleep(0.04)
             
     await wait_msg.edit_text(
-        f"📣 *Broadcast Completed!*\n\n"
-        f"✅ *Successful:* `{success}`\n"
-        f"❌ *Failed / Blocked:* `{fail}`",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_broadcast_finished', lang, success=success, failed=fail),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
 
@@ -2272,7 +2189,7 @@ async def cb_admin_discount_del(callback: CallbackQuery, lang='en'):
     from database import delete_user_discount
     await delete_user_discount(user_id)
     
-    await callback.answer("Discount deleted successfully!", show_alert=True)
+    await callback.answer(get_text('admin_discount_deleted', lang), show_alert=True)
     
     # Refresh view
     from database import get_all_user_discounts
@@ -2285,16 +2202,16 @@ async def cb_admin_discount_del(callback: CallbackQuery, lang='en'):
     )
 
 @router.callback_query(F.data == "admin_discount_add")
-async def cb_admin_discount_add(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_discount_add(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
         
     await state.set_state(AdminStates.waiting_for_discount_user_id)
-    await callback.message.answer("👥 Please enter the **User ID** of the user you want to grant a discount to:")
+    await callback.message.answer(get_text('admin_discount_user_prompt', lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_discount_user_id)
-async def process_discount_user_id(message: Message, state: FSMContext):
+async def process_discount_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
@@ -2303,14 +2220,14 @@ async def process_discount_user_id(message: Message, state: FSMContext):
     try:
         user_id = int(val)
     except ValueError:
-        await message.answer("❌ Invalid User ID. Please enter a valid numerical User ID:")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
         
     # Check if user exists in database
     from database import get_user
     db_user = await get_user(user_id)
     if not db_user:
-        await message.answer("❌ User not found in the database. The user must start/use the bot at least once. Please check the ID and try again:")
+        await message.answer(get_text('admin_inspect_not_found', lang))
         return
         
     await state.update_data(discount_target_user_id=user_id)
@@ -2319,15 +2236,15 @@ async def process_discount_user_id(message: Message, state: FSMContext):
     name = escape_md(db_user['first_name'])
     if db_user['username']:
         name += f" (@{escape_md(db_user['username'])})"
-    await message.answer(f"👤 Found User: {name} (`{user_id}`)\n\nNow, enter the Discount Percentage (e.g. `15` for 15%):")
+    await message.answer(get_text('admin_discount_pct_prompt', lang, name=name, user_id=user_id), parse_mode="Markdown")
 
 @router.message(AdminStates.waiting_for_discount_percent)
-async def process_discount_percent(message: Message, state: FSMContext):
+async def process_discount_percent(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
         
-    val = message.text.strip()
+    val = message.text.strip().replace("%", "")
     try:
         percent = float(val)
         if percent < 0 or percent > 100:
@@ -2350,12 +2267,13 @@ async def process_discount_percent(message: Message, state: FSMContext):
     db_user = await get_user(user_id)
     name = db_user['first_name'] if db_user else f"ID: {user_id}"
     await message.answer(
-        f"✅ Successfully set discount of **{percent}%** for *{name}*!",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_discount_success', lang, percent=percent, name=name),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
+        parse_mode="Markdown"
     )
 
 @router.callback_query(F.data.startswith("admin_discount_edit_"))
-async def cb_admin_discount_edit(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_discount_edit(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
         
@@ -2366,16 +2284,16 @@ async def cb_admin_discount_edit(callback: CallbackQuery, state: FSMContext):
     from database import get_user
     db_user = await get_user(user_id)
     name = db_user['first_name'] if db_user else f"ID: {user_id}"
-    await callback.message.answer(f"✏️ Enter the new discount percentage for *{name}* (e.g. `20` for 20%):")
+    await callback.message.answer(get_text('admin_discount_pct_prompt', lang, name=name, user_id=user_id), parse_mode="Markdown")
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_edit_discount_percent)
-async def process_edit_discount_percent(message: Message, state: FSMContext):
+async def process_edit_discount_percent(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
         
-    val = message.text.strip()
+    val = message.text.strip().replace("%", "")
     try:
         percent = float(val)
         if percent < 0 or percent > 100:
@@ -2398,8 +2316,9 @@ async def process_edit_discount_percent(message: Message, state: FSMContext):
     db_user = await get_user(user_id)
     name = db_user['first_name'] if db_user else f"ID: {user_id}"
     await message.answer(
-        f"✅ Successfully updated discount of **{percent}%** for *{name}*!",
-        reply_markup=keyboards.get_admin_back_keyboard()
+        get_text('admin_discount_success', lang, percent=percent, name=name),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
+        parse_mode="Markdown"
     )
 
 # --- Edit Store Name ---
@@ -2409,20 +2328,19 @@ async def process_edit_discount_percent(message: Message, state: FSMContext):
     get_text('btn_admin_edit_store_name', 'ru'),
     "✏️ Edit Store Name", "✏️ تعديل اسم المتجر", "✏️ Изменить имя магазина"
 ]))
-async def msg_admin_edit_store_name(message: Message, state: FSMContext):
+async def msg_admin_edit_store_name(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
     
     current_name = await get_setting('store_name', 'Digital Store')
     await state.set_state(AdminStates.waiting_for_store_name)
     await message.answer(
-        f"🏫 *Current Store Name:* `{current_name}`\n\n"
-        f"✍️ *Please enter the new name for the store:*",
+        get_text('admin_store_name_current', lang, name=current_name),
         parse_mode="Markdown"
     )
 
 @router.message(AdminStates.waiting_for_store_name)
-async def process_admin_store_name(message: Message, state: FSMContext):
+async def process_admin_store_name(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
@@ -2436,8 +2354,8 @@ async def process_admin_store_name(message: Message, state: FSMContext):
     await state.clear()
     
     await message.answer(
-        f"✅ *Store name successfully updated to:* `{new_name}`",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_store_name_success', lang, name=new_name),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
 
@@ -2484,7 +2402,7 @@ async def msg_admin_ban_unban_system(message: Message, state: FSMContext, lang='
         return
     await state.clear()
     await message.answer(
-        "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
+        get_text('admin_ban_menu_title', lang),
         reply_markup=keyboards.get_admin_ban_menu_keyboard(lang),
         parse_mode="Markdown"
     )
@@ -2495,64 +2413,64 @@ async def cb_admin_ban_unban_menu(callback: CallbackQuery, state: FSMContext, la
         return
     await state.clear()
     await callback.message.edit_text(
-        "🚫 *Ban / Unban Management System*\nاختر خياراً من الأسفل لربط وإدارة حظر المستخدمين:",
+        get_text('admin_ban_menu_title', lang),
         reply_markup=keyboards.get_admin_ban_menu_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data == "admin_ban_prompt")
-async def cb_admin_ban_prompt(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_ban_prompt(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_ban_user_id)
     await callback.message.edit_text(
-        "🔴 *حظر مستخدم جديد*\n\nالرجاء إدخال **User ID الرقمي** للمستخدم المراد حظره:",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_ban_user_prompt', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_ban_user_id)
-async def process_ban_user_id(message: Message, state: FSMContext):
+async def process_ban_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
     text = message.text.strip()
     if not text.isdigit():
-        await message.answer("❌ معرف مستخدم غير صحيح. يرجى كتابة أرقام فقط (User ID):")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
     target_id = int(text)
     await state.update_data(ban_target_id=target_id)
     await state.set_state(AdminStates.waiting_for_ban_reason)
     await message.answer(
-        f"📝 تم اختيار المستخدم `{target_id}`.\nالرجاء إدخال **سبب الحظر** (أو إرسال /skip أو الضغط على زر التخطي أدناه):",
-        reply_markup=keyboards.get_admin_ban_reason_keyboard(),
+        get_text('admin_ban_reason_prompt', lang, user_id=target_id),
+        reply_markup=keyboards.get_admin_ban_reason_keyboard(lang),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_ban_skip_reason")
-async def cb_admin_ban_skip_reason(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_ban_skip_reason(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     data = await state.get_data()
     target_id = data.get("ban_target_id")
     await state.clear()
     if not target_id:
-        await callback.message.edit_text("❌ انتهت الجلسة أو حدث خطأ، يرجى إعادة المحاولة.", reply_markup=keyboards.get_admin_ban_menu_keyboard())
+        await callback.message.edit_text("❌ Session expired. Try again.", reply_markup=keyboards.get_admin_ban_menu_keyboard(lang))
         await callback.answer()
         return
     reason = "Banned by admin panel"
     await ban_user(target_id, reason)
     await callback.message.edit_text(
-        f"🔴 *تم حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`\n💬 السبب: {reason}",
-        reply_markup=keyboards.get_admin_ban_menu_keyboard(),
+        get_text('admin_ban_success', lang, user_id=target_id, reason=reason),
+        reply_markup=keyboards.get_admin_ban_menu_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_ban_reason)
-async def process_ban_reason(message: Message, state: FSMContext):
+async def process_ban_reason(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
@@ -2560,81 +2478,81 @@ async def process_ban_reason(message: Message, state: FSMContext):
     target_id = data.get("ban_target_id")
     await state.clear()
     if not target_id:
-        await message.answer("❌ حدث خطأ، يرجى إعادة المحاولة.")
+        await message.answer("❌ Session expired. Try again.")
         return
     reason = message.text.strip()
     if reason.lower() in ["تخطي", "skip", "/skip", "-"]:
         reason = "Banned by admin panel"
     await ban_user(target_id, reason)
     await message.answer(
-        f"🔴 *تم حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`\n💬 السبب: {reason}",
+        get_text('admin_ban_success', lang, user_id=target_id, reason=reason),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_unban_prompt")
-async def cb_admin_unban_prompt(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_unban_prompt(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_unban_user_id)
     await callback.message.edit_text(
-        "🟢 *إلغاء حظر مستخدم*\n\nالرجاء إدخال **User ID الرقمي** للمستخدم المراد إلغاء حظره:",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        get_text('admin_unban_user_prompt', lang),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_unban_user_id)
-async def process_unban_user_id(message: Message, state: FSMContext):
+async def process_unban_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
     text = message.text.strip()
     if not text.isdigit():
-        await message.answer("❌ معرف مستخدم غير صحيح. يرجى كتابة أرقام فقط (User ID):")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
     target_id = int(text)
     await state.clear()
     await unban_user(target_id)
     await message.answer(
-        f"🟢 *تم إلغاء حظر المستخدم بنجاح!*\n\n👤 ID: `{target_id}`",
+        get_text('admin_unban_success', lang, user_id=target_id),
         parse_mode="Markdown"
     )
 
 @router.callback_query(F.data == "admin_show_banned")
-async def cb_admin_show_banned(callback: CallbackQuery):
+async def cb_admin_show_banned(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     banned_users = await get_all_banned_users()
     if not banned_users:
-        await callback.message.edit_text("✨ لا يوجد أي مستخدم محظور حالياً.", reply_markup=keyboards.get_admin_ban_menu_keyboard(), parse_mode="Markdown")
+        await callback.message.edit_text(get_text('admin_no_banned_users', lang), reply_markup=keyboards.get_admin_ban_menu_keyboard(lang), parse_mode="Markdown")
         await callback.answer()
         return
     
-    text = "📋 *قائمة المستخدمين المحظورين حالياً:*\n━━━━━━━━━━━━━━━━━━━━\n"
+    text = get_text('admin_banned_list_title', lang)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     for u in banned_users:
         u_id = u['user_id']
         u_name = escape_md(u['first_name'] or str(u_id))
-        reason = u['ban_reason'] or "لا يوجد سبب"
-        text += f"🔴 {u_name} (`{u_id}`) — السبب: {reason}\n"
+        reason = u['ban_reason'] or "No reason specified"
+        text += f"🔴 {u_name} (`{u_id}`) — {reason}\n"
         builder.button(text=f"🟢 Unban {u_id}", callback_data=f"admin_actunban_{u_id}")
-    builder.button(text="🔙 Back", callback_data="admin_ban_unban_menu")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_ban_unban_menu")
     builder.adjust(2)
     
     await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_user_balances")
-async def cb_admin_user_balances(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_user_balances(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     await state.set_state(AdminStates.waiting_for_balance_user_id)
-    await callback.message.edit_text("💰 Please enter the **User ID** to view and edit their balance, or click the button below to see all users with balances:", reply_markup=keyboards.get_admin_balances_menu_keyboard(), parse_mode="Markdown")
+    await callback.message.edit_text(get_text('admin_user_bal_prompt', lang), reply_markup=keyboards.get_admin_balances_menu_keyboard(lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "admin_show_balances")
-async def cb_admin_show_balances(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_show_balances(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     from database import get_users_with_balance
@@ -2651,7 +2569,8 @@ async def cb_admin_show_balances(callback: CallbackQuery, state: FSMContext):
             text = text.replace(ch, '\\' + ch)
         return text
     
-    lines = ["👥 *Users with Balance:*\n"]
+    title_text = {"en": "👥 *Users with Balance:*\n", "ar": "👥 *المستخدمون الذين يملكون رصيداً:*\n", "ru": "👥 *Пользователи с балансом:*\n"}.get(lang, "👥 *Users with Balance:*\n")
+    lines = [title_text]
     for u in users:
         name = escape_md(u['first_name'] or "")
         username_part = f" (@{escape_md(u['username'])})" if u['username'] else ""
@@ -2678,19 +2597,19 @@ async def cb_admin_show_balances(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_balance_user_id)
-async def process_balance_user_id(message: Message, state: FSMContext):
+async def process_balance_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
     try:
         user_id = int(message.text.strip())
     except ValueError:
-        await message.answer("❌ Invalid User ID. Please enter a number:")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
     from database import get_user
     db_user = await get_user(user_id)
     if not db_user:
-        await message.answer("❌ User not found. Try again:")
+        await message.answer(get_text('admin_inspect_not_found', lang))
         return
         
     await state.clear()
@@ -2707,29 +2626,35 @@ async def process_balance_user_id(message: Message, state: FSMContext):
         f"💵 Current Balance: `${balance:.2f} USD`"
     )
     
-    await message.answer(text, reply_markup=keyboards.get_admin_user_balance_keyboard(user_id))
+    await message.answer(text, reply_markup=keyboards.get_admin_user_balance_keyboard(user_id, lang))
 
 @router.callback_query(F.data.startswith("admin_edit_bal_"))
-async def cb_admin_edit_balance(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_edit_balance(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         return
     user_id = int(callback.data.replace("admin_edit_bal_", ""))
     await state.update_data(balance_edit_user_id=user_id)
     await state.set_state(AdminStates.waiting_for_new_balance)
-    await callback.message.answer(f"💰 Enter the new balance for User ID `{user_id}` (e.g. `50.50`):", parse_mode="Markdown")
+    
+    from database import get_user
+    db_user = await get_user(user_id)
+    name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    cur_bal = db_user['balance'] if db_user else 0.0
+    
+    await callback.message.answer(get_text('admin_user_new_bal_prompt', lang, name=name, user_id=user_id, current_balance=cur_bal), parse_mode="Markdown")
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_new_balance)
-async def process_new_balance(message: Message, state: FSMContext):
+async def process_new_balance(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
     try:
-        new_balance = float(message.text.strip())
+        new_balance = float(message.text.strip().replace("$", ""))
         if new_balance < 0:
             raise ValueError()
     except ValueError:
-        await message.answer("❌ Invalid amount. Enter a positive number:")
+        await message.answer(get_text('admin_invalid_price', lang))
         return
         
     data = await state.get_data()
@@ -2746,7 +2671,7 @@ async def process_new_balance(message: Message, state: FSMContext):
     db_user = await get_user(user_id)
     name = db_user['first_name'] if db_user else f"ID: {user_id}"
     
-    await message.answer(f"✅ Successfully updated balance for {name} to ${new_balance:.2f}!", reply_markup=keyboards.get_admin_back_keyboard())
+    await message.answer(get_text('admin_user_bal_updated', lang, name=name, balance=new_balance), reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
 
 
 # --- Secret Database Backup & Restore Commands ---
@@ -2823,7 +2748,7 @@ async def process_restore_db(message: Message, state: FSMContext, bot: Bot):
 
 # --- Reseller API Keys Management Handlers ---
 @router.callback_query(F.data == "admin_api_keys")
-async def cb_admin_api_keys(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_api_keys(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Not authorized.")
         return
@@ -2833,9 +2758,19 @@ async def cb_admin_api_keys(callback: CallbackQuery, state: FSMContext):
     from database import get_all_api_keys
     keys = await get_all_api_keys()
     
-    text = "🔑 *Reseller API Keys*\n\n"
+    title_dict = {
+        'en': "🔑 *Reseller API Keys*\n\n",
+        'ar': "🔑 *مفاتيح API للموزعين والشركاء*\n\n",
+        'ru': "🔑 *API ключи реселлеров*\n\n"
+    }
+    empty_dict = {
+        'en': "No active reseller API keys found.",
+        'ar': "لا توجد مفاتيح API نشطة حالياً.",
+        'ru': "Активных API ключей не найдено."
+    }
+    text = title_dict.get(lang, title_dict['en'])
     if not keys:
-        text += "No active reseller API keys found."
+        text += empty_dict.get(lang, empty_dict['en'])
     else:
         for idx, k in enumerate(keys, 1):
             name = k['first_name'] or f"ID: {k['user_id']}"
@@ -2845,34 +2780,39 @@ async def cb_admin_api_keys(callback: CallbackQuery, state: FSMContext):
             
     await callback.message.edit_text(
         text,
-        reply_markup=keyboards.get_admin_api_keys_keyboard(),
+        reply_markup=keyboards.get_admin_api_keys_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data == "admin_api_key_gen")
-async def cb_admin_api_key_gen(callback: CallbackQuery, state: FSMContext):
+async def cb_admin_api_key_gen(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Not authorized.")
         return
         
     await state.set_state(AdminStates.waiting_for_api_key_user_id)
+    gen_prompt_dict = {
+        'en': "➕ *Generate API Key*\n\nPlease enter the numeric *Telegram User ID* of the user you want to generate an API key for:",
+        'ar': "➕ *توليد مفتاح API جديد*\n\nيرجى إدخال *معرف تيليجرام الرقمي (User ID)* للمستخدم المراد إنشاء المفتاح له:",
+        'ru': "➕ *Создать API ключ*\n\nВведите цифровой *Telegram User ID* пользователя:"
+    }
     await callback.message.edit_text(
-        "➕ *Generate API Key*\n\nPlease enter the numeric *Telegram User ID* of the user you want to generate an API key for:",
-        reply_markup=keyboards.get_admin_back_keyboard(),
+        gen_prompt_dict.get(lang, gen_prompt_dict['en']),
+        reply_markup=keyboards.get_admin_back_keyboard(lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_api_key_user_id)
-async def process_api_key_user_id(message: Message, state: FSMContext):
+async def process_api_key_user_id(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         await state.clear()
         return
         
     user_id_str = message.text.strip()
     if not user_id_str.isdigit():
-        await message.answer("❌ Invalid User ID. Please enter a valid numeric Telegram User ID:")
+        await message.answer(get_text('admin_inspect_invalid_id', lang))
         return
         
     user_id = int(user_id_str)
@@ -2880,7 +2820,7 @@ async def process_api_key_user_id(message: Message, state: FSMContext):
     from database import get_user, generate_api_key
     user = await get_user(user_id)
     if not user:
-        await message.answer("❌ User not found in the database. The user must start the bot at least once before you can generate an API key for them.")
+        await message.answer(get_text('admin_inspect_not_found', lang))
         return
         
     await state.clear()
@@ -2890,18 +2830,32 @@ async def process_api_key_user_id(message: Message, state: FSMContext):
         if user['username']:
             name += f" (@{user['username']})"
             
-        success_text = (
-            f"✅ *API Key Generated Successfully!*\n\n"
-            f"👤 *Partner:* {name}\n"
-            f"🔑 *API Key:* `{api_key}`\n\n"
-            f"💡 Give this key to the partner. They should include it in their requests headers as `X-API-Key`."
-        )
-        await message.answer(success_text, reply_markup=keyboards.get_admin_back_keyboard(), parse_mode="Markdown")
+        success_dict = {
+            'en': (
+                f"✅ *API Key Generated Successfully!*\n\n"
+                f"👤 *Partner:* {name}\n"
+                f"🔑 *API Key:* `{api_key}`\n\n"
+                f"💡 Give this key to the partner. They should include it in their requests headers as `X-API-Key`."
+            ),
+            'ar': (
+                f"✅ *تم إنشاء مفتاح API بنجاح!*\n\n"
+                f"👤 *الشريك:* {name}\n"
+                f"🔑 *المفتاح:* `{api_key}`\n\n"
+                f"💡 أعط هذا المفتاح للشريك ليقوم بإرساله في ترويسة الطلبات كـ `X-API-Key`."
+            ),
+            'ru': (
+                f"✅ *API ключ успешно сгенерирован!*\n\n"
+                f"👤 *Партнер:* {name}\n"
+                f"🔑 *Ключ:* `{api_key}`\n\n"
+                f"💡 Передайте этот ключ партнеру для заголовка `X-API-Key`."
+            )
+        }
+        await message.answer(success_dict.get(lang, success_dict['en']), reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
     except Exception as e:
-        await message.answer(f"❌ Error generating API key: {e}", reply_markup=keyboards.get_admin_back_keyboard())
+        await message.answer(f"❌ Error: {e}", reply_markup=keyboards.get_admin_back_keyboard(lang))
 
 @router.callback_query(F.data == "admin_api_key_revoke_select")
-async def cb_admin_api_key_revoke_select(callback: CallbackQuery):
+async def cb_admin_api_key_revoke_select(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Not authorized.")
         return
@@ -2912,15 +2866,20 @@ async def cb_admin_api_key_revoke_select(callback: CallbackQuery):
         await callback.answer("No active API keys to revoke.", show_alert=True)
         return
         
+    revoke_prompt_dict = {
+        'en': "❌ *Select API Key to Revoke*\n\nChoose the partner whose API key you want to delete/revoke:",
+        'ar': "❌ *اختيار مفتاح للإلغاء والحذف*\n\nاختر الشريك المراد حذف وإلغاء مفتاح الـ API الخاص به:",
+        'ru': "❌ *Отказ API ключа*\n\nВыберите партнера, чей ключ хотите отозвать:"
+    }
     await callback.message.edit_text(
-        "❌ *Select API Key to Revoke*\n\nChoose the partner whose API key you want to delete/revoke:",
-        reply_markup=keyboards.get_admin_api_key_revoke_keyboard(keys),
+        revoke_prompt_dict.get(lang, revoke_prompt_dict['en']),
+        reply_markup=keyboards.get_admin_api_key_revoke_keyboard(keys, lang),
         parse_mode="Markdown"
     )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_api_key_rev_"))
-async def cb_admin_api_key_rev_confirm(callback: CallbackQuery):
+async def cb_admin_api_key_rev_confirm(callback: CallbackQuery, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("Not authorized.")
         return
@@ -2938,9 +2897,19 @@ async def cb_admin_api_key_rev_confirm(callback: CallbackQuery):
     # Return to the keys list
     from database import get_all_api_keys
     keys = await get_all_api_keys()
-    text = "🔑 *Reseller API Keys*\n\n"
+    title_dict = {
+        'en': "🔑 *Reseller API Keys*\n\n",
+        'ar': "🔑 *مفاتيح API للموزعين والشركاء*\n\n",
+        'ru': "🔑 *API ключи реселлеров*\n\n"
+    }
+    empty_dict = {
+        'en': "No active reseller API keys found.",
+        'ar': "لا توجد مفاتيح API نشطة حالياً.",
+        'ru': "Активных API ключей не найдено."
+    }
+    text = title_dict.get(lang, title_dict['en'])
     if not keys:
-        text += "No active reseller API keys found."
+        text += empty_dict.get(lang, empty_dict['en'])
     else:
         for idx, k in enumerate(keys, 1):
             name_k = k['first_name'] or f"ID: {k['user_id']}"
@@ -2950,7 +2919,7 @@ async def cb_admin_api_key_rev_confirm(callback: CallbackQuery):
             
     await callback.message.edit_text(
         text,
-        reply_markup=keyboards.get_admin_api_keys_keyboard(),
+        reply_markup=keyboards.get_admin_api_keys_keyboard(lang),
         parse_mode="Markdown"
     )
 
@@ -2960,18 +2929,20 @@ from handlers.states import ProvidersStates
 
 async def fetch_provider_store_name(base_url, api_key):
     import aiohttp
-    base_url = base_url.strip().rstrip('/')
-    if not base_url.startswith('http'):
-        base_url = 'https://' + base_url
+    from utils import normalize_provider_url
+    base_url = normalize_provider_url(base_url)
     is_supabase = "supabase.co" in base_url
     
     headers = {
+        "X-Reseller-Key": api_key,
         "X-API-Key": api_key,
         "Authorization": f"Bearer {api_key}",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     endpoints = [
-        f"{base_url}?action=balance" if is_supabase else f"{base_url}/api/me",
+        f"{base_url}?action=balance" if is_supabase else f"{base_url}/api/reseller/me",
+        f"{base_url}/reseller/me",
+        f"{base_url}/api/me",
         f"{base_url}/api/v1/me",
         f"{base_url}/v1/me",
         f"{base_url}/me"
@@ -2987,10 +2958,12 @@ async def fetch_provider_store_name(base_url, api_key):
                             if is_supabase:
                                 return "Supabase Reseller API"
                             if isinstance(data, dict):
-                                if data.get('ok') and data.get('store_name'):
-                                    return data['store_name']
+                                if data.get('key_name'):
+                                    return f"VenteBot ({data['key_name']})"
                                 elif data.get('store_name'):
                                     return data['store_name']
+                                elif data.get('name'):
+                                    return data['name']
                                 elif data.get('ok') and 'user' in data and isinstance(data['user'], dict):
                                     return f"Partner: {data['user'].get('first_name') or data['user'].get('username')}"
                 except Exception:
@@ -3203,10 +3176,11 @@ async def process_provider_key(message: Message, state: FSMContext, lang='en'):
         # Get the ID of the newly saved provider
         providers = await get_providers()
         prov_id = 1
+        from utils import normalize_provider_url
+        clean_url = normalize_provider_url(url)
         for p in providers:
-            p_url = p['base_url'].strip().rstrip('/')
-            clean_url = url.strip().rstrip('/')
-            if p_url == clean_url or p_url.replace("https://", "").replace("http://", "") == clean_url.replace("https://", "").replace("http://", ""):
+            p_url = normalize_provider_url(p['base_url'])
+            if p_url == clean_url:
                 prov_id = p['id']
                 break
                 
@@ -3362,15 +3336,11 @@ async def msg_admin_preorders_summary(message: Message, lang='en'):
     summary = await get_preorders_summary()
     
     if not summary:
-        await message.answer("📭 No active pre-orders/reservations at the moment.")
+        await message.answer(get_text('admin_preorders_no_active', lang))
         return
         
-    text = (
-        "⏳ *Active Pre-orders Summary*\n\n"
-        "Here you can see all products that users have reserved due to being out of stock. "
-        "Select a product to view individual reservations or cancel them:"
-    )
-    await message.answer(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary), parse_mode="Markdown")
+    text = get_text('admin_preorders_summary_title', lang)
+    await message.answer(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary, lang), parse_mode="Markdown")
 
 @router.callback_query(F.data == "admin_preorders_summary")
 async def cb_admin_preorders_summary(callback: CallbackQuery, lang='en'):
@@ -3382,16 +3352,12 @@ async def cb_admin_preorders_summary(callback: CallbackQuery, lang='en'):
     summary = await get_preorders_summary()
     
     if not summary:
-        await callback.message.edit_text("📭 No active pre-orders/reservations at the moment.", reply_markup=keyboards.get_admin_back_keyboard())
+        await callback.message.edit_text(get_text('admin_preorders_no_active', lang), reply_markup=keyboards.get_admin_back_keyboard(lang))
         await callback.answer()
         return
         
-    text = (
-        "⏳ *Active Pre-orders Summary*\n\n"
-        "Here you can see all products that users have reserved due to being out of stock. "
-        "Select a product to view individual reservations or cancel them:"
-    )
-    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary), parse_mode="Markdown")
+    text = get_text('admin_preorders_summary_title', lang)
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorders_summary_keyboard(summary, lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_po_list_"))
@@ -3406,17 +3372,14 @@ async def cb_admin_product_preorders(callback: CallbackQuery, lang='en'):
     product = await get_product(product_id)
     
     if not preorders or not product:
-        await callback.answer("No active reservations for this product anymore.", show_alert=True)
+        await callback.answer(get_text('admin_preorders_no_active', lang), show_alert=True)
         # Return to summary
-        await cb_admin_preorders_summary(callback, lang)
+        await cb_admin_preorders_summary(callback, lang=lang)
         return
         
-    prod_name = product['name_en']
-    text = (
-        f"📦 *Reservations for:* `{prod_name}`\n"
-        f"Select a specific user's reservation to view actions:"
-    )
-    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_product_preorders_keyboard(preorders), parse_mode="Markdown")
+    prod_name = get_product_name(product, lang)
+    text = get_text('admin_preorders_prod_title', lang, name=prod_name)
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_product_preorders_keyboard(preorders, lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_po_view_"))
@@ -3436,7 +3399,7 @@ async def cb_admin_preorder_detail(callback: CallbackQuery, lang='en'):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT po.*, p.name_en, u.first_name, u.username 
+            """SELECT po.*, p.name_en, p.name_ar, p.name_ru, u.first_name, u.username 
                FROM pre_orders po
                JOIN products p ON po.product_id = p.id
                LEFT JOIN users u ON po.user_id = u.user_id
@@ -3445,23 +3408,27 @@ async def cb_admin_preorder_detail(callback: CallbackQuery, lang='en'):
             po = await cursor.fetchone()
             
     if not po:
-        await callback.answer("Pre-order not found.", show_alert=True)
+        not_found_msg = {"en": "Pre-order not found.", "ar": "الحجز غير موجود.", "ru": "Предзаказ не найден."}.get(lang, "Pre-order not found.")
+        await callback.answer(not_found_msg, show_alert=True)
         return
         
     buyer_name = po['first_name'] or "Unknown"
-    buyer_uname = f"@{po['username']}" if po['username'] else "No Username"
+    buyer_uname = f"@{po['username']}" if po['username'] else ""
+    buyer_str = f"{buyer_name} ({buyer_uname})" if buyer_uname else buyer_name
+    prod_name = get_product_name(dict(po), lang)
     
-    text = (
-        f"⏳ *Pre-order Reservation Details*\n\n"
-        f"🆔 *Pre-order ID:* `{po['id']}`\n"
-        f"📦 *Product:* `{po['name_en']}`\n"
-        f"👤 *User:* {buyer_name} ({buyer_uname}) [ID: `{po['user_id']}`]\n"
-        f"🔢 *Quantity:* `{po['quantity']}`\n"
-        f"💰 *Amount Locked:* `${po['price_paid']:.2f} USD`\n"
-        f"📅 *Created At:* `{po['created_at']}`\n\n"
-        f"⚠️ *Admin Action:* You can cancel this reservation. Doing so will immediately delete the pre-order and refund the amount back to the user's wallet."
+    text = get_text(
+        'admin_preorder_detail_title',
+        lang,
+        id=po['id'],
+        name=prod_name,
+        buyer=buyer_str,
+        user_id=po['user_id'],
+        qty=po['quantity'],
+        price=po['price_paid'],
+        date=po['created_at']
     )
-    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorder_actions_keyboard(po_id, po['product_id']), parse_mode="Markdown")
+    await callback.message.edit_text(text, reply_markup=keyboards.get_admin_preorder_actions_keyboard(po_id, po['product_id'], lang), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data.startswith("adm_po_cancel_"))
@@ -3497,11 +3464,16 @@ async def cb_admin_preorder_cancel(callback: CallbackQuery, lang='en'):
         except Exception as e:
             logger.error(f"Failed to notify user {user_id} of admin pre-order cancellation: {e}")
             
-        await callback.answer(f"✅ Pre-order cancelled and ${refunded:.2f} USD refunded to user successfully!", show_alert=True)
+        cancel_alert = {
+            "en": f"✅ Pre-order cancelled and ${refunded:.2f} USD refunded to user successfully!",
+            "ar": f"✅ تم إلغاء الحجز وإرجاع ${refunded:.2f} دولار للمستخدم بنجاح!",
+            "ru": f"✅ Предзаказ отменен, ${refunded:.2f} USD возвращены пользователю!"
+        }.get(lang, f"✅ Pre-order cancelled and ${refunded:.2f} USD refunded to user successfully!")
+        await callback.answer(cancel_alert, show_alert=True)
         
         # Return to summary
-        await cb_admin_preorders_summary(callback, lang)
+        await cb_admin_preorders_summary(callback, lang=lang)
         
     except Exception as err:
-        await callback.answer(f"❌ Error cancelling pre-order: {err}", show_alert=True)
+        await callback.answer(f"❌ Error: {err}", show_alert=True)
 

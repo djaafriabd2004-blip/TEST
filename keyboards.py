@@ -143,10 +143,10 @@ def get_crypto_coins_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_payment_approval_keyboard(transaction_id) -> InlineKeyboardMarkup:
+def get_admin_payment_approval_keyboard(transaction_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Approve", callback_data=f"admin_pay_approve_{transaction_id}")
-    builder.button(text="❌ Reject", callback_data=f"admin_pay_reject_{transaction_id}")
+    builder.button(text=get_text('btn_admin_approve', lang), callback_data=f"admin_pay_approve_{transaction_id}")
+    builder.button(text=get_text('btn_admin_reject', lang), callback_data=f"admin_pay_reject_{transaction_id}")
     builder.adjust(2)
     return builder.as_markup()
 
@@ -177,7 +177,7 @@ def get_admin_reply_keyboard(lang='en') -> ReplyKeyboardMarkup:
 
 def get_admin_user_balance_keyboard(user_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="✏️ Edit Balance", callback_data=f"admin_edit_bal_{user_id}")
+    builder.button(text=get_text('btn_admin_edit_bal_btn', lang), callback_data=f"admin_edit_bal_{user_id}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_users")
     builder.adjust(1)
     return builder.as_markup()
@@ -236,20 +236,17 @@ def get_admin_select_product_for_custom_price_keyboard(products, user_id, lang='
 
 def get_admin_ban_menu_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    ban_txt = {"en": "🔴 Ban User", "ar": "🔴 حظر مستخدم", "ru": "🔴 Забанить"}.get(lang, "🔴 Ban User")
-    unban_txt = {"en": "🟢 Unban User", "ar": "🟢 فك حظر مستخدم", "ru": "🟢 Разбанить"}.get(lang, "🟢 Unban User")
-    list_txt = {"en": "📋 Show Banned Users", "ar": "📋 عرض المحظورين", "ru": "📋 Список забаненных"}.get(lang, "📋 Show Banned Users")
-    builder.button(text=ban_txt, callback_data="admin_ban_prompt")
-    builder.button(text=unban_txt, callback_data="admin_unban_prompt")
-    builder.button(text=list_txt, callback_data="admin_show_banned")
+    builder.button(text=get_text('btn_admin_ban_user_btn', lang), callback_data="admin_ban_prompt")
+    builder.button(text=get_text('btn_admin_unban_user_btn', lang), callback_data="admin_unban_prompt")
+    builder.button(text=get_text('btn_admin_show_banned_btn', lang), callback_data="admin_show_banned")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_users")
     builder.adjust(2, 1, 1)
     return builder.as_markup()
 
-def get_admin_ban_reason_keyboard() -> InlineKeyboardMarkup:
+def get_admin_ban_reason_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="⏭️ Skip Reason / تخطي السبب", callback_data="admin_ban_skip_reason")
-    builder.button(text="🔙 Cancel / إلغاء", callback_data="admin_ban_unban_menu")
+    builder.button(text=get_text('btn_admin_skip_reason_btn', lang), callback_data="admin_ban_skip_reason")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_ban_unban_menu")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -270,41 +267,45 @@ def get_admin_menu_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder.adjust(2)
     return builder.as_markup()
 
-def get_admin_products_keyboard(products) -> InlineKeyboardMarkup:
+def get_admin_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for product in products:
-        builder.button(text=f"✏️ {product['name_en']} (${product['price']:.2f})", callback_data=f"admin_prod_edit_{product['id']}")
-    builder.button(text="➕ Add Product", callback_data="admin_prod_add")
-    builder.button(text="🔙 Back to Admin Menu", callback_data="admin_menu")
+        prod_dict = dict(product) if hasattr(product, 'keys') else product
+        name_k = f'name_{lang}'
+        prod_name = prod_dict.get(name_k) or prod_dict.get('name_en') or f"Product #{prod_dict.get('id')}"
+        price = float(prod_dict.get('price', 0.0))
+        builder.button(text=f"✏️ {prod_name} (${price:.2f})", callback_data=f"admin_prod_edit_{prod_dict['id']}")
+    builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_product_edit_keyboard(product_id) -> InlineKeyboardMarkup:
+def get_admin_product_edit_keyboard(product_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="📝 Edit Details", callback_data=f"admin_edit_fields_{product_id}")
-    builder.button(text="🏷️ أسعار الجملة (Tier Prices)", callback_data=f"admin_prod_tiers_{product_id}")
-    builder.button(text="🎨 Edit Emoji", callback_data=f"admin_edit_emoji_{product_id}")
-    builder.button(text="🗑️ Delete Product", callback_data=f"admin_prod_del_{product_id}")
-    builder.button(text="🔙 Back", callback_data="admin_manage_products")
+    builder.button(text=get_text('btn_admin_edit_details', lang), callback_data=f"admin_edit_fields_{product_id}")
+    builder.button(text=get_text('btn_admin_tier_prices_btn', lang), callback_data=f"admin_prod_tiers_{product_id}")
+    builder.button(text=get_text('btn_admin_edit_emoji_btn', lang), callback_data=f"admin_edit_emoji_{product_id}")
+    builder.button(text=get_text('btn_admin_delete_product_btn', lang), callback_data=f"admin_prod_del_{product_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_tier_prices_keyboard(product_id) -> InlineKeyboardMarkup:
+def get_admin_tier_prices_keyboard(product_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ إضافة سعر كمية جديد", callback_data=f"admin_add_tier_{product_id}")
-    builder.button(text="🗑️ مسح جميع أسعار الجملة", callback_data=f"admin_clear_tiers_{product_id}")
-    builder.button(text="🔙 Back", callback_data=f"admin_prod_view_{product_id}")
+    builder.button(text=get_text('btn_admin_add_tier_btn', lang), callback_data=f"admin_add_tier_{product_id}")
+    builder.button(text=get_text('btn_admin_clear_tiers_btn', lang), callback_data=f"admin_clear_tiers_{product_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_prod_view_{product_id}")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_support_ticket_keyboard(user_id) -> InlineKeyboardMarkup:
+def get_admin_support_ticket_keyboard(user_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="✍️ Reply to User", callback_data=f"ticket_reply_{user_id}")
+    builder.button(text=get_text('btn_admin_reply_ticket_btn', lang), callback_data=f"ticket_reply_{user_id}")
     return builder.as_markup()
 
-def get_admin_back_keyboard() -> InlineKeyboardMarkup:
+def get_admin_back_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 Back to Admin Panel", callback_data="admin_menu")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     return builder.as_markup()
 
 def get_admin_discounts_keyboard(discounts, lang='en') -> InlineKeyboardMarkup:
@@ -339,20 +340,20 @@ def get_admin_stats_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_api_keys_keyboard() -> InlineKeyboardMarkup:
+def get_admin_api_keys_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Generate API Key", callback_data="admin_api_key_gen")
-    builder.button(text="❌ Revoke API Key", callback_data="admin_api_key_revoke_select")
-    builder.button(text="🔙 Back", callback_data="admin_menu")
+    builder.button(text=get_text('btn_admin_gen_api_key', lang), callback_data="admin_api_key_gen")
+    builder.button(text=get_text('btn_admin_rev_api_key', lang), callback_data="admin_api_key_revoke_select")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_menu")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_api_key_revoke_keyboard(keys_list) -> InlineKeyboardMarkup:
+def get_admin_api_key_revoke_keyboard(keys_list, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for row in keys_list:
         name = row['first_name'] or f"ID: {row['user_id']}"
         builder.button(text=f"❌ Revoke: {name}", callback_data=f"admin_api_key_rev_{row['user_id']}")
-    builder.button(text="🔙 Back", callback_data="admin_api_keys")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_api_keys")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -477,33 +478,35 @@ async def get_force_sub_keyboard(bot, channels: list, lang='en') -> InlineKeyboa
     return builder.as_markup()
 
 # --- Admin Pre-orders Keyboard Helpers ---
-def get_admin_preorders_summary_keyboard(preorders_summary) -> InlineKeyboardMarkup:
+def get_admin_preorders_summary_keyboard(preorders_summary, lang='en') -> InlineKeyboardMarkup:
     """Keyboard for listing all products with active pre-orders."""
     builder = InlineKeyboardBuilder()
     for item in preorders_summary:
-        name = item['name_en'] or f"ID: {item['product_id']}"
-        btn_text = f"📦 {name} (Qty: {item['total_quantity']} | Users: {item['total_preorders']})"
-        builder.button(text=btn_text, callback_data=f"adm_po_list_{item['product_id']}")
-    builder.button(text="🔙 Back", callback_data="admin_menu")
+        item_dict = dict(item) if hasattr(item, 'keys') else item
+        name_k = f'name_{lang}'
+        name = item_dict.get(name_k) or item_dict.get('name_en') or f"ID: {item_dict.get('product_id')}"
+        btn_text = f"📦 {name} (Qty: {item_dict['total_quantity']} | Users: {item_dict['total_preorders']})"
+        builder.button(text=btn_text, callback_data=f"adm_po_list_{item_dict['product_id']}")
+    builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_product_preorders_keyboard(preorders_list) -> InlineKeyboardMarkup:
+def get_admin_product_preorders_keyboard(preorders_list, lang='en') -> InlineKeyboardMarkup:
     """Keyboard showing individual pre-orders for a specific product."""
     builder = InlineKeyboardBuilder()
     for po in preorders_list:
         buyer = po['first_name'] or f"ID: {po['user_id']}"
         btn_text = f"👤 {buyer} (x{po['quantity']}) - ${po['price_paid']:.2f}"
         builder.button(text=btn_text, callback_data=f"adm_po_view_{po['id']}")
-    builder.button(text="🔙 Back to Summary", callback_data="admin_preorders_summary")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_preorders_summary")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_preorder_actions_keyboard(pre_order_id, product_id) -> InlineKeyboardMarkup:
+def get_admin_preorder_actions_keyboard(pre_order_id, product_id, lang='en') -> InlineKeyboardMarkup:
     """Keyboard for admin actions on an individual pre-order."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="❌ Cancel & Refund / إلغاء وإرجاع الرصيد", callback_data=f"adm_po_cancel_{pre_order_id}")
-    builder.button(text="🔙 Back", callback_data=f"adm_po_list_{product_id}")
+    builder.button(text=get_text('btn_admin_cancel_refund_btn', lang), callback_data=f"adm_po_cancel_{pre_order_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=f"adm_po_list_{product_id}")
     builder.adjust(1)
     return builder.as_markup()
 

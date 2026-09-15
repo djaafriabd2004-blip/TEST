@@ -28,6 +28,7 @@ class BaseProviderAdapter:
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
+            "X-Reseller-Key": self.api_key,
             "X-API-Key": self.api_key,
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -282,10 +283,17 @@ class BaseProviderAdapter:
             return [str(buy_data)]
             
         deliv = buy_data.get('delivery')
+        order = buy_data.get('order')
+        
+        raw_creds = None
         if isinstance(deliv, dict) and deliv.get('items'):
             raw_creds = deliv['items']
         elif isinstance(deliv, list):
             raw_creds = deliv
+        elif isinstance(order, dict) and order.get('items'):
+            raw_creds = order['items']
+        elif isinstance(order, list):
+            raw_creds = order
         else:
             raw_creds = (
                 buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
@@ -304,11 +312,21 @@ class BaseProviderAdapter:
                 else:
                     return [raw_creds.strip()]
             elif isinstance(raw_creds, list):
-                return [str(it['code']) if isinstance(it, dict) and 'code' in it else str(it) for it in raw_creds]
+                res = []
+                for it in raw_creds:
+                    if isinstance(it, dict):
+                        val = it.get('account_data') or it.get('code') or it.get('credentials') or it.get('item') or it.get('key') or it.get('data')
+                        if val is not None:
+                            res.append(str(val).strip())
+                        else:
+                            res.append(str(it))
+                    else:
+                        res.append(str(it).strip())
+                return [r for r in res if r]
             else:
                 return [str(raw_creds)]
         elif buy_data.get('success') or buy_data.get('ok') or buy_data.get('status') in ['completed', 'delivered']:
-            ord_id = buy_data.get('order_id') or buy_data.get('id') or ext_order_id
+            ord_id = buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
             return [f"Order #{ord_id} Completed Successfully"]
             
         raise Exception("Provider returned empty delivery data")
@@ -787,6 +805,197 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
 
 
 # -------------------------------------------------------------------------
+# 6. VenteBot Reseller API Adapter (FastAPI / OpenAPI 3.0.3)
+# -------------------------------------------------------------------------
+class VenteBotProviderAdapter(BaseProviderAdapter):
+    """
+    VenteBot Reseller API Adapter (OpenAPI 3.0.3)
+    Base URL: https://ventetelegrambotrailway-production.up.railway.app
+    Catalog: GET /api/reseller/products
+    Balance/Me: GET /api/reseller/me
+    Quote: POST /api/reseller/quote {"product_id": int, "quantity": int}
+    Order: POST /api/reseller/orders {"product_id": int, "quantity": int, "idempotency_key": str}
+    """
+    def __init__(self, base_url: str, api_key: str):
+        super().__init__(base_url, api_key)
+        self.provider_type = "ventebot"
+
+    def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = {
+            "X-Reseller-Key": self.api_key,
+            "X-API-Key": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
+        endpoints = [
+            f"{self.base_url}/api/reseller/products",
+            f"{self.base_url}/reseller/products",
+            f"{self.base_url}/api/v1/products",
+            f"{self.base_url}/v1/products",
+            f"{self.base_url}/api/products",
+            f"{self.base_url}/products"
+        ]
+        
+        async def _req(s):
+            for url in endpoints:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            raw_list = extract_products_list_from_json(data)
+                            if raw_list:
+                                return self._standardize_catalog(raw_list)
+                            elif isinstance(data, dict) and (data.get('success') is True or data.get('ok') is True or 'products' in data):
+                                return []
+                            elif isinstance(data, list) and len(data) == 0:
+                                return []
+                except Exception as e:
+                    logger.debug(f"VenteBot catalog probe {url} failed: {e}")
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+        
+        async def _req(s):
+            # Try quote endpoint
+            try:
+                quote_url = f"{self.base_url}/api/reseller/quote"
+                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": 1}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as q_resp:
+                    if q_resp.status == 200:
+                        q_data = await q_resp.json()
+                        if isinstance(q_data, dict):
+                            stk = extract_stock_from_dict(q_data, allow_boolean=True)
+                            if stk is not None:
+                                return stk
+                            if q_data.get('success') is True or 'unit_price' in q_data:
+                                return 999
+                    elif q_resp.status in [400, 404, 409, 422]:
+                        q_err = await self._parse_error_response(q_resp)
+                        if "stock" in q_err.lower() or "not available" in q_err.lower() or "insufficient" in q_err.lower():
+                            return 0
+            except Exception:
+                pass
+            
+            # Fallback: search products catalog
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return int(p.get('stock', 0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
+        endpoints = [
+            f"{self.base_url}/api/reseller/me",
+            f"{self.base_url}/reseller/me",
+            f"{self.base_url}/api/me",
+            f"{self.base_url}/me",
+            f"{self.base_url}/api/v1/me",
+            f"{self.base_url}/v1/me"
+        ]
+        async def _req(s):
+            for url in endpoints:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                return data
+                except Exception:
+                    pass
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def execute_order(
+        self,
+        provider_product_id: Any,
+        quantity: int,
+        expected_price: Optional[float] = None,
+        client_order_ref: Optional[str] = None,
+        session: Optional[aiohttp.ClientSession] = None
+    ) -> List[str]:
+        prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+        order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        
+        headers = self.get_headers({
+            "Idempotency-Key": str(order_ref)
+        })
+        payload = {
+            "product_id": item_id,
+            "quantity": int(quantity),
+            "idempotency_key": str(order_ref)
+        }
+        
+        endpoints = [
+            f"{self.base_url}/api/reseller/orders",
+            f"{self.base_url}/reseller/orders",
+            f"{self.base_url}/api/v1/orders",
+            f"{self.base_url}/v1/orders",
+            f"{self.base_url}/api/buy",
+            f"{self.base_url}/api/v1/purchases"
+        ]
+
+        async def _req(s):
+            last_err = "No response from VenteBot API"
+            for ep in endpoints:
+                try:
+                    logger.info(f"Executing VenteBot order on {ep} with payload: {payload}")
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
+                        if resp.status in [200, 201]:
+                            buy_data = await resp.json()
+                            return self._parse_delivery_data(buy_data, order_ref)
+                        else:
+                            last_err = await self._parse_error_response(resp)
+                            logger.warning(f"VenteBot order error on {ep}: HTTP {resp.status} - {last_err}")
+                            if resp.status == 409 or "insufficient" in str(last_err).lower() or "stock" in str(last_err).lower():
+                                raise Exception(f"Out of stock ({last_err})")
+                            elif resp.status == 402 or "balance" in str(last_err).lower():
+                                raise Exception(f"Provider balance insufficient: {last_err}")
+                            elif resp.status == 404 or "Cannot POST" in str(last_err):
+                                continue
+                            break
+                except Exception as ep_err:
+                    if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err):
+                        raise ep_err
+                    logger.warning(f"VenteBot purchase error on {ep}: {ep_err}")
+                    last_err = str(ep_err)
+                    
+            raise Exception(f"Provider error: {last_err}")
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+
+# -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
 def get_provider_adapter(base_url: str, api_key: str) -> BaseProviderAdapter:
@@ -805,5 +1014,7 @@ def get_provider_adapter(base_url: str, api_key: str) -> BaseProviderAdapter:
         return ShopDigitalProviderAdapter(base_url, api_key)
     elif "supabase.co" in clean_url:
         return SupabaseProviderAdapter(base_url, api_key)
+    elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "railway.app" in clean_url or "reseller" in clean_url:
+        return VenteBotProviderAdapter(base_url, api_key)
     else:
         return BaseProviderAdapter(base_url, api_key)
