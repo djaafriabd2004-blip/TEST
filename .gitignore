@@ -18,8 +18,11 @@ Thumbs.db
 
 # Build Output
 dist/
+customers/
+extracted_temp/
+build_temp/
 
 # Local Obfuscation Tools
 build_encrypted_bot.py
 compile_cython.py
-build_cython_bot.py
+generate_license.py
