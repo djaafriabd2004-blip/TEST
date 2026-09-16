@@ -136,6 +136,45 @@ class BaseProviderAdapter:
             async with aiohttp.ClientSession() as s:
                 return await _req(s)
 
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        """
+        Fetches the live wholesale cost per unit directly from provider before purchase.
+        """
+        prov_pid = str(provider_product_id).strip()
+        endpoints = [
+            f"{self.base_url}/api/v1/products/{prov_pid}",
+            f"{self.base_url}/v1/products/{prov_pid}",
+            f"{self.base_url}/api/products/{prov_pid}",
+            f"{self.base_url}/products/{prov_pid}"
+        ]
+
+        async def _req(s):
+            for url in endpoints:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                single_p = data.get('product') or data.get('data') or data
+                                price_val = single_p.get('price') or single_p.get('unit_price') or single_p.get('price_usd') or single_p.get('rate')
+                                if price_val is not None:
+                                    return float(price_val)
+                except Exception:
+                    pass
+            # Fallback to catalog search
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return float(p.get('price', 0.0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
     async def execute_order(
         self,
         provider_product_id: Any,
@@ -373,6 +412,42 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                 except Exception as e:
                     logger.debug(f"Pandora catalog probe {url} failed: {e}")
             return []
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        headers = self.get_headers()
+
+        async def _req(s):
+            try:
+                async with s.post(
+                    f"{self.base_url}/api/v1/quotes",
+                    headers=headers,
+                    json={"product_id": prov_pid, "quantity": int(quantity)},
+                    timeout=aiohttp.ClientTimeout(total=8, connect=4)
+                ) as q_resp:
+                    if q_resp.status in [200, 201]:
+                        q_data = await q_resp.json()
+                        if isinstance(q_data, dict) and q_data.get("unit_price") is not None:
+                            return float(q_data["unit_price"])
+            except Exception:
+                pass
+            try:
+                async with s.get(f"{self.base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as p_resp:
+                    if p_resp.status == 200:
+                        p_data = await p_resp.json()
+                        if isinstance(p_data, dict):
+                            u_price = p_data.get("unit_price") or p_data.get("price")
+                            if u_price is not None:
+                                return float(u_price)
+            except Exception:
+                pass
+            return None
 
         if session:
             return await _req(session)
@@ -923,6 +998,37 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                                 return data
                 except Exception:
                     pass
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+
+        async def _req(s):
+            # 1. Try /api/reseller/quote
+            try:
+                quote_url = f"{self.base_url}/api/reseller/quote"
+                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity)}, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
+                    if q_resp.status == 200:
+                        q_data = await q_resp.json()
+                        if isinstance(q_data, dict):
+                            u_price = q_data.get('unit_price') or q_data.get('price_usd') or q_data.get('price')
+                            if u_price is not None:
+                                return float(u_price)
+            except Exception:
+                pass
+            # 2. Fallback to catalog
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return float(p.get('price', 0.0))
             return None
 
         if session:

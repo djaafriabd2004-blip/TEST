@@ -135,28 +135,83 @@ def get_product_desc(product, lang='en'):
     p = dict(product) if not isinstance(product, dict) else product
     return p.get(f'description_{lang}') or p.get('description_en') or p.get('description_ar') or p.get('description_ru') or ""
 
+def calculate_dynamic_selling_price(
+    pricing_type: str,
+    margin_value: float,
+    min_price: float,
+    provider_cost: float,
+    fallback_fixed_price: float = 0.0
+) -> float:
+    """
+    Unified Pricing & Protection Function:
+    Calculates final selling price using the protected formula:
+    selling_price = max(strategy_price, minimum_price)
+    
+    Modes:
+    1. 'fixed': Fixed price (legacy mode). Returns max(fallback_fixed_price, min_price).
+    2. 'margin_fixed': Provider Cost + Fixed Margin in USD ($X) with floor protection.
+    3. 'margin_percent': Provider Cost + Margin in Percentage (X%) with floor protection.
+    """
+    pricing_type = str(pricing_type or 'fixed').strip().lower()
+    margin_value = float(margin_value or 0.0)
+    min_price = float(min_price or 0.0)
+    provider_cost = float(provider_cost or 0.0)
+    fallback_fixed_price = float(fallback_fixed_price or 0.0)
+
+    if pricing_type == 'margin_fixed':
+        strategy_price = provider_cost + margin_value
+    elif pricing_type == 'margin_percent':
+        strategy_price = provider_cost * (1.0 + (margin_value / 100.0))
+    else: # 'fixed'
+        strategy_price = fallback_fixed_price if fallback_fixed_price > 0 else provider_cost
+
+    final_price = max(strategy_price, min_price)
+    return max(0.01, round(final_price, 2))
+
 def get_product_unit_price(product, qty: int) -> float:
     """
-    Returns the fixed unit price for a given quantity based on configured tier prices.
-    Falls back to base product price if no tier matches.
+    Returns the effective unit price for a given quantity based on:
+    1. Dynamic pricing strategy (if configured) with protected price floor.
+    2. Configured quantity tier prices.
+    3. Base product price fallback.
     """
     if not product:
         return 0.0
     p = dict(product) if not isinstance(product, dict) else product
+    
+    pricing_type = p.get('pricing_type') or 'fixed'
+    margin_value = float(p.get('margin_value') or 0.0)
+    min_price = float(p.get('min_price') or 0.0)
+    last_provider_cost = float(p.get('last_provider_cost') or 0.0)
     base_price = float(p.get('price', 0.0))
+
+    if pricing_type in ['margin_fixed', 'margin_percent'] and last_provider_cost > 0:
+        base_price = calculate_dynamic_selling_price(
+            pricing_type=pricing_type,
+            margin_value=margin_value,
+            min_price=min_price,
+            provider_cost=last_provider_cost,
+            fallback_fixed_price=base_price
+        )
+    elif min_price > 0:
+        base_price = max(base_price, min_price)
+
     tier_json = p.get('tier_prices')
     if not tier_json:
-        return base_price
+        return round(base_price, 2)
     try:
         tiers = json.loads(tier_json)
         if isinstance(tiers, list):
             for t in sorted(tiers, key=lambda x: int(x.get('min_qty', 0)), reverse=True):
                 min_q = int(t.get('min_qty', 0))
                 if min_q > 0 and qty >= min_q:
-                    return float(t.get('unit_price', base_price))
+                    tier_unit_p = float(t.get('unit_price', base_price))
+                    if min_price > 0:
+                        tier_unit_p = max(tier_unit_p, min_price)
+                    return round(tier_unit_p, 2)
     except Exception as e:
         logger.warning(f"Error parsing tier_prices JSON: {e}")
-    return base_price
+    return round(base_price, 2)
 
 def format_product_tier_prices_text(product, lang='en') -> str:
     """

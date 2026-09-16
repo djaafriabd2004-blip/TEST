@@ -26,6 +26,11 @@ class ProductStates(StatesGroup):
     # Tier Prices
     waiting_for_tier_min_qty = State()
     waiting_for_tier_unit_price = State()
+    
+    # Pricing Strategy
+    waiting_for_pricing_strategy = State()
+    waiting_for_margin_value = State()
+    waiting_for_min_price = State()
 
 class ShopStates(StatesGroup):
     waiting_for_buy_quantity = State()
@@ -63,3 +68,6 @@ class ProvidersStates(StatesGroup):
     waiting_for_key = State()
     waiting_for_edit_key = State()
     waiting_for_price = State()
+    waiting_for_pricing_type = State()
+    waiting_for_margin_value = State()
+    waiting_for_min_price = State()

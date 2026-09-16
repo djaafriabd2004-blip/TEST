@@ -283,10 +283,34 @@ def get_admin_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
 def get_admin_product_edit_keyboard(product_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_edit_details', lang), callback_data=f"admin_edit_fields_{product_id}")
+    builder.button(text=get_text('btn_admin_pricing_strategy', lang), callback_data=f"admin_prod_pricing_{product_id}")
     builder.button(text=get_text('btn_admin_tier_prices_btn', lang), callback_data=f"admin_prod_tiers_{product_id}")
     builder.button(text=get_text('btn_admin_edit_emoji_btn', lang), callback_data=f"admin_edit_emoji_{product_id}")
     builder.button(text=get_text('btn_admin_delete_product_btn', lang), callback_data=f"admin_prod_del_{product_id}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_pricing_type_keyboard(lang='en', is_import=True, product_id=None) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    prefix = "admin_imp_ptype_" if is_import else f"admin_edit_ptype_{product_id}_"
+    builder.button(text=get_text('btn_pricing_type_fixed', lang), callback_data=f"{prefix}fixed")
+    builder.button(text=get_text('btn_pricing_type_margin_fixed', lang), callback_data=f"{prefix}margin_fixed")
+    builder.button(text=get_text('btn_pricing_type_margin_percent', lang), callback_data=f"{prefix}margin_percent")
+    
+    if is_import:
+        builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_pull_external")
+    else:
+        builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_prod_view_{product_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_min_price_skip_keyboard(lang='en', is_import=True, product_id=None) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    skip_data = "admin_imp_skip_min" if is_import else f"admin_edit_skip_min_{product_id}"
+    back_data = "admin_pull_external" if is_import else f"admin_prod_view_{product_id}"
+    builder.button(text=get_text('btn_skip_floor_price', lang), callback_data=skip_data)
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=back_data)
     builder.adjust(1)
     return builder.as_markup()
 

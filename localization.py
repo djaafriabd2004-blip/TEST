@@ -524,10 +524,65 @@ LOCALIZATION = {
         'ar': "❌ سعر غير صالح. يرجى إدخال رقم موجب صالح:",
         'ru': "❌ Неверная цена. Пожалуйста, введите положительное число:"
     },
+    'btn_admin_pricing_strategy': {
+        'en': "🏷️ Pricing & Margin Strategy",
+        'ar': "🏷️ استراتيجية التسعير والربح",
+        'ru': "🏷️ Стратегия цен и маржи"
+    },
+    'btn_pricing_type_fixed': {
+        'en': "💵 Fixed Price (Legacy)",
+        'ar': "💵 سعر بيع ثابت (النظام القديم)",
+        'ru': "💵 Фиксированная цена"
+    },
+    'btn_pricing_type_margin_fixed': {
+        'en': "📈 Fixed Profit Margin ($ USD)",
+        'ar': "📈 هامش ربح ثابت بالدولار ($)",
+        'ru': "📈 Наценка в $ (USD)"
+    },
+    'btn_pricing_type_margin_percent': {
+        'en': "📊 Percentage Margin (% Markup)",
+        'ar': "📊 هامش ربح بنسبة مئوية (%)",
+        'ru': "📊 Наценка в процентах (%)"
+    },
+    'pricing_select_strategy_title': {
+        'en': "🏷️ *Choose Pricing Strategy for Product:*\n\n📦 *Product:* `{name}`\n💵 *Provider Wholesale Cost:* `${cost:.2f} USD`\n\n1️⃣ **Fixed Price:** Sells at a constant price.\n2️⃣ **Fixed Margin ($):** Automatically adds a fixed markup on top of provider cost.\n3️⃣ **Percentage Margin (%):** Automatically adds a % markup with floor protection.",
+        'ar': "🏷️ *اختر طريقة التسعير لهذا المنتج:*\n\n📦 *المنتج:* `{name}`\n💵 *سعر التكلفة من المزود:* `${cost:.2f} USD`\n\n1️⃣ **سعر بيع ثابت:** تحدد سعراً ثابتاً ومستقراً للمنتج.\n2️⃣ **هامش ربح بالدولار ($):** يضاف مبلغ ربح ثابت فوق تكلفة المزود تلقائياً.\n3️⃣ **هامش ربح بنسبة (%):** تضاف نسبة ربح مئوية فوق تكلفة المزود مع حد أدنى محمي.",
+        'ru': "🏷️ *Выберите стратегию ценообразования:*\n\n📦 *Товар:* `{name}`\n💵 *Оптовая цена поставщика:* `${cost:.2f} USD`"
+    },
+    'pricing_prompt_fixed': {
+        'en': "💵 *Enter the fixed selling price (in USD):*\n(Example: `5.00` or `7.50`)",
+        'ar': "💵 *أدخل سعر البيع الثابت للمنتج (بالدولار):*\n(مثال: `5.00` أو `7.50`)",
+        'ru': "💵 *Введите фиксированную цену продажи (в USD):*\n(Пример: `5.00` или `7.50`)"
+    },
+    'pricing_prompt_margin_fixed': {
+        'en': "📈 *Enter the fixed profit margin ($ USD) to add on top of provider cost:*\n\n💵 Current provider cost: `${cost:.2f}`\n(Example: If you enter `1.50` and provider cost is `$5.00`, selling price will be `$6.50`)",
+        'ar': "📈 *أدخل قيمة هامش الربح بالدولار ($) الذي سيضاف فوق تكلفة المزود:*\n\n💵 تكلفة المزود الحالية: `${cost:.2f}`\n(مثال: إذا أدخلت `1.50` وكان سعر المزود `$5.00`، سيصبح سعر البيع `$6.50`)",
+        'ru': "📈 *Введите сумму наценки ($ USD), которая будет добавлена к стоимости поставщика:*\n(Пример: `1.50`)"
+    },
+    'pricing_prompt_margin_percent': {
+        'en': "📊 *Enter the profit margin percentage (%) to add on top of provider cost:*\n\n💵 Current provider cost: `${cost:.2f}`\n(Example: If you enter `20` and provider cost is `$5.00`, selling price will be `$6.00`)",
+        'ar': "📊 *أدخل نسبة هامش الربح المئوية (%) التي ستضاف فوق تكلفة المزود:*\n\n💵 تكلفة المزود الحالية: `${cost:.2f}`\n(مثال: إذا أدخلت `20` وكان سعر المزود `$5.00`، سيصبح سعر البيع `$6.00`)",
+        'ru': "📊 *Введите процент наценки (%), который будет добавлен к стоимости поставщика:*\n(Пример: `20`)"
+    },
+    'pricing_prompt_min_price': {
+        'en': "🛡️ *Enter the Minimum Protected Floor Price (in USD):*\n\n📌 *Protection:* Ensures the selling price never drops below this number even if the provider lowers their cost.\n(Send `0` or click Skip if you do not want an additional floor price, or enter e.g. `{suggested:.2f}`):",
+        'ar': "🛡️ *أدخل الحد الأدنى المحمي للسعر (Minimum Protected Floor Price):*\n\n📌 **الفائدة:** يضمن ألا ينزل سعر البيع في البوت عن هذا الرقم أبداً حتى لو انخفض سعر المزود.\n(أرسل `0` أو اضغط تخطي إذا كنت لا تريد حداً أدنى إضافياً، أو أدخل مبلغاً مثل `{suggested:.2f}`):",
+        'ru': "🛡️ *Введите минимальную защищенную цену (в USD):*\n(Отправьте `0` или нажмите пропустить, или введите `{suggested:.2f}`):"
+    },
+    'btn_skip_floor_price': {
+        'en': "⏭️ Skip Floor Price (Use 0.00)",
+        'ar': "⏭️ تخطي (بدون حد أدنى)",
+        'ru': "⏭️ Пропустить"
+    },
+    'pricing_strategy_updated': {
+        'en': "✅ *Pricing strategy updated successfully!*\n\n📦 *Product:* `{name}`\n🏷️ *Strategy:* `{type_name}`\n💵 *Calculated Selling Price:* `${price:.2f} USD`",
+        'ar': "✅ *تم تحديث استراتيجية التسعير للمنتج بنجاح!*\n\n📦 *المنتج:* `{name}`\n🏷️ *الاستراتيجية:* `{type_name}`\n💵 *سعر البيع المحسوب:* `${price:.2f} USD`",
+        'ru': "✅ *Стратегия ценообразования успешно обновлена!*\n\n📦 *Товар:* `{name}`\n🏷️ *Стратегия:* `{type_name}`\n💵 *Рассчитанная цена:* `${price:.2f} USD`"
+    },
     'prov_import_success': {
-        'en': "✅ Product *{name}* successfully imported! Local Price: `{price:.2f}`",
-        'ar': "✅ تم سحب واستيراد المنتج *{name}* بنجاح! السعر المحلي: `{price:.2f}`",
-        'ru': "✅ Товар *{name}* успешно импортирован! Локальная цена: `{price:.2f}`"
+        'en': "✅ Product *{name}* successfully imported! Local Price: `${price:.2f} USD`",
+        'ar': "✅ تم سحب واستيراد المنتج *{name}* بنجاح! سعر البيع: `${price:.2f} USD`",
+        'ru': "✅ Товар *{name}* успешно импортирован! Цена: `${price:.2f} USD`"
     },
     'prov_list_title': {
         'en': "🔌 *API Providers Management*\n\nSelect a provider from the list to pull products or delete them, or configure a new provider bot:",

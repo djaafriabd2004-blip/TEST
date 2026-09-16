@@ -1248,6 +1248,180 @@ async def cb_admin_clear_tiers(callback: CallbackQuery, lang='en'):
     )
     await callback.answer()
 
+# --- Product Pricing Strategy Management ---
+@router.callback_query(F.data.startswith("admin_prod_pricing_"))
+async def cb_admin_prod_pricing(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    prod_id = int(callback.data.replace("admin_prod_pricing_", ""))
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.")
+        return
+        
+    prod_dict = dict(product)
+    p_type = prod_dict.get('pricing_type') or 'fixed'
+    m_val = float(prod_dict.get('margin_value') or 0.0)
+    min_p = float(prod_dict.get('min_price') or 0.0)
+    cost = float(prod_dict.get('last_provider_cost') or 0.0)
+    cur_price = float(prod_dict.get('price') or 0.0)
+    prod_name = get_product_name(product, lang)
+    
+    type_labels = {
+        'fixed': get_text('btn_pricing_type_fixed', lang),
+        'margin_fixed': f"{get_text('btn_pricing_type_margin_fixed', lang)} (+${m_val:.2f})",
+        'margin_percent': f"{get_text('btn_pricing_type_margin_percent', lang)} (+{m_val:.1f}%)"
+    }
+    
+    text = (
+        f"🏷️ *{get_text('btn_admin_pricing_strategy', lang)}*\n\n"
+        f"📦 *Product:* `{prod_name}`\n"
+        f"⚙️ *Current Strategy:* `{type_labels.get(p_type, p_type)}`\n"
+        f"💵 *Wholesale Cost:* `${cost:.2f} USD`\n"
+        f"🛡️ *Minimum Floor Price:* `${min_p:.2f} USD`\n"
+        f"🛍️ *Current Selling Price:* `${cur_price:.2f} USD`\n\n"
+        f"Select a new pricing strategy below:"
+    )
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_admin_pricing_type_keyboard(lang=lang, is_import=False, product_id=prod_id),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_edit_ptype_"))
+async def cb_admin_edit_ptype(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    parts = callback.data.replace("admin_edit_ptype_", "").split("_")
+    prod_id = int(parts[0])
+    ptype = "_".join(parts[1:])
+    
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.")
+        return
+        
+    prod_dict = dict(product)
+    cost = float(prod_dict.get('last_provider_cost') or prod_dict.get('price') or 0.0)
+    await state.update_data(edit_pricing_prod_id=prod_id, edit_pricing_type=ptype, edit_pricing_cost=cost)
+    
+    if ptype == 'fixed':
+        await state.set_state(ProductStates.waiting_for_edit_price)
+        await callback.message.edit_text(get_text('pricing_prompt_fixed', lang), parse_mode="Markdown")
+    elif ptype == 'margin_fixed':
+        await state.set_state(ProductStates.waiting_for_margin_value)
+        await callback.message.edit_text(get_text('pricing_prompt_margin_fixed', lang, cost=cost), parse_mode="Markdown")
+    elif ptype == 'margin_percent':
+        await state.set_state(ProductStates.waiting_for_margin_value)
+        await callback.message.edit_text(get_text('pricing_prompt_margin_percent', lang, cost=cost), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ProductStates.waiting_for_edit_price)
+async def process_edit_prod_fixed_price(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    try:
+        price = float(message.text.strip().replace("$", ""))
+        if price <= 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer(get_text('admin_invalid_price', lang))
+        return
+        
+    await state.update_data(edit_fixed_price=price, edit_pricing_type='fixed', edit_margin_value=0.0)
+    await finalize_edit_product_pricing(message, state, min_price=0.0, lang=lang)
+
+@router.message(ProductStates.waiting_for_margin_value)
+async def process_edit_prod_margin_value(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    try:
+        val = float(message.text.strip().replace("$", "").replace("%", ""))
+        if val < 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Invalid margin value. Please enter a valid non-negative number:")
+        return
+        
+    await state.update_data(edit_margin_value=val)
+    data = await state.get_data()
+    prod_id = data.get('edit_pricing_prod_id')
+    ptype = data.get('edit_pricing_type')
+    cost = float(data.get('edit_pricing_cost') or 0.0)
+    
+    from utils import calculate_dynamic_selling_price
+    suggested_floor = calculate_dynamic_selling_price(ptype, val, 0.0, cost)
+    await state.set_state(ProductStates.waiting_for_min_price)
+    await message.answer(
+        get_text('pricing_prompt_min_price', lang, suggested=suggested_floor),
+        reply_markup=keyboards.get_admin_min_price_skip_keyboard(lang=lang, is_import=False, product_id=prod_id),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("admin_edit_skip_min_"))
+async def cb_admin_edit_skip_min(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+    prod_id = int(callback.data.replace("admin_edit_skip_min_", ""))
+    await finalize_edit_product_pricing(callback.message, state, min_price=0.0, lang=lang, prod_id_override=prod_id)
+    await callback.answer()
+
+@router.message(ProductStates.waiting_for_min_price)
+async def process_edit_prod_min_price(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    try:
+        min_p = float(message.text.strip().replace("$", ""))
+        if min_p < 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Invalid floor price. Please enter a valid number:")
+        return
+    await finalize_edit_product_pricing(message, state, min_price=min_p, lang=lang)
+
+async def finalize_edit_product_pricing(message_or_msg, state: FSMContext, min_price: float = 0.0, lang='en', prod_id_override=None):
+    data = await state.get_data()
+    prod_id = prod_id_override or data.get('edit_pricing_prod_id')
+    ptype = data.get('edit_pricing_type', 'fixed')
+    m_val = float(data.get('edit_margin_value') or 0.0)
+    fixed_p = data.get('edit_fixed_price')
+    
+    if not prod_id:
+        await message_or_msg.answer("❌ Session expired. Try again.")
+        await state.clear()
+        return
+        
+    from database import update_product_pricing_strategy
+    await update_product_pricing_strategy(
+        product_id=prod_id,
+        pricing_type=ptype,
+        margin_value=m_val,
+        min_price=min_price,
+        fixed_price=fixed_p,
+        bot=message_or_msg.bot
+    )
+    
+    prod = await get_product(prod_id)
+    prod_name = get_product_name(prod, lang)
+    new_price = float(prod['price'] if prod else 0.0)
+    
+    type_labels = {
+        'fixed': get_text('btn_pricing_type_fixed', lang),
+        'margin_fixed': f"{get_text('btn_pricing_type_margin_fixed', lang)} (+${m_val:.2f})",
+        'margin_percent': f"{get_text('btn_pricing_type_margin_percent', lang)} (+{m_val:.1f}%)"
+    }
+    
+    text = get_text('pricing_strategy_updated', lang, name=prod_name, type_name=type_labels.get(ptype, ptype), price=new_price)
+    await message_or_msg.answer(text, reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
+    await state.clear()
+
 # --- Stock Settings ---
 @router.callback_query(F.data.in_(["admin_add_stock", "admin_bulk_stock"]))
 async def cb_admin_stock_select_prod(callback: CallbackQuery, state: FSMContext, lang='en'):
@@ -3228,37 +3402,111 @@ async def cb_admin_prov_select_product(callback: CallbackQuery, state: FSMContex
         await callback.answer("❌ Selected product not found", show_alert=True)
         return
         
+    cost = float(selected_prod.get('price', 0.0))
+    prod_name = selected_prod.get('name_en') or selected_prod.get('name_ar') or f"Product #{raw_prod_id}"
     await state.update_data(selected_prov_prod=selected_prod)
-    await state.set_state(ProvidersStates.waiting_for_price)
     
-    text = get_text('prov_price_prompt', lang, price=selected_prod['price'])
-    await callback.message.edit_text(text, parse_mode="Markdown")
+    text = get_text('pricing_select_strategy_title', lang, name=prod_name, cost=cost)
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_admin_pricing_type_keyboard(lang=lang, is_import=True),
+        parse_mode="Markdown"
+    )
     await callback.answer()
 
-@router.message(ProvidersStates.waiting_for_price)
-async def process_provider_price(message: Message, state: FSMContext, lang='en'):
+@router.callback_query(F.data.startswith("admin_imp_ptype_"))
+async def cb_admin_imp_ptype(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+        
+    ptype = callback.data.replace("admin_imp_ptype_", "")
+    data = await state.get_data()
+    selected_prod = data.get('selected_prov_prod')
+    if not selected_prod:
+        await callback.answer("❌ Session expired", show_alert=True)
+        return
+        
+    cost = float(selected_prod.get('price', 0.0))
+    await state.update_data(pricing_type=ptype)
+    
+    if ptype == 'fixed':
+        await state.set_state(ProvidersStates.waiting_for_price)
+        await callback.message.edit_text(get_text('pricing_prompt_fixed', lang), parse_mode="Markdown")
+    elif ptype == 'margin_fixed':
+        await state.set_state(ProvidersStates.waiting_for_margin_value)
+        await callback.message.edit_text(get_text('pricing_prompt_margin_fixed', lang, cost=cost), parse_mode="Markdown")
+    elif ptype == 'margin_percent':
+        await state.set_state(ProvidersStates.waiting_for_margin_value)
+        await callback.message.edit_text(get_text('pricing_prompt_margin_percent', lang, cost=cost), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ProvidersStates.waiting_for_margin_value)
+async def process_provider_margin_value(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
         
     try:
-        price = float(message.text.strip())
-        if price <= 0:
+        val = float(message.text.strip().replace("$", "").replace("%", ""))
+        if val < 0:
             raise ValueError()
     except ValueError:
-        await message.answer(get_text('prov_invalid_price', lang))
+        await message.answer("❌ Invalid value. Please enter a valid non-negative number:")
         return
         
+    await state.update_data(margin_value=val)
+    data = await state.get_data()
+    ptype = data.get('pricing_type', 'margin_fixed')
+    selected_prod = data.get('selected_prov_prod', {})
+    cost = float(selected_prod.get('price', 0.0))
+    
+    from utils import calculate_dynamic_selling_price
+    suggested_floor = calculate_dynamic_selling_price(ptype, val, 0.0, cost)
+    await state.set_state(ProvidersStates.waiting_for_min_price)
+    await message.answer(
+        get_text('pricing_prompt_min_price', lang, suggested=suggested_floor),
+        reply_markup=keyboards.get_admin_min_price_skip_keyboard(lang=lang, is_import=True),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_imp_skip_min")
+async def cb_admin_imp_skip_min(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+    await finalize_imported_product(callback.message, state, min_price=0.0, lang=lang)
+    await callback.answer()
+
+@router.message(ProvidersStates.waiting_for_min_price)
+async def process_provider_min_price(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    try:
+        min_p = float(message.text.strip().replace("$", ""))
+        if min_p < 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Invalid floor price. Please enter a valid number:")
+        return
+    await finalize_imported_product(message, state, min_price=min_p, lang=lang)
+
+async def finalize_imported_product(message_or_msg, state: FSMContext, min_price: float = 0.0, lang='en'):
     data = await state.get_data()
     prod = data.get('selected_prov_prod')
     prov_id = data.get('prov_id')
+    ptype = data.get('pricing_type', 'fixed')
+    m_val = float(data.get('margin_value', 0.0))
+    cost = float(prod.get('price', 0.0)) if prod else 0.0
     
     if not prod or not prov_id:
-        await message.answer("❌ Error: session expired. Please restart the import process.")
+        await message_or_msg.answer("❌ Error: session expired. Please restart the import process.")
         await state.clear()
         return
         
-    from database import add_imported_product, broadcast_new_product_to_users
+    from utils import calculate_dynamic_selling_price
+    final_price = calculate_dynamic_selling_price(ptype, m_val, min_price, cost, fallback_fixed_price=data.get('fixed_price', cost))
     
+    from database import add_imported_product, broadcast_new_product_to_users, get_setting
     product_id = await add_imported_product(
         name_ar=prod.get('name_ar', prod.get('name_en')),
         name_en=prod.get('name_en'),
@@ -3266,23 +3514,26 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
         description_ar="",
         description_en="",
         description_ru="",
-        price=price,
+        price=final_price,
         custom_emoji_id=prod.get('custom_emoji_id'),
         provider_id=prov_id,
-        provider_product_id=prod['id']
+        provider_product_id=prod['id'],
+        pricing_type=ptype,
+        margin_value=m_val,
+        min_price=min_price,
+        last_provider_cost=cost
     )
     
-    # Broadcast to all users in private chat
+    bot_inst = message_or_msg.bot
     if product_id:
-        await broadcast_new_product_to_users(message.bot, product_id)
+        await broadcast_new_product_to_users(bot_inst, product_id)
         
-    # Broadcast to news channel if configured
     news_channel = await get_setting('news_channel', '')
     if news_channel:
         try:
             import html
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            bot_info = await message.bot.get_me()
+            bot_info = await bot_inst.get_me()
             bot_username = bot_info.username
             product_name = prod.get('name_en') or prod.get('name_ar') or "Product"
             escaped_name = html.escape(product_name)
@@ -3290,20 +3541,36 @@ async def process_provider_price(message: Message, state: FSMContext, lang='en')
                 f"🔥 <b>NEW PRODUCT AVAILABLE</b> 🔥\n"
                 f"──────────────────\n"
                 f"📦 <b>Name:</b> <code>{escaped_name}</code>\n"
-                f"💵 <b>Price:</b> <code>${price:.2f} USD</code>\n"
+                f"💵 <b>Price:</b> <code>${final_price:.2f} USD</code>\n"
                 f"──────────────────\n"
                 f"👉 <i>Get it now:</i> @{bot_username}"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🛒 Buy Now", url=f"https://t.me/{bot_username}")]
             ])
-            await message.bot.send_message(chat_id=news_channel, text=announce_text, parse_mode="HTML", reply_markup=kb)
+            await bot_inst.send_message(chat_id=news_channel, text=announce_text, parse_mode="HTML", reply_markup=kb)
         except Exception as e:
             logger.error(f"Failed to log imported product announcement to news channel: {e}")
-    
-    text = get_text('prov_import_success', lang, name=prod.get('name_en'), price=price)
-    await message.answer(text, parse_mode="Markdown")
+            
+    text = get_text('prov_import_success', lang, name=prod.get('name_en'), price=final_price)
+    await message_or_msg.answer(text, parse_mode="Markdown")
     await state.clear()
+
+@router.message(ProvidersStates.waiting_for_price)
+async def process_provider_price(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+        
+    try:
+        price = float(message.text.strip().replace("$", ""))
+        if price <= 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer(get_text('prov_invalid_price', lang))
+        return
+        
+    await state.update_data(fixed_price=price, pricing_type='fixed', margin_value=0.0)
+    await finalize_imported_product(message, state, min_price=0.0, lang=lang)
 
 @router.message(F.text.in_([
     get_text('btn_admin_pull_external', 'en'),

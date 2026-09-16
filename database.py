@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 try:
     from bot_config import DB_NAME
 except ImportError:
@@ -122,6 +123,14 @@ async def db_init():
                 await db.execute("ALTER TABLE products ADD COLUMN description_entities_ru TEXT;")
             if "tier_prices" not in columns:
                 await db.execute("ALTER TABLE products ADD COLUMN tier_prices TEXT;")
+            if "pricing_type" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN pricing_type TEXT DEFAULT 'fixed';")
+            if "margin_value" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN margin_value REAL DEFAULT 0.0;")
+            if "min_price" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN min_price REAL DEFAULT 0.0;")
+            if "last_provider_cost" not in columns:
+                await db.execute("ALTER TABLE products ADD COLUMN last_provider_cost REAL DEFAULT 0.0;")
                 
         # Migration: Verify expected columns in users table
         async with db.execute("PRAGMA table_info(users);") as cursor:
@@ -518,15 +527,76 @@ async def delete_provider(provider_id):
         await db.execute("DELETE FROM providers WHERE id = ?;", (provider_id,))
         await db.commit()
 
-async def add_imported_product(name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar=None, description_entities_en=None, description_entities_ru=None):
+async def add_imported_product(
+    name_ar, name_en, name_ru, description_ar, description_en, description_ru,
+    price, custom_emoji_id, provider_id, provider_product_id,
+    description_entities_ar=None, description_entities_en=None, description_entities_ru=None,
+    pricing_type='fixed', margin_value=0.0, min_price=0.0, last_provider_cost=0.0
+):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            INSERT INTO products (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar, description_entities_en, description_entities_ru)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (name_ar, name_en, name_ru, description_ar, description_en, description_ru, price, custom_emoji_id, provider_id, provider_product_id, description_entities_ar, description_entities_en, description_entities_ru))
+            INSERT INTO products (
+                name_ar, name_en, name_ru, description_ar, description_en, description_ru,
+                price, custom_emoji_id, provider_id, provider_product_id,
+                description_entities_ar, description_entities_en, description_entities_ru,
+                pricing_type, margin_value, min_price, last_provider_cost
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            name_ar, name_en, name_ru, description_ar, description_en, description_ru,
+            price, custom_emoji_id, provider_id, provider_product_id,
+            description_entities_ar, description_entities_en, description_entities_ru,
+            pricing_type, margin_value, min_price, last_provider_cost
+        ))
         product_id = cursor.lastrowid
         await db.commit()
         return product_id
+
+async def update_product_pricing_strategy(
+    product_id: int,
+    pricing_type: str,
+    margin_value: float = 0.0,
+    min_price: float = 0.0,
+    fixed_price: Optional[float] = None,
+    bot=None
+):
+    """
+    Updates the pricing strategy of a product (Fixed price, Fixed Margin $, Percentage Margin %, or Min Price floor).
+    Recalculates selling price and cancels pre-orders if price changed.
+    """
+    from utils import calculate_dynamic_selling_price
+    old_price = None
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
+            prod = await cursor.fetchone()
+            if not prod:
+                return False
+            old_price = prod['price']
+            last_cost = float(prod['last_provider_cost'] or 0.0)
+            
+        new_price = fixed_price if fixed_price is not None and fixed_price > 0 else float(old_price or 0.0)
+        if pricing_type in ['margin_fixed', 'margin_percent'] and last_cost > 0:
+            new_price = calculate_dynamic_selling_price(
+                pricing_type=pricing_type,
+                margin_value=margin_value,
+                min_price=min_price,
+                provider_cost=last_cost,
+                fallback_fixed_price=new_price
+            )
+        elif min_price > 0:
+            new_price = max(new_price, min_price)
+            
+        await db.execute("""
+            UPDATE products
+            SET pricing_type = ?, margin_value = ?, min_price = ?, price = ?
+            WHERE id = ?;
+        """, (pricing_type, margin_value, min_price, new_price, product_id))
+        await db.commit()
+        
+    if old_price is not None and abs(float(old_price) - float(new_price)) > 0.001:
+        await cancel_all_pre_orders_for_product(product_id, bot=bot, reason="price_changed")
+    return True
 
 async def get_products():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -718,6 +788,28 @@ async def get_all_stock_counts(products=None, use_cache=True):
                             set_cached_provider_stock(it_pid, num_s)
                             stock_counts[it_pid] = local_c + num_s
                             matched = True
+                            
+                            # Automatically update last_provider_cost and dynamic pricing
+                            try:
+                                p_cost = float(p.get('price') or p.get('unit_price') or p.get('price_usd') or 0.0)
+                                if p_cost > 0:
+                                    async with aiosqlite.connect(DB_NAME, timeout=10.0) as update_db:
+                                        update_db.row_factory = aiosqlite.Row
+                                        async with update_db.execute("SELECT pricing_type, margin_value, min_price, price FROM products WHERE id = ?;", (it_pid,)) as p_cur:
+                                            cur_p = await p_cur.fetchone()
+                                        if cur_p:
+                                            p_type = cur_p['pricing_type'] or 'fixed'
+                                            m_val = float(cur_p['margin_value'] or 0.0)
+                                            min_p = float(cur_p['min_price'] or 0.0)
+                                            if p_type in ['margin_fixed', 'margin_percent']:
+                                                from utils import calculate_dynamic_selling_price
+                                                new_selling_price = calculate_dynamic_selling_price(p_type, m_val, min_p, p_cost, float(cur_p['price'] or 0.0))
+                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;", (p_cost, new_selling_price, it_pid))
+                                            else:
+                                                await update_db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (p_cost, it_pid))
+                                            await update_db.commit()
+                            except Exception as sync_p_err:
+                                logger.debug(f"Price sync error for {it_pid}: {sync_p_err}")
                             break
 
                 if not matched:
@@ -815,6 +907,39 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             adapter = get_provider_adapter(prov['base_url'], prov['api_key'])
             raw_pid = product['provider_product_id']
             prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
+
+            # PRE-PURCHASE LIVE COST VERIFICATION & PRICE PROTECTION
+            prod_dict = dict(product)
+            pricing_type = prod_dict.get('pricing_type') or 'fixed'
+            margin_value = float(prod_dict.get('margin_value') or 0.0)
+            min_price = float(prod_dict.get('min_price') or 0.0)
+            
+            try:
+                live_cost = await adapter.fetch_live_product_price(prov_pid, remaining_qty)
+            except Exception as e:
+                logger.warning(f"Failed to fetch live product price for {product_id}: {e}")
+                live_cost = None
+
+            if live_cost is not None and live_cost > 0:
+                await db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (live_cost, product_id))
+                await db.commit()
+                
+                from utils import calculate_dynamic_selling_price
+                required_selling_price = calculate_dynamic_selling_price(
+                    pricing_type=pricing_type,
+                    margin_value=margin_value,
+                    min_price=min_price,
+                    provider_cost=live_cost,
+                    fallback_fixed_price=float(prod_dict.get('price') or 0.0)
+                )
+                
+                # Verify that the price paid per item covers wholesale cost and price floor
+                if (final_price_per_item + 0.005) < live_cost:
+                    set_cached_provider_stock(product_id, 0)
+                    raise Exception(f"Provider cost increased to ${live_cost:.2f} (selling at ${final_price_per_item:.2f}). Order halted to protect funds.")
+                elif pricing_type in ['margin_fixed', 'margin_percent'] and (final_price_per_item + 0.005) < required_selling_price:
+                    set_cached_provider_stock(product_id, 0)
+                    raise Exception(f"Provider cost changed to ${live_cost:.2f}. Required protected price is ${required_selling_price:.2f}. Order halted.")
 
             try:
                 delivered_items = await adapter.execute_order(
