@@ -488,20 +488,6 @@ async def msg_admin_pending_deposits(message: Message, lang='en'):
         kb = keyboards.get_admin_payment_approval_keyboard(payment['transaction_id'], lang)
         await message.answer(msg_text, reply_markup=kb, parse_mode="Markdown")
 
-@router.message(F.text.in_([
-    get_text('btn_admin_channels', 'en'), get_text('btn_admin_channels', 'ar'), get_text('btn_admin_channels', 'ru'),
-    get_text('btn_admin_support', 'en'), get_text('btn_admin_support', 'ar'), get_text('btn_admin_support', 'ru'),
-    get_text('btn_admin_charge', 'en'), get_text('btn_admin_charge', 'ar'), get_text('btn_admin_charge', 'ru'),
-    get_text('btn_admin_referral', 'en'), get_text('btn_admin_referral', 'ar'), get_text('btn_admin_referral', 'ru'),
-    get_text('btn_admin_api_keys', 'en'), get_text('btn_admin_api_keys', 'ar'), get_text('btn_admin_api_keys', 'ru'),
-    get_text('btn_admin_button_emojis', 'en'), get_text('btn_admin_button_emojis', 'ar'), get_text('btn_admin_button_emojis', 'ru'),
-    "📢 Channels Settings", "📢 إعدادات القنوات", "📢 Настройки каналов",
-    "🎧 Support Settings", "🎧 إعدادات الدعم", "🎧 Настройки поддержки",
-    "💳 Charge Section", "💳 إعدادات الدفع", "💳 Настройки оплаты",
-    "👥 Referral System", "👥 نظام الإحالة", "👥 Реферальная система",
-    "🔑 API Keys Settings", "🔑 إعدادات مفاتيح API", "🔑 Настройки API ключей",
-    "🎨 Button Emojis", "🎨 إيموجيات الأزرار", "🎨 Эмодзи кнопок"
-]))
 async def get_admin_settings_content(menu: str, lang: str = 'en'):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
@@ -651,6 +637,20 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
     builder.adjust(1)
     return text, builder.as_markup()
 
+@router.message(F.text.in_([
+    get_text('btn_admin_channels', 'en'), get_text('btn_admin_channels', 'ar'), get_text('btn_admin_channels', 'ru'),
+    get_text('btn_admin_support', 'en'), get_text('btn_admin_support', 'ar'), get_text('btn_admin_support', 'ru'),
+    get_text('btn_admin_charge', 'en'), get_text('btn_admin_charge', 'ar'), get_text('btn_admin_charge', 'ru'),
+    get_text('btn_admin_referral', 'en'), get_text('btn_admin_referral', 'ar'), get_text('btn_admin_referral', 'ru'),
+    get_text('btn_admin_api_keys', 'en'), get_text('btn_admin_api_keys', 'ar'), get_text('btn_admin_api_keys', 'ru'),
+    get_text('btn_admin_button_emojis', 'en'), get_text('btn_admin_button_emojis', 'ar'), get_text('btn_admin_button_emojis', 'ru'),
+    "📢 Channels Settings", "📢 إعدادات القنوات", "📢 Настройки каналов",
+    "🎧 Support Settings", "🎧 إعدادات الدعم", "🎧 Настройки поддержки",
+    "💳 Charge Section", "💳 إعدادات الدفع", "💳 Настройки оплаты",
+    "👥 Referral System", "👥 نظام الإحالة", "👥 Реферальная система",
+    "🔑 API Keys Settings", "🔑 إعدادات مفاتيح API", "🔑 Настройки API ключей",
+    "🎨 Button Emojis", "🎨 إيموجيات الأزرار", "🎨 Эмодзи кнопок"
+]))
 async def msg_admin_settings_menu(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
