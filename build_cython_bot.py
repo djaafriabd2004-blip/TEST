@@ -14,9 +14,17 @@ def main():
     dist_dir = os.path.join(src_dir, "dist")
     build_temp_dir = os.path.join(src_dir, "build_temp")
     
+    def remove_readonly(func, path, exc_info):
+        import stat
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass
+
     # Clean old directories
     if os.path.exists(build_temp_dir):
-        shutil.rmtree(build_temp_dir)
+        shutil.rmtree(build_temp_dir, onerror=remove_readonly)
     os.makedirs(build_temp_dir)
     
     # Clean dist but preserve .git directory for Railway deployment

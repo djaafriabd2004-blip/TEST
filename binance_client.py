@@ -111,6 +111,9 @@ async def create_binance_order(amount, description="Deposit Balance", order_id=N
             "error": "Binance Pay API keys not configured. Please set API and Secret keys in admin panel."
         }
         
+    # We construct signature with actual request headers
+    signature = generate_signature(timestamp, nonce, body_str, secret_key)
+    
     headers = {
         "Content-Type": "application/json",
         "BinancePay-Timestamp": str(timestamp),
@@ -118,10 +121,6 @@ async def create_binance_order(amount, description="Deposit Balance", order_id=N
         "BinancePay-Certificate-SN": api_key,
         "BinancePay-Signature": signature
     }
-    
-    # We construct signature with actual request headers
-    signature = generate_signature(timestamp, nonce, body_str, secret_key)
-    headers["BinancePay-Signature"] = signature
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -462,7 +461,7 @@ async def query_binance_pay_transactions(transaction_id, min_timestamp=None):
                 continue
             for k in ['transactionId', 'transId', 'orderId', 'payId', 'merchantTradeNo', 'bizId']:
                 cand_val = str(row.get(k, '')).strip()
-                if cand_val and (tx_id_str in cand_val or cand_str in tx_id_str if 'cand_str' in locals() else tx_id_str in cand_val):
+                if cand_val and (tx_id_str in cand_val or cand_val in tx_id_str):
                     matched = row
                     logger.info(f"[BINANCE_USER_API] partial_match txId={tx_id_str} key={k} candidate={cand_val}")
                     break

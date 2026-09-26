@@ -1,0 +1,221 @@
+========================================================================
+  DEPLOYMENT GUIDE - Digital Store Telegram Bot
+========================================================================
+
+This bot is fully packaged and ready to deploy on any hosting platform.
+Follow the instructions below to get your bot up and running.
+
+------------------------------------------------------------------------
+  SECTION 1: Deploy on Cloud Platforms (Railway / Render)
+------------------------------------------------------------------------
+
+Step 1: Upload bot files to GitHub
+1. Create a GitHub account (if you don't have one).
+2. Create a new Private repository.
+3. Extract the bot ZIP file and upload ALL contents to your repository.
+   (Make sure to upload: bot.py, Procfile, railway.json, requirements.txt,
+    and all folders like handlers/, middlewares/).
+
+Step 2: Connect your repository to Railway
+1. Go to https://railway.app and sign in with your GitHub account.
+2. Click "New Project" > "Deploy from GitHub repo".
+3. Select the repository you just uploaded.
+
+Step 3: Set Environment Variables
+Cloud platforms do not read .env files directly. You must set the
+variables through the platform dashboard:
+1. In your Railway project, go to the "Variables" tab.
+2. Add the following variables (click "Add" for each one):
+
+   BOT_TOKEN          = (your licensed Telegram Bot Token)
+   LICENSE_KEY        = (your cryptographic license signature received from developer)
+   LICENSE_EXPIRY     = (your license expiry date, e.g., never)
+   BINANCE_API_KEY    = (your Binance API public key)
+   BINANCE_SECRET_KEY = (your Binance API secret key)
+   DB_NAME            = store.db
+   PORT               = 8080
+
+3. Once variables are saved, Railway will automatically rebuild and
+   start the bot.
+
+NOTE: The bot includes a Procfile and railway.json for automatic
+detection of the build and start commands. No manual setup needed.
+
+------------------------------------------------------------------------
+  SECTION 2: Persistent Storage Setup (VERY IMPORTANT!)
+------------------------------------------------------------------------
+
+WARNING: Cloud platforms like Railway delete all temporary files
+(including your database store.db) on every redeploy or restart!
+You MUST set up a persistent volume to keep user data and transactions.
+
+Setting up Persistent Storage on Railway:
+1. Go to your project on Railway.app
+2. Click on your bot's Service.
+3. Go to the "Settings" tab.
+4. Scroll down to "Volumes" and click "Add Volume" or "+ Mount Volume".
+5. In the "Mount Path" field, enter exactly:
+   /app/data
+6. Click "Add" or "Save".
+7. Now go to the "Variables" tab and update the database variable:
+   DB_NAME = /app/data/store.db
+   (instead of just store.db)
+8. Railway will automatically restart the bot. From now on, all user
+   data, balances, transactions, and products are permanently saved
+   and will NOT be lost on redeployment or updates.
+
+Setting up Persistent Storage on Render:
+1. Go to your service Dashboard.
+2. Click "Disks" in the sidebar.
+3. Click "Add Disk" and set:
+   * Name: bot-data
+   * Mount Path: /app/data
+   * Size: 1 GB (or as needed)
+4. Update DB_NAME variable to: /app/data/store.db
+
+Persistent Storage on Heroku:
+Heroku does NOT support persistent local file storage.
+It is recommended to use Railway, Render, or a VPS instead.
+
+NOTE: On a VPS (Virtual Private Server), storage is persistent by
+default because your files are saved on the server's hard drive and
+are not deleted on restart. No extra setup is needed.
+
+------------------------------------------------------------------------
+  SECTION 3: Deploy on a VPS (Linux / Ubuntu)
+------------------------------------------------------------------------
+
+If you have a VPS and want to run the bot on it, follow these steps
+via the Terminal (SSH):
+
+Step 1: Upload files to your server
+Upload the entire bot folder to your server using SFTP / FileZilla
+or any file transfer tool.
+
+Step 2: Update the server and install Python
+Run the following commands:
+   sudo apt update
+   sudo apt install python3 python3-pip python3-venv -y
+
+Step 3: Configure your settings
+Open the .env file inside the bot folder and fill in your credentials:
+   BOT_TOKEN=your_bot_token
+   LICENSE_KEY=your_cryptographic_license_key
+   LICENSE_EXPIRY=never
+   BINANCE_API_KEY=your_binance_key
+   BINANCE_SECRET_KEY=your_binance_secret
+   DB_NAME=store.db
+
+Step 4: Create a virtual environment and install dependencies
+1. Navigate to the bot folder:
+   cd /path/to/bot-folder
+2. Create a virtual environment:
+   python3 -m venv venv
+3. Activate the virtual environment:
+   source venv/bin/activate
+4. Install required packages:
+   pip install -r requirements.txt
+
+Step 5: Run the bot in the background
+To keep the bot running permanently (even after closing the terminal),
+use the "screen" tool:
+1. Create a new screen session:
+   screen -S telegram-bot
+2. Start the bot:
+    python3 run.py
+3. Detach from the screen (keep bot running):
+   Press Ctrl + A, then press D.
+4. To reconnect later:
+   screen -r telegram-bot
+
+------------------------------------------------------------------------
+  SECTION 4: Simple & Secure Run using Docker (Highly Recommended)
+------------------------------------------------------------------------
+Running the bot with Docker ensures that the compiled binary (.so) files run on any host OS (Ubuntu, CentOS, Debian, Windows) without worrying about system dependencies or local Python versions.
+
+Requirements: Docker must be installed on your VPS.
+
+Steps to Run:
+1. Open the Terminal in the bot folder (dist).
+2. Build the Docker image locally:
+   docker build -t telegram-bot .
+3. Run the container in the background with persistent database mounting:
+   docker run -d \
+     --name my-bot \
+     --restart always \
+     -p 8080:8080 \
+     -v $(pwd)/store.db:/app/store.db \
+     --env-file .env \
+     telegram-bot
+
+The bot will start running in the background, connect to Telegram, and expose the REST API on port 8080.
+To view real-time logs:
+   docker logs -f my-bot
+
+=======================================================================
+  SECURITY NOTICES
+=======================================================================
+* This bot is encrypted and locked to your specific BOT_TOKEN as a
+  license protection mechanism against unauthorized redistribution.
+* Keep your Binance API keys confidential. Never share them publicly.
+* If you need to change your BOT_TOKEN, contact the developer for a
+  new licensed build.
+=======================================================================
+
+------------------------------------------------------------------------
+  SECTION 5: REST API Setup for Resellers
+------------------------------------------------------------------------
+The bot includes a built-in REST API that allows resellers to browse
+and purchase products programmatically. Here's how to set it up:
+
+How to find your API URL:
+The URL depends on your hosting platform:
+
+1. On Railway:
+   After deploying the bot, go to your project on Railway and click
+   on the service. Find the public domain under "Settings" > "Networking".
+   If not available, click "Generate Domain" to create one.
+   Your URL will look like:
+   https://your-project-name.up.railway.app
+
+2. On Render:
+   After deploying, find the URL in your service dashboard under "URL".
+   It will look like:
+   https://your-service-name.onrender.com
+
+3. On a VPS:
+   Use your server's IP address with the PORT:
+   http://YOUR_SERVER_IP:8080
+
+Available API Endpoints:
+   GET  /api/health              - Check server status
+   GET  /api/me                  - View user profile
+   GET  /api/products            - List all available products
+   GET  /api/products/{id}       - View product details
+   POST /api/buy                 - Purchase a product
+
+Authentication:
+Every API request must include an API key in the header:
+   X-API-Key: YOUR_API_KEY_HERE
+
+How does a reseller get an API key?
+1. The reseller registers with the bot on Telegram.
+2. The admin activates an API key for the reseller from the admin
+   panel inside the bot.
+3. The API key is automatically sent to the reseller via the bot.
+
+Example API request (using curl):
+   curl -H "X-API-Key: abc123" https://your-project.up.railway.app/api/products
+
+========================================================================
+  DEVELOPER SUPPORT & CONTACT
+========================================================================
+If you encounter any issues with installation or operation, contact
+the developer directly on Telegram:
+
+   @abdlwahid4
+
+* License issues (token change, expiry renewal)
+* Technical problems with installation or hosting
+* Feature requests or updates
+========================================================================
