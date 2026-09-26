@@ -1306,6 +1306,141 @@ LOCALIZATION = {
         'en': "❌ Delete Provider",
         'ar': "❌ حذف المزود",
         'ru': "❌ Удалить поставщика"
+    },
+    'btn_admin_reorder_products': {
+        'en': "🔀 Reorder Products",
+        'ar': "🔀 إعادة ترتيب المنتجات",
+        'ru': "🔀 Порядок товаров"
+    },
+    'btn_admin_manage_categories': {
+        'en': "📁 Categories & Grouping",
+        'ar': "📁 إدارة الفئات والتصنيفات",
+        'ru': "📁 Категории и группы"
+    },
+    'btn_back_to_categories': {
+        'en': "🔙 Back to Categories",
+        'ar': "🔙 العودة للأقسام",
+        'ru': "🔙 Назад к категориям"
+    },
+    'btn_toggle_categories': {
+        'en': "Categories: {status}",
+        'ar': "نظام الفئات: {status}",
+        'ru': "Режим категорий: {status}"
+    },
+    'admin_reorder_title': {
+        'en': "🔀 *Reorder Products*\n\nSelect a product to move its position:",
+        'ar': "🔀 *إعادة ترتيب المنتجات*\n\nاختر منتجاً لتعديل موضعه في المتجر:",
+        'ru': "🔀 *Порядок товаров*\n\nВыберите товар для изменения позиции:"
+    },
+    'admin_reorder_item_title': {
+        'en': "📦 *Reorder:* `{name}`\nPosition: #{pos}\n\nSelect an action:",
+        'ar': "📦 *ترتيب:* `{name}`\nالترتيب الحالي: #{pos}\n\nاختر الإجراء:",
+        'ru': "📦 *Товар:* `{name}`\nПозиция: #{pos}\n\nВыберите действие:"
+    },
+    'btn_reorder_up': {
+        'en': "⬆️ Move Up",
+        'ar': "⬆️ تقديم للأعلى",
+        'ru': "⬆️ Переместить выше"
+    },
+    'btn_reorder_down': {
+        'en': "⬇️ Move Down",
+        'ar': "⬇️ تأخير للأسفل",
+        'ru': "⬇️ Переместить ниже"
+    },
+    'btn_reorder_top': {
+        'en': "🔝 Move to Top",
+        'ar': "🔝 وضعه في البداية",
+        'ru': "🔝 В самый верх"
+    },
+    'btn_reorder_custom': {
+        'en': "🔢 Set Position #",
+        'ar': "🔢 تحديد رقم الموضع",
+        'ru': "🔢 Задать номер"
+    },
+    'admin_categories_title': {
+        'en': "📁 *Categories & Grouping*\n\nStatus: {status}\n\n💡 _Uncategorized products automatically appear directly on the main shop menu alongside categories._",
+        'ar': "📁 *إدارة الفئات والتجميع*\n\nالحالة: {status}\n\n💡 _المنتجات غير المنضمة لأي فئة تظهر تلقائياً كمنتجات مباشرة في واجهة المتجر جنباً إلى جنب مع الفئات._",
+        'ru': "📁 *Управление категориями*\n\nСтатус: {status}\n\n💡 _Товары без категории отображаются прямо в главном меню магазина наряду с категориями._"
+    },
+    'btn_add_category': {
+        'en': "➕ Add New Category",
+        'ar': "➕ إضافة فئة جديدة",
+        'ru': "➕ Добавить категорию"
+    },
+    'admin_cat_detail_title': {
+        'en': "📁 *Category:* {name}\nEmoji: {emoji}\nAssigned Products: `{count}`",
+        'ar': "📁 *الفئة:* {name}\nالإيموجي: {emoji}\nعدد المنتجات المرتبطة: `{count}`",
+        'ru': "📁 *Категория:* {name}\nЭмодзи: {emoji}\nТоваров: `{count}`"
+    },
+    'btn_cat_edit_name': {
+        'en': "✏️ Edit Name",
+        'ar': "✏️ تعديل الاسم",
+        'ru': "✏️ Изменить имя"
+    },
+    'btn_cat_edit_emoji': {
+        'en': "🎨 Change Emoji",
+        'ar': "🎨 تغيير الإيموجي",
+        'ru': "🎨 Изменить эмодзи"
+    },
+    'btn_cat_delete': {
+        'en': "🗑 Delete Category",
+        'ar': "🗑 حذف الفئة",
+        'ru': "🗑 Удалить категорию"
+    },
+    'btn_prod_assign_cat': {
+        'en': "📁 Category: {cat_name}",
+        'ar': "📁 الفئة: {cat_name}",
+        'ru': "📁 Категория: {cat_name}"
+    },
+    'cat_none': {
+        'en': "None (Standalone)",
+        'ar': "بدون فئة (مستقل)",
+        'ru': "Без категории"
+    },
+    'admin_cat_add_name_prompt': {
+        'en': "📁 Enter category name:",
+        'ar': "📁 أدخل اسم الفئة الجديدة:",
+        'ru': "📁 Введите название категории:"
+    },
+    'admin_cat_add_emoji_prompt': {
+        'en': "🎨 Send an emoji for this category (e.g. 📁, 🎮, 🎬) or send /skip:",
+        'ar': "🎨 أرسل إيموجي لهذه الفئة (مثال: 📁، 🎮، 🎬) أو أرسل /skip للتخطي:",
+        'ru': "🎨 Отправьте эмодзи для этой категории (например 📁, 🎮, 🎬) или отправьте /skip:"
+    },
+    'admin_cat_add_success': {
+        'en': "✅ Category added successfully!",
+        'ar': "✅ تمت إضافة الفئة بنجاح!",
+        'ru': "✅ Категория успешно добавлена!"
+    },
+    'admin_cat_edit_name_prompt': {
+        'en': "✏️ Enter new name for category:",
+        'ar': "✏️ أدخل الاسم الجديد للفئة:",
+        'ru': "✏️ Введите новое название категории:"
+    },
+    'admin_cat_edit_emoji_prompt': {
+        'en': "🎨 Send new emoji for category (e.g. 📁, 🎮, 🎬):",
+        'ar': "🎨 أرسل الإيموجي الجديد للفئة:",
+        'ru': "🎨 Отправьте новый эмодзи для категории:"
+    },
+    'admin_cat_del_confirm': {
+        'en': "⚠️ Are you sure you want to delete this category?\nProducts in this category will become standalone uncategorized products.",
+        'ar': "⚠️ هل أنت متأكد من حذف هذه الفئة؟\nالمنتجات التابعة لها ستتحول إلى منتجات مستقلة بدون فئة.",
+        'ru': "⚠️ Вы уверены, что хотите удалить эту категорию?\nТовары станут товарами без категории."
+    },
+    'admin_reorder_custom_prompt': {
+        'en': "🔢 Send the new position number for `{name}` (between 1 and {total}):",
+        'ar': "🔢 أرسل رقم الترتيب الجديد للمنتج `{name}` (من 1 إلى {total}):",
+        'ru': "🔢 Введите новый номер позиции для `{name}` (от 1 до {total}):"
+    },
+    'admin_reorder_success': {
+        'en': "✅ Product position updated!",
+        'ar': "✅ تم تحديث ترتيب المنتج بنجاح!",
+        'ru': "✅ Позиция товара обновлена!"
+    },
+    'admin_cat_updated': {
+        'en': "✅ Category updated!",
+        'ar': "✅ تم تحديث الفئة بنجاح!",
+        'ru': "✅ Категория обновлена!"
     }
 }
 

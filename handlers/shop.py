@@ -23,21 +23,45 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-async def show_products_list(message_or_callback, lang='en'):
-    products = await get_products()
-    if not products:
-        text = get_text('shop_empty', lang)
-        if isinstance(message_or_callback, CallbackQuery):
-            await message_or_callback.message.edit_text(text, reply_markup=keyboards.get_products_keyboard([], {}, lang))
+async def show_products_list(message_or_callback, lang='en', category_id=None):
+    from database import get_categories, get_uncategorized_products, get_all_stock_counts
+    
+    grouping_enabled = await get_setting("grouping_enabled", "0")
+    
+    if category_id is not None:
+        products = await get_products(category_id=category_id)
+        if not products:
+            text = get_text('shop_empty', lang)
+            kb = keyboards.get_products_keyboard([], {}, lang, category_id=category_id)
         else:
-            await message_or_callback.answer(text)
-        return
-        
-    from database import get_all_stock_counts
-    stock_counts = await get_all_stock_counts(products)
-        
-    text = get_text('shop_title', lang)
-    kb = keyboards.get_products_keyboard(products, stock_counts, lang)
+            stock_counts = await get_all_stock_counts(products)
+            text = get_text('shop_title', lang)
+            kb = keyboards.get_products_keyboard(products, stock_counts, lang, category_id=category_id)
+    elif grouping_enabled == "1":
+        categories = await get_categories()
+        standalone_products = await get_uncategorized_products()
+        if categories:
+            stock_counts = await get_all_stock_counts(standalone_products)
+            text = get_text('shop_title', lang)
+            kb = keyboards.get_shop_home_keyboard(categories, standalone_products, stock_counts, lang)
+        else:
+            products = await get_products()
+            if not products:
+                text = get_text('shop_empty', lang)
+                kb = keyboards.get_products_keyboard([], {}, lang)
+            else:
+                stock_counts = await get_all_stock_counts(products)
+                text = get_text('shop_title', lang)
+                kb = keyboards.get_products_keyboard(products, stock_counts, lang)
+    else:
+        products = await get_products()
+        if not products:
+            text = get_text('shop_empty', lang)
+            kb = keyboards.get_products_keyboard([], {}, lang)
+        else:
+            stock_counts = await get_all_stock_counts(products)
+            text = get_text('shop_title', lang)
+            kb = keyboards.get_products_keyboard(products, stock_counts, lang)
     
     if isinstance(message_or_callback, CallbackQuery):
         from aiogram.exceptions import TelegramBadRequest
@@ -62,6 +86,24 @@ async def cmd_shop(message: Message, lang='en'):
 @router.callback_query(F.data == "shop_list")
 async def cb_shop_list(callback: CallbackQuery, lang='en'):
     await show_products_list(callback, lang)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("cat_view_"))
+async def cb_cat_view(callback: CallbackQuery, lang='en'):
+    try:
+        cat_id = int(callback.data.replace("cat_view_", ""))
+        await show_products_list(callback, lang=lang, category_id=cat_id)
+    except Exception as e:
+        logger.error(f"Error in cb_cat_view: {e}")
+    finally:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+
+@router.callback_query(F.data == "shop_categories")
+async def cb_shop_categories(callback: CallbackQuery, lang='en'):
+    await show_products_list(callback, lang=lang, category_id=None)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("prod_view_"))
@@ -89,7 +131,13 @@ async def cb_product_view(callback: CallbackQuery, lang='en'):
         if not has_stock:
             is_sub = await is_subscribed_stock_notification(user_id, product_id)
         
-        kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub)
+        prod_cat_id = None
+        if hasattr(product, 'keys') and 'category_id' in product.keys() and product['category_id']:
+            prod_cat_id = product['category_id']
+        elif isinstance(product, dict) and product.get('category_id'):
+            prod_cat_id = product['category_id']
+            
+        kb = keyboards.get_product_view_keyboard(product_id, has_stock, lang, is_subscribed=is_sub, category_id=prod_cat_id)
         if entities:
             try:
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)

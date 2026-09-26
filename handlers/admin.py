@@ -8,11 +8,13 @@ from database import (
     add_stock, bulk_add_stock, get_stock_count, get_setting, set_setting, get_all_users,
     get_user, get_referral_count, get_all_pending_payments, get_stats,
     get_stock_notification_subscribers, clear_stock_notifications, get_user_full_report,
-    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users
+    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users,
+    get_categories, get_category, add_category, update_category, delete_category,
+    update_product_order, update_product_category, update_category_order
 )
 from localization import get_text
 from utils import get_product_name
-from handlers.states import ProductStates, StockStates, AdminStates
+from handlers.states import ProductStates, StockStates, AdminStates, CategoryStates
 import keyboards
 try:
     import bot_config as config
@@ -392,11 +394,13 @@ async def msg_admin_manage_products(message: Message, lang='en'):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
+    builder.button(text=get_text('btn_admin_reorder_products', lang), callback_data="admin_reorder_prods")
+    builder.button(text=get_text('btn_admin_manage_categories', lang), callback_data="admin_manage_categories")
     for prod in products:
         name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
-    builder.adjust(1)
+    builder.adjust(1, 2, *([1] * (len(products) + 1)))
     
     await message.answer(
         get_text('admin_prod_mgmt_title', lang),
@@ -746,13 +750,15 @@ async def cb_admin_manage_products(callback: CallbackQuery, lang='en'):
     builder = InlineKeyboardBuilder()
     
     builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
+    builder.button(text=get_text('btn_admin_reorder_products', lang), callback_data="admin_reorder_prods")
+    builder.button(text=get_text('btn_admin_manage_categories', lang), callback_data="admin_manage_categories")
     
     for prod in products:
         name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
         
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
-    builder.adjust(1)
+    builder.adjust(1, 2, *([1] * (len(products) + 1)))
     
     await callback.message.edit_text(
         get_text('admin_prod_mgmt_title', lang),
@@ -777,7 +783,14 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
         from utils import format_product_message
         text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
         
-        kb = keyboards.get_admin_product_edit_keyboard(prod_id, lang)
+        cat_name = None
+        if hasattr(product, 'keys') and 'category_id' in product.keys() and product['category_id']:
+            cat = await get_category(product['category_id'])
+            if cat:
+                cat_dict = dict(cat)
+                cat_name = f"{cat_dict.get('icon_emoji', '📁')} {cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')}"
+        
+        kb = keyboards.get_admin_product_edit_keyboard(prod_id, lang, cat_name=cat_name)
         if entities:
             try:
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)
@@ -1421,6 +1434,301 @@ async def finalize_edit_product_pricing(message_or_msg, state: FSMContext, min_p
     text = get_text('pricing_strategy_updated', lang, name=prod_name, type_name=type_labels.get(ptype, ptype), price=new_price)
     await message_or_msg.answer(text, reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
     await state.clear()
+
+# --- Admin Reordering Handlers ---
+@router.callback_query(F.data == "admin_reorder_prods")
+async def cb_admin_reorder_products(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    products = await get_products()
+    if not products:
+        await callback.answer(get_text('shop_empty', lang), show_alert=True)
+        return
+    kb = keyboards.get_admin_reorder_keyboard(products, lang)
+    await callback.message.edit_text(
+        get_text('admin_reorder_title', lang),
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_reord_sel_"))
+async def cb_admin_reorder_select(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_reord_sel_", ""))
+    products = await get_products()
+    prod_ids = [p['id'] for p in products]
+    if prod_id not in prod_ids:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+    pos = prod_ids.index(prod_id) + 1
+    prod = await get_product(prod_id)
+    p_name = get_product_name(prod, lang)
+    
+    kb = keyboards.get_admin_reorder_item_keyboard(prod_id, pos, len(products), lang)
+    text = get_text('admin_reorder_item_title', lang, name=p_name, pos=pos)
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_reord_top_"))
+async def cb_admin_reord_top(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_reord_top_", ""))
+    products = await get_products()
+    p_list = [p['id'] for p in products]
+    if prod_id in p_list:
+        p_list.remove(prod_id)
+        p_list.insert(0, prod_id)
+        for idx, pid in enumerate(p_list, 1):
+            await update_product_order(pid, idx)
+    await callback.answer(get_text('admin_reorder_success', lang))
+    await cb_admin_reorder_products(callback, lang)
+
+@router.callback_query(F.data.startswith("admin_reord_up_"))
+async def cb_admin_reord_up(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_reord_up_", ""))
+    products = await get_products()
+    p_list = [p['id'] for p in products]
+    if prod_id in p_list:
+        idx = p_list.index(prod_id)
+        if idx > 0:
+            p_list[idx], p_list[idx - 1] = p_list[idx - 1], p_list[idx]
+            for i, pid in enumerate(p_list, 1):
+                await update_product_order(pid, i)
+    await callback.answer(get_text('admin_reorder_success', lang))
+    callback.data = f"admin_reord_sel_{prod_id}"
+    await cb_admin_reorder_select(callback, lang)
+
+@router.callback_query(F.data.startswith("admin_reord_down_"))
+async def cb_admin_reord_down(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_reord_down_", ""))
+    products = await get_products()
+    p_list = [p['id'] for p in products]
+    if prod_id in p_list:
+        idx = p_list.index(prod_id)
+        if idx < len(p_list) - 1:
+            p_list[idx], p_list[idx + 1] = p_list[idx + 1], p_list[idx]
+            for i, pid in enumerate(p_list, 1):
+                await update_product_order(pid, i)
+    await callback.answer(get_text('admin_reorder_success', lang))
+    callback.data = f"admin_reord_sel_{prod_id}"
+    await cb_admin_reorder_select(callback, lang)
+
+@router.callback_query(F.data.startswith("admin_reord_num_"))
+async def cb_admin_reord_num(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_reord_num_", ""))
+    prod = await get_product(prod_id)
+    p_name = get_product_name(prod, lang)
+    products = await get_products()
+    
+    await state.update_data(reorder_prod_id=prod_id)
+    await state.set_state(AdminStates.waiting_for_reorder_pos)
+    
+    msg = get_text('admin_reorder_custom_prompt', lang, name=p_name, total=len(products))
+    await callback.message.answer(msg, parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(AdminStates.waiting_for_reorder_pos)
+async def msg_admin_reorder_pos_submit(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    data = await state.get_data()
+    prod_id = data.get("reorder_prod_id")
+    await state.clear()
+    
+    if not text.isdigit() or not prod_id:
+        await message.answer("❌ Invalid number.")
+        return
+        
+    target_pos = int(text)
+    products = await get_products()
+    p_list = [p['id'] for p in products]
+    if prod_id in p_list:
+        p_list.remove(prod_id)
+        target_idx = max(0, min(target_pos - 1, len(p_list)))
+        p_list.insert(target_idx, prod_id)
+        for i, pid in enumerate(p_list, 1):
+            await update_product_order(pid, i)
+            
+    await message.answer(get_text('admin_reorder_success', lang))
+
+# --- Admin Categories Handlers ---
+@router.callback_query(F.data == "admin_manage_categories")
+async def cb_admin_manage_categories(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    categories = await get_categories()
+    grouping_enabled = await get_setting("grouping_enabled", "0")
+    status_str = "🟢 Enabled" if grouping_enabled == "1" else "🔴 Disabled"
+    
+    kb = keyboards.get_admin_manage_categories_keyboard(categories, grouping_enabled, lang)
+    text = get_text('admin_categories_title', lang, status=status_str)
+    
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_toggle_grouping")
+async def cb_admin_toggle_grouping(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    current = await get_setting("grouping_enabled", "0")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("grouping_enabled", new_val)
+    await callback.answer(f"Categories {'Enabled' if new_val == '1' else 'Disabled'}")
+    await cb_admin_manage_categories(callback, lang)
+
+@router.callback_query(F.data == "admin_cat_add")
+async def cb_admin_cat_add(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    await state.set_state(CategoryStates.waiting_for_name)
+    await callback.message.answer(get_text('admin_cat_add_name_prompt', lang))
+    await callback.answer()
+
+@router.message(CategoryStates.waiting_for_name)
+async def msg_admin_cat_name_submit(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    name = message.text.strip()
+    if not name:
+        await message.answer("❌ Invalid name.")
+        return
+    await state.update_data(cat_name=name)
+    await state.set_state(CategoryStates.waiting_for_emoji)
+    await message.answer(get_text('admin_cat_add_emoji_prompt', lang))
+
+@router.message(CategoryStates.waiting_for_emoji)
+async def msg_admin_cat_emoji_submit(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    data = await state.get_data()
+    name = data.get("cat_name", "Category")
+    await state.clear()
+    
+    emoji = '📁' if text.lower() in ['/skip', 'skip', 'تخطي'] else text[:4].strip()
+    await add_category(name_en=name, name_ar=name, name_ru=name, icon_emoji=emoji)
+    await message.answer(get_text('admin_cat_add_success', lang))
+
+@router.callback_query(F.data.startswith("admin_cat_view_"))
+async def cb_admin_cat_view(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    cat_id = int(callback.data.replace("admin_cat_view_", ""))
+    cat = await get_category(cat_id)
+    if not cat:
+        await callback.answer("Category not found.", show_alert=True)
+        return
+    cat_dict = dict(cat)
+    c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
+    c_emoji = cat_dict.get('icon_emoji', '📁')
+    
+    prods = await get_products(category_id=cat_id)
+    count = len(prods)
+    
+    kb = keyboards.get_admin_category_detail_keyboard(cat_id, lang)
+    text = get_text('admin_cat_detail_title', lang, name=c_name, emoji=c_emoji, count=count)
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_cat_rename_"))
+async def cb_admin_cat_rename(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    cat_id = int(callback.data.replace("admin_cat_rename_", ""))
+    await state.update_data(edit_cat_id=cat_id)
+    await state.set_state(CategoryStates.waiting_for_edit_name)
+    await callback.message.answer(get_text('admin_cat_edit_name_prompt', lang))
+    await callback.answer()
+
+@router.message(CategoryStates.waiting_for_edit_name)
+async def msg_admin_cat_rename_submit(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    data = await state.get_data()
+    cat_id = data.get("edit_cat_id")
+    await state.clear()
+    if cat_id and text:
+        cat = await get_category(cat_id)
+        if cat:
+            cat_dict = dict(cat)
+            await update_category(cat_id, name_en=text, name_ar=text, name_ru=text, icon_emoji=cat_dict.get('icon_emoji', '📁'))
+            await message.answer(get_text('admin_cat_updated', lang))
+
+@router.callback_query(F.data.startswith("admin_cat_reemoji_"))
+async def cb_admin_cat_reemoji(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    cat_id = int(callback.data.replace("admin_cat_reemoji_", ""))
+    await state.update_data(edit_cat_id=cat_id)
+    await state.set_state(CategoryStates.waiting_for_edit_emoji)
+    await callback.message.answer(get_text('admin_cat_edit_emoji_prompt', lang))
+    await callback.answer()
+
+@router.message(CategoryStates.waiting_for_edit_emoji)
+async def msg_admin_cat_reemoji_submit(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    data = await state.get_data()
+    cat_id = data.get("edit_cat_id")
+    await state.clear()
+    if cat_id and text:
+        cat = await get_category(cat_id)
+        if cat:
+            cat_dict = dict(cat)
+            emoji = text[:4].strip()
+            await update_category(cat_id, name_en=cat_dict['name_en'], name_ar=cat_dict['name_ar'], name_ru=cat_dict['name_ru'], icon_emoji=emoji)
+            await message.answer(get_text('admin_cat_updated', lang))
+
+@router.callback_query(F.data.startswith("admin_cat_del_"))
+async def cb_admin_cat_del(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    cat_id = int(callback.data.replace("admin_cat_del_", ""))
+    await delete_category(cat_id)
+    await callback.answer("Deleted.", show_alert=True)
+    await cb_admin_manage_categories(callback, lang)
+
+# --- Admin Product Category Assignment ---
+@router.callback_query(F.data.startswith("admin_prod_cat_"))
+async def cb_admin_prod_cat(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_prod_cat_", ""))
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+    categories = await get_categories()
+    current_cat_id = product['category_id'] if ('category_id' in product.keys() and product['category_id']) else None
+    kb = keyboards.get_admin_product_categories_picker(prod_id, categories, current_cat_id=current_cat_id, lang=lang)
+    p_name = get_product_name(product, lang)
+    await callback.message.edit_text(f"📁 *Select Category for:* `{p_name}`", reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_set_pcat_"))
+async def cb_admin_set_pcat(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    parts = callback.data.replace("admin_set_pcat_", "").split("_")
+    prod_id = int(parts[0])
+    cat_id = int(parts[1])
+    target_cat_id = None if cat_id == 0 else cat_id
+    await update_product_category(prod_id, target_cat_id)
+    await callback.answer(get_text('admin_cat_updated', lang))
+    callback.data = f"admin_prod_view_{prod_id}"
+    await cb_admin_prod_view(callback, lang)
 
 # --- Stock Settings ---
 @router.callback_query(F.data.in_(["admin_add_stock", "admin_bulk_stock"]))

@@ -62,6 +62,13 @@ class AdminStates(StatesGroup):
     waiting_for_custom_price_user_id = State()
     waiting_for_custom_price_product_id = State()
     waiting_for_custom_price_value = State()
+    waiting_for_reorder_pos = State()
+
+class CategoryStates(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_emoji = State()
+    waiting_for_edit_name = State()
+    waiting_for_edit_emoji = State()
 
 class ProvidersStates(StatesGroup):
     waiting_for_url = State()

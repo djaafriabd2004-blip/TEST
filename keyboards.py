@@ -52,7 +52,7 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_products_keyboard(products, stock_counts=None, lang='en') -> InlineKeyboardMarkup:
+def get_products_keyboard(products, stock_counts=None, lang='en', category_id=None) -> InlineKeyboardMarkup:
     if not lang or lang not in ['en', 'ar', 'ru']:
         lang = 'en'
     builder = InlineKeyboardBuilder()
@@ -78,10 +78,51 @@ def get_products_keyboard(products, stock_counts=None, lang='en') -> InlineKeybo
             kwargs["icon_custom_emoji_id"] = emoji_id
         
         builder.button(**kwargs)
+        
+    if category_id is not None:
+        builder.button(text=get_text('btn_back_to_categories', lang), callback_data="shop_categories", style="danger")
     builder.adjust(1)
     return builder.as_markup()
 
-def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=False) -> InlineKeyboardMarkup:
+def get_shop_home_keyboard(categories, standalone_products, stock_counts=None, lang='en') -> InlineKeyboardMarkup:
+    if not lang or lang not in ['en', 'ar', 'ru']:
+        lang = 'en'
+    builder = InlineKeyboardBuilder()
+    if stock_counts is None:
+        stock_counts = {}
+        
+    # 1. Categories first
+    for cat in categories:
+        cat_dict = dict(cat)
+        c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
+        c_emoji = cat_dict.get('icon_emoji') or '📁'
+        builder.button(text=f"{c_emoji} {c_name}", callback_data=f"cat_view_{cat_dict['id']}")
+        
+    # 2. Standalone / Uncategorized products
+    for product in standalone_products:
+        keys = product.keys() if hasattr(product, 'keys') else []
+        name_key = f'name_{lang}'
+        name = product[name_key] if name_key in keys else product['name_en']
+        price = product['price']
+        emoji_id = product['custom_emoji_id'] if 'custom_emoji_id' in product.keys() else None
+        
+        stock = stock_counts.get(product['id'], 0)
+        style = "success" if stock > 0 else "danger"
+        
+        kwargs = {
+            "text": f"{name} - ${price:.2f}",
+            "callback_data": f"prod_view_{product['id']}",
+            "style": style
+        }
+        if emoji_id:
+            kwargs["icon_custom_emoji_id"] = emoji_id
+            
+        builder.button(**kwargs)
+        
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=False, category_id=None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if has_stock:
         builder.button(text=get_text('btn_buy', lang), callback_data=f"prod_buy_{product_id}", style="success", icon_custom_emoji_id="5368324170671202286")
@@ -92,7 +133,8 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
             builder.button(text=get_text('btn_cancel_notify_stock', lang), callback_data=f"notify_unsub_{product_id}")
         else:
             builder.button(text=get_text('btn_notify_stock', lang), callback_data=f"notify_sub_{product_id}", style="primary")
-    builder.button(text=get_text('btn_back', lang), callback_data="shop_list", style="danger")
+    back_cb = f"cat_view_{category_id}" if category_id else "shop_list"
+    builder.button(text=get_text('btn_back', lang), callback_data=back_cb, style="danger")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -280,12 +322,14 @@ def get_admin_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_product_edit_keyboard(product_id, lang='en') -> InlineKeyboardMarkup:
+def get_admin_product_edit_keyboard(product_id, lang='en', cat_name=None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_edit_details', lang), callback_data=f"admin_edit_fields_{product_id}")
     builder.button(text=get_text('btn_admin_pricing_strategy', lang), callback_data=f"admin_prod_pricing_{product_id}")
     builder.button(text=get_text('btn_admin_tier_prices_btn', lang), callback_data=f"admin_prod_tiers_{product_id}")
     builder.button(text=get_text('btn_admin_edit_emoji_btn', lang), callback_data=f"admin_edit_emoji_{product_id}")
+    display_cat = cat_name if cat_name else get_text('cat_none', lang)
+    builder.button(text=get_text('btn_prod_assign_cat', lang, cat_name=display_cat), callback_data=f"admin_prod_cat_{product_id}")
     builder.button(text=get_text('btn_admin_delete_product_btn', lang), callback_data=f"admin_prod_del_{product_id}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
     builder.adjust(1)
@@ -533,4 +577,65 @@ def get_admin_preorder_actions_keyboard(pre_order_id, product_id, lang='en') -> 
     builder.button(text=get_text('btn_admin_back', lang), callback_data=f"adm_po_list_{product_id}")
     builder.adjust(1)
     return builder.as_markup()
+
+# --- Categories & Reordering Admin Keyboards ---
+def get_admin_manage_categories_keyboard(categories, grouping_enabled='0', lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    status_text = "🟢 ON" if grouping_enabled == '1' else "🔴 OFF"
+    builder.button(text=get_text('btn_toggle_categories', lang, status=status_text), callback_data="admin_toggle_grouping")
+    builder.button(text=get_text('btn_add_category', lang), callback_data="admin_cat_add")
+    for cat in categories:
+        cat_dict = dict(cat) if hasattr(cat, 'keys') else cat
+        cat_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
+        cat_emoji = cat_dict.get('icon_emoji') or '📁'
+        builder.button(text=f"{cat_emoji} {cat_name}", callback_data=f"admin_cat_view_{cat_dict['id']}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_category_detail_keyboard(cat_id, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=get_text('btn_cat_edit_name', lang), callback_data=f"admin_cat_rename_{cat_id}")
+    builder.button(text=get_text('btn_cat_edit_emoji', lang), callback_data=f"admin_cat_reemoji_{cat_id}")
+    builder.button(text=get_text('btn_cat_delete', lang), callback_data=f"admin_cat_del_{cat_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_categories")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_product_categories_picker(product_id, categories, current_cat_id=None, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    mark_none = "✅ " if (current_cat_id is None or current_cat_id == 0) else ""
+    builder.button(text=f"{mark_none}{get_text('cat_none', lang)}", callback_data=f"admin_set_pcat_{product_id}_0")
+    for cat in categories:
+        cat_dict = dict(cat) if hasattr(cat, 'keys') else cat
+        c_id = cat_dict['id']
+        c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
+        c_emoji = cat_dict.get('icon_emoji') or '📁'
+        mark = "✅ " if current_cat_id == c_id else ""
+        builder.button(text=f"{mark}{c_emoji} {c_name}", callback_data=f"admin_set_pcat_{product_id}_{c_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_prod_view_{product_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_reorder_keyboard(products, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for idx, p in enumerate(products, 1):
+        p_dict = dict(p) if hasattr(p, 'keys') else p
+        name = p_dict.get(f'name_{lang}') or p_dict.get('name_en')
+        price = p_dict.get('price', 0.0)
+        builder.button(text=f"#{idx} 📦 {name} (${price:.2f})", callback_data=f"admin_reord_sel_{p_dict['id']}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
+    builder.adjust(1)
+    return builder.as_markup()
+
+def get_admin_reorder_item_keyboard(product_id, current_pos, total_count, lang='en') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=get_text('btn_reorder_top', lang), callback_data=f"admin_reord_top_{product_id}")
+    builder.button(text=get_text('btn_reorder_up', lang), callback_data=f"admin_reord_up_{product_id}")
+    builder.button(text=get_text('btn_reorder_down', lang), callback_data=f"admin_reord_down_{product_id}")
+    builder.button(text=get_text('btn_reorder_custom', lang), callback_data=f"admin_reord_num_{product_id}")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_reorder_prods")
+    builder.adjust(1, 2, 1, 1)
+    return builder.as_markup()
+
 

@@ -239,6 +239,19 @@ async def db_init():
         );
         """)
         
+        # Categories Table
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name_en TEXT NOT NULL,
+            name_ar TEXT NOT NULL,
+            name_ru TEXT NOT NULL,
+            icon_emoji TEXT DEFAULT '📁',
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """)
+        
         # Seed settings if they don't exist
         default_settings = {
             'support_username': '',
@@ -263,6 +276,7 @@ async def db_init():
             'binance_api_proxy': '',
             'binance_api_base_url': 'https://api.binance.com',
             'binance_pay_base_url': 'https://bpay.binanceapi.com',
+            'grouping_enabled': '0',
         }
         for key, val in default_settings.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
@@ -273,9 +287,25 @@ async def db_init():
         # Clean up any invalid language codes in users table
         await db.execute("UPDATE users SET language = 'en' WHERE language NOT IN ('en', 'ar', 'ru');")
         
-        # Try adding store_name to providers table in case it was created without it
+        # Safe migrations for providers, products, and categories
         try:
             await db.execute("ALTER TABLE providers ADD COLUMN store_name TEXT;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE products ADD COLUMN sort_order INTEGER DEFAULT 0;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE products ADD COLUMN category_id INTEGER DEFAULT NULL;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE categories ADD COLUMN sort_order INTEGER DEFAULT 0;")
+        except Exception:
+            pass
+        try:
+            await db.execute("ALTER TABLE categories ADD COLUMN icon_emoji TEXT DEFAULT '📁';")
         except Exception:
             pass
             
@@ -598,11 +628,72 @@ async def update_product_pricing_strategy(
         await cancel_all_pre_orders_for_product(product_id, bot=bot, reason="price_changed")
     return True
 
-async def get_products():
+async def get_products(category_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM products;") as cursor:
+        if category_id is not None:
+            async with db.execute("SELECT * FROM products WHERE category_id = ? ORDER BY sort_order ASC, id ASC;", (category_id,)) as cursor:
+                return await cursor.fetchall()
+        else:
+            async with db.execute("SELECT * FROM products ORDER BY sort_order ASC, id ASC;") as cursor:
+                return await cursor.fetchall()
+
+async def get_uncategorized_products():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM products WHERE category_id IS NULL OR category_id = 0 ORDER BY sort_order ASC, id ASC;") as cursor:
             return await cursor.fetchall()
+
+async def get_categories():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM categories ORDER BY sort_order ASC, id ASC;") as cursor:
+            return await cursor.fetchall()
+
+async def get_category(cat_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM categories WHERE id = ?;", (cat_id,)) as cursor:
+            return await cursor.fetchone()
+
+async def add_category(name_en, name_ar, name_ru, icon_emoji='📁', sort_order=0):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(
+            "INSERT INTO categories (name_en, name_ar, name_ru, icon_emoji, sort_order) VALUES (?, ?, ?, ?, ?);",
+            (name_en, name_ar, name_ru, icon_emoji, sort_order)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+async def update_category(cat_id, name_en, name_ar, name_ru, icon_emoji='📁'):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "UPDATE categories SET name_en = ?, name_ar = ?, name_ru = ?, icon_emoji = ? WHERE id = ?;",
+            (name_en, name_ar, name_ru, icon_emoji, cat_id)
+        )
+        await db.commit()
+
+async def delete_category(cat_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Unbind products from this category safely without deleting products
+        await db.execute("UPDATE products SET category_id = NULL WHERE category_id = ?;", (cat_id,))
+        await db.execute("DELETE FROM categories WHERE id = ?;", (cat_id,))
+        await db.commit()
+
+async def update_product_order(product_id, new_order):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE products SET sort_order = ? WHERE id = ?;", (new_order, product_id))
+        await db.commit()
+
+async def update_product_category(product_id, category_id):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE products SET category_id = ? WHERE id = ?;", (category_id, product_id))
+        await db.commit()
+
+async def update_category_order(cat_id, new_order):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE categories SET sort_order = ? WHERE id = ?;", (new_order, cat_id))
+        await db.commit()
 
 async def get_product(product_id):
     async with aiosqlite.connect(DB_NAME) as db:
