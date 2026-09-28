@@ -181,7 +181,8 @@ class BaseProviderAdapter:
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         """
         Executes order and returns delivered keys/items as list of strings.
@@ -201,6 +202,16 @@ class BaseProviderAdapter:
             "client_order_id": order_ref,
             "idempotency_key": order_ref
         }
+        if customer_email:
+            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            if email_list:
+                if int(quantity) == 1:
+                    payload["email"] = email_list[0]
+                else:
+                    if len(email_list) < int(quantity):
+                        email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                    payload["emails"] = email_list[:int(quantity)]
+                    payload["email"] = email_list[0]
         
         endpoints = [
             f"{self.base_url}/api/v1/orders",
@@ -301,6 +312,12 @@ class BaseProviderAdapter:
             if stock_val is None:
                 stock_val = extract_stock_from_dict(p, allow_boolean=True) or 0
                 
+            req_email = bool(
+                p.get("requiresEmailActivation")
+                or p.get("requires_email")
+                or (isinstance(p.get("delivery"), dict) and p["delivery"].get("requiresEmailActivation"))
+            )
+
             formatted.append({
                 "id": str(p_id),
                 "name": p_name,
@@ -313,7 +330,9 @@ class BaseProviderAdapter:
                 "description_ru": "",
                 "price": price_val,
                 "stock": stock_val,
-                "custom_emoji_id": p.get("custom_emoji_id")
+                "custom_emoji_id": p.get("custom_emoji_id"),
+                "requires_email": req_email,
+                "requiresEmailActivation": req_email
             })
         return formatted
 
@@ -364,8 +383,17 @@ class BaseProviderAdapter:
                 return [r for r in res if r]
             else:
                 return [str(raw_creds)]
+        elif isinstance(buy_data.get('activation'), dict) or buy_data.get('status') == 'paid':
+            act = buy_data.get('activation') if isinstance(buy_data.get('activation'), dict) else {}
+            emails = act.get('emails') or ([act['email']] if act.get('email') else [])
+            eta = act.get('eta', 'ASAP')
+            ord_id = buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
+            status_str = str(buy_data.get('status') or 'paid').upper()
+            if emails:
+                return [f"✅ Activation Order #{ord_id} ({status_str}) — Email: {em} | ETA: {eta}" for em in emails]
+            return [f"✅ Activation Order #{ord_id} ({status_str}) | ETA: {eta}"]
         elif buy_data.get('success') or buy_data.get('ok') or buy_data.get('status') in ['completed', 'delivered']:
-            ord_id = buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
+            ord_id = buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
             return [f"Order #{ord_id} Completed Successfully"]
             
         raise Exception("Provider returned empty delivery data")
@@ -461,7 +489,8 @@ class PandoraProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
@@ -505,6 +534,15 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                 buy_payload["price_version"] = str(price_version)
             if order_ref:
                 buy_payload["client_order_reference"] = order_ref[:100]
+            if customer_email:
+                email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+                if email_list:
+                    if int(quantity) == 1:
+                        buy_payload["email"] = email_list[0]
+                    else:
+                        if len(email_list) < int(quantity):
+                            email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                        buy_payload["emails"] = email_list[:int(quantity)]
 
             logger.info(f"Executing Pandora order on {self.base_url}/api/v1/orders with payload: {buy_payload}")
             async with s.post(f"{self.base_url}/api/v1/orders", headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
@@ -619,7 +657,8 @@ class AethelProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
@@ -710,7 +749,8 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
@@ -721,6 +761,16 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
             "external_order_id": order_ref,
             "client_order_reference": order_ref
         }
+        if customer_email:
+            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            if email_list:
+                if int(quantity) == 1:
+                    payload["email"] = email_list[0]
+                else:
+                    if len(email_list) < int(quantity):
+                        email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                    payload["emails"] = email_list[:int(quantity)]
+
         headers = self.get_headers({"Idempotency-Key": order_ref})
 
         async def _req(s):
@@ -781,7 +831,8 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
@@ -851,7 +902,8 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
@@ -861,6 +913,12 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
             "quantity": int(quantity),
             "external_order_id": order_ref
         }
+        if customer_email:
+            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            if email_list:
+                payload["email"] = email_list[0]
+                if int(quantity) > 1:
+                    payload["emails"] = email_list[:int(quantity)]
         url = f"{self.base_url}?action=order"
 
         async def _req(s):
@@ -1043,7 +1101,8 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         quantity: int,
         expected_price: Optional[float] = None,
         client_order_ref: Optional[str] = None,
-        session: Optional[aiohttp.ClientSession] = None
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
     ) -> List[str]:
         prov_pid = str(provider_product_id).strip()
         item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
@@ -1057,6 +1116,14 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
             "quantity": int(quantity),
             "idempotency_key": str(order_ref)
         }
+        if customer_email:
+            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            if email_list:
+                payload["email"] = email_list[0]
+                if int(quantity) > 1:
+                    if len(email_list) < int(quantity):
+                        email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                    payload["emails"] = email_list[:int(quantity)]
         
         endpoints = [
             f"{self.base_url}/api/reseller/orders",

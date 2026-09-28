@@ -209,7 +209,74 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         await message.answer(get_text('invalid_quantity', lang, max_stock=max_stock))
         return
         
+    product = await get_product(product_id)
+    if not product:
+        await state.clear()
+        await message.answer("Product not found.")
+        return
+
+    prod_name = get_product_name(product, lang)
+    req_email = bool(dict(product).get('requires_email'))
+    if req_email:
+        await state.set_state(ShopStates.waiting_for_activation_email)
+        await state.update_data(buy_product_id=product_id, buy_qty=qty)
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+        if qty == 1:
+            msg = get_text('ask_activation_email_single', lang, name=prod_name)
+        else:
+            msg = get_text('ask_activation_email_multi', lang, name=prod_name, qty=qty)
+        await message.answer(msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
+        return
+        
     await state.clear()
+        
+    from database import get_effective_product_price
+    unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(unit_price * qty, 2)
+    
+    # Render checkout payment method prompt
+    text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
+    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang)
+    
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+
+_USER_ACTIVATION_EMAILS = {}
+
+@router.message(ShopStates.waiting_for_activation_email)
+async def process_activation_email(message: Message, state: FSMContext, bot: Bot):
+    user_id = message.from_user.id
+    db_user = await get_user(user_id)
+    lang = db_user['language'] if db_user else 'en'
+    
+    data = await state.get_data()
+    product_id = data.get('buy_product_id')
+    qty = int(data.get('buy_qty', 1))
+    
+    if not product_id:
+        await state.clear()
+        return
+        
+    raw_txt = (message.text or "").strip()
+    email_list = [e.strip() for e in raw_txt.replace(',', '\n').split('\n') if e.strip()]
+    
+    def _is_valid_email(em: str) -> bool:
+        return "@" in em and "." in em.split("@")[-1] and len(em) >= 5 and " " not in em
+
+    if not email_list or not all(_is_valid_email(em) for em in email_list):
+        await message.answer(get_text('invalid_activation_email', lang), parse_mode="Markdown")
+        return
+        
+    if qty > 1 and len(email_list) not in [1, qty]:
+        product = await get_product(product_id)
+        prod_name = get_product_name(product, lang) if product else "Product"
+        await message.answer(get_text('ask_activation_email_multi', lang, name=prod_name, qty=qty), parse_mode="Markdown")
+        return
+        
+    _USER_ACTIVATION_EMAILS[(user_id, product_id)] = email_list
+    await state.clear()
+    
     product = await get_product(product_id)
     if not product:
         await message.answer("Product not found.")
@@ -220,15 +287,13 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
     price_to_pay = round(unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
     
-    # Render checkout payment method prompt
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
     kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang)
-    
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 # Callback handler for paying from balance
 @router.callback_query(F.data.startswith("chk_bal_"))
-async def cb_checkout_balance(callback: CallbackQuery, bot: Bot, lang='en'):
+async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: Bot, lang='en'):
     user_id = callback.from_user.id
     db_user = await get_user(user_id)
     
@@ -250,7 +315,7 @@ async def cb_checkout_balance(callback: CallbackQuery, bot: Bot, lang='en'):
         return
         
     await callback.message.edit_text("⏳ Processing purchase...")
-    await execute_delivery(callback.message, user_id, product_id, qty, price_to_pay, skip_balance_check=False, bot=bot, lang=lang)
+    await execute_delivery(callback.message, user_id, product_id, qty, price_to_pay, skip_balance_check=False, bot=bot, lang=lang, state=state)
     await callback.answer()
 
 # Callback handler for Binance Pay ID checkout instructions
@@ -377,7 +442,7 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             await db.commit()
             
         await message.answer(get_text('checkout_binance_paid', lang), parse_mode="Markdown")
-        await execute_delivery(message, user_id, product_id, qty, price_to_pay, skip_balance_check=True, bot=bot, lang=lang)
+        await execute_delivery(message, user_id, product_id, qty, price_to_pay, skip_balance_check=True, bot=bot, lang=lang, state=state)
         
         # Notify admins
         user_info = f"{message.from_user.first_name}"
@@ -417,15 +482,54 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             except Exception:
                 pass
 
-async def execute_delivery(message: Message, user_id: int, product_id: int, qty: int, price_to_pay: float, skip_balance_check: bool, bot: Bot, lang: str):
+async def execute_delivery(message: Message, user_id: int, product_id: int, qty: int, price_to_pay: float, skip_balance_check: bool, bot: Bot, lang: str, state: FSMContext = None):
     product = await get_product(product_id)
+    customer_email = _USER_ACTIVATION_EMAILS.get((user_id, product_id))
     
     # 1. Perform DB buy transaction
     try:
-        stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(user_id, product_id, qty, skip_balance_check=skip_balance_check, allow_partial=True)
+        stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(
+            user_id, product_id, qty,
+            skip_balance_check=skip_balance_check,
+            allow_partial=True,
+            customer_email=customer_email
+        )
+        _USER_ACTIVATION_EMAILS.pop((user_id, product_id), None)
     except Exception as e:
         logger.error(f"Purchase failed in DB for user {user_id}, product {product_id}, qty {qty}: {e}", exc_info=True)
         err_msg = str(e)
+        err_lower = err_msg.lower()
+        
+        if "email requis" in err_lower or "email required" in err_lower or "requires email" in err_lower:
+            # Auto-detected email activation requirement!
+            if skip_balance_check:
+                import aiosqlite
+                try:
+                    from bot_config import DB_NAME
+                except ImportError:
+                    from config import DB_NAME
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
+                    await db.commit()
+            prod_name = get_product_name(product, lang) if product else "Product"
+            if state is not None:
+                await state.set_state(ShopStates.waiting_for_activation_email)
+                await state.update_data(buy_product_id=product_id, buy_qty=qty)
+                from aiogram.utils.keyboard import InlineKeyboardBuilder
+                builder = InlineKeyboardBuilder()
+                builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+                if qty == 1:
+                    prompt_msg = get_text('ask_activation_email_single', lang, name=prod_name)
+                else:
+                    prompt_msg = get_text('ask_activation_email_multi', lang, name=prod_name, qty=qty)
+                await message.answer(prompt_msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
+            else:
+                await message.answer(
+                    get_text('email_required_auto_detected', lang),
+                    reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang),
+                    parse_mode="Markdown"
+                )
+            return
         
         # Send instant high-priority notification to admins about delivery error / provider failure
         admin_username = "admin"

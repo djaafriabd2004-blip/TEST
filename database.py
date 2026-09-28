@@ -308,6 +308,10 @@ async def db_init():
             await db.execute("ALTER TABLE categories ADD COLUMN icon_emoji TEXT DEFAULT '📁';")
         except Exception:
             pass
+        try:
+            await db.execute("ALTER TABLE products ADD COLUMN requires_email INTEGER DEFAULT 0;")
+        except Exception:
+            pass
             
         await db.commit()
 
@@ -561,7 +565,8 @@ async def add_imported_product(
     name_ar, name_en, name_ru, description_ar, description_en, description_ru,
     price, custom_emoji_id, provider_id, provider_product_id,
     description_entities_ar=None, description_entities_en=None, description_entities_ru=None,
-    pricing_type='fixed', margin_value=0.0, min_price=0.0, last_provider_cost=0.0
+    pricing_type='fixed', margin_value=0.0, min_price=0.0, last_provider_cost=0.0,
+    requires_email=0
 ):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
@@ -569,18 +574,23 @@ async def add_imported_product(
                 name_ar, name_en, name_ru, description_ar, description_en, description_ru,
                 price, custom_emoji_id, provider_id, provider_product_id,
                 description_entities_ar, description_entities_en, description_entities_ru,
-                pricing_type, margin_value, min_price, last_provider_cost
+                pricing_type, margin_value, min_price, last_provider_cost, requires_email
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             name_ar, name_en, name_ru, description_ar, description_en, description_ru,
             price, custom_emoji_id, provider_id, provider_product_id,
             description_entities_ar, description_entities_en, description_entities_ru,
-            pricing_type, margin_value, min_price, last_provider_cost
+            pricing_type, margin_value, min_price, last_provider_cost, int(bool(requires_email))
         ))
         product_id = cursor.lastrowid
         await db.commit()
         return product_id
+
+async def set_product_requires_email(product_id: int, requires_email: int = 1):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE products SET requires_email = ? WHERE id = ?;", (int(bool(requires_email)), product_id))
+        await db.commit()
 
 async def update_product_pricing_strategy(
     product_id: int,
@@ -880,27 +890,33 @@ async def get_all_stock_counts(products=None, use_cache=True):
                             stock_counts[it_pid] = local_c + num_s
                             matched = True
                             
-                            # Automatically update last_provider_cost and dynamic pricing
+                            # Automatically update last_provider_cost, dynamic pricing, and requires_email
                             try:
                                 p_cost = float(p.get('price') or p.get('unit_price') or p.get('price_usd') or 0.0)
-                                if p_cost > 0:
-                                    async with aiosqlite.connect(DB_NAME, timeout=10.0) as update_db:
-                                        update_db.row_factory = aiosqlite.Row
-                                        async with update_db.execute("SELECT pricing_type, margin_value, min_price, price FROM products WHERE id = ?;", (it_pid,)) as p_cur:
-                                            cur_p = await p_cur.fetchone()
-                                        if cur_p:
+                                p_req_email = 1 if (p.get('requires_email') or p.get('requiresEmailActivation')) else 0
+                                async with aiosqlite.connect(DB_NAME, timeout=10.0) as update_db:
+                                    update_db.row_factory = aiosqlite.Row
+                                    async with update_db.execute("SELECT pricing_type, margin_value, min_price, price, requires_email FROM products WHERE id = ?;", (it_pid,)) as p_cur:
+                                        cur_p = await p_cur.fetchone()
+                                    if cur_p:
+                                        cur_req = int(cur_p['requires_email'] or 0) if 'requires_email' in cur_p.keys() else 0
+                                        new_req = 1 if (p_req_email or cur_req) else 0
+                                        if p_cost > 0:
                                             p_type = cur_p['pricing_type'] or 'fixed'
                                             m_val = float(cur_p['margin_value'] or 0.0)
                                             min_p = float(cur_p['min_price'] or 0.0)
                                             if p_type in ['margin_fixed', 'margin_percent']:
                                                 from utils import calculate_dynamic_selling_price
                                                 new_selling_price = calculate_dynamic_selling_price(p_type, m_val, min_p, p_cost, float(cur_p['price'] or 0.0))
-                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;", (p_cost, new_selling_price, it_pid))
+                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, price = ?, requires_email = ? WHERE id = ?;", (p_cost, new_selling_price, new_req, it_pid))
                                             else:
-                                                await update_db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (p_cost, it_pid))
+                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, requires_email = ? WHERE id = ?;", (p_cost, new_req, it_pid))
+                                            await update_db.commit()
+                                        elif new_req != cur_req:
+                                            await update_db.execute("UPDATE products SET requires_email = ? WHERE id = ?;", (new_req, it_pid))
                                             await update_db.commit()
                             except Exception as sync_p_err:
-                                logger.debug(f"Price sync error for {it_pid}: {sync_p_err}")
+                                logger.debug(f"Price/email sync error for {it_pid}: {sync_p_err}")
                             break
 
                 if not matched:
@@ -942,10 +958,10 @@ async def get_all_stock_counts(products=None, use_cache=True):
     return stock_counts
 
 # Purchase Helpers
-async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
+async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None, customer_email=None):
     for attempt in range(3):
         try:
-            return await _buy_product_internal(user_id, product_id, quantity=quantity, skip_balance_check=skip_balance_check, allow_partial=allow_partial, client_order_id=client_order_id)
+            return await _buy_product_internal(user_id, product_id, quantity=quantity, skip_balance_check=skip_balance_check, allow_partial=allow_partial, client_order_id=client_order_id, customer_email=customer_email)
         except Exception as e:
             if ("locked" in str(e).lower() or "busy" in str(e).lower()) and attempt < 2:
                 logger.warning(f"Database locked in buy_product (attempt {attempt+1}/3). Retrying in 0.3s...")
@@ -953,7 +969,7 @@ async def buy_product(user_id, product_id, quantity=1, skip_balance_check=False,
                 continue
             raise e
 
-async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None):
+async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_check=False, allow_partial=True, client_order_id=None, customer_email=None):
     async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
         await db.execute("PRAGMA busy_timeout = 30000;")
         db.row_factory = aiosqlite.Row
@@ -1037,12 +1053,18 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     provider_product_id=prov_pid,
                     quantity=remaining_qty,
                     expected_price=product['price'] if isinstance(product, dict) and 'price' in product else 1.00,
-                    client_order_ref=client_order_id
+                    client_order_ref=client_order_id,
+                    customer_email=customer_email
                 )
                 if delivered_items:
                     provider_stock_data.extend(delivered_items)
             except Exception as pe:
-                set_cached_provider_stock(product_id, 0)
+                err_lower = str(pe).lower()
+                if "email requis" in err_lower or "email required" in err_lower or "requires email" in err_lower:
+                    await db.execute("UPDATE products SET requires_email = 1 WHERE id = ?;", (product_id,))
+                    await db.commit()
+                else:
+                    set_cached_provider_stock(product_id, 0)
                 raise pe
 
             if len(provider_stock_data) < remaining_qty and not allow_partial:

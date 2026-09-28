@@ -790,7 +790,8 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
                 cat_dict = dict(cat)
                 cat_name = f"{cat_dict.get('icon_emoji', '📁')} {cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')}"
         
-        kb = keyboards.get_admin_product_edit_keyboard(prod_id, lang, cat_name=cat_name)
+        req_email = dict(product).get('requires_email', 0) if product else 0
+        kb = keyboards.get_admin_product_edit_keyboard(prod_id, lang, cat_name=cat_name, requires_email=req_email)
         if entities:
             try:
                 await callback.message.edit_text(text, reply_markup=kb, entities=entities)
@@ -810,6 +811,23 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
             await callback.answer()
         except Exception:
             pass
+
+@router.callback_query(F.data.startswith("admin_toggle_req_email_"))
+async def cb_admin_toggle_req_email(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    prod_id = int(callback.data.replace("admin_toggle_req_email_", ""))
+    product = await get_product(prod_id)
+    if not product:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+    cur_val = int(dict(product).get('requires_email') or 0)
+    new_val = 0 if cur_val == 1 else 1
+    from database import set_product_requires_email
+    await set_product_requires_email(prod_id, new_val)
+    await callback.answer(f"📧 Email Requirement: {'ON' if new_val else 'OFF'}")
+    callback.data = f"admin_prod_view_{prod_id}"
+    await cb_admin_prod_view(callback, lang)
 
 @router.callback_query(F.data.startswith("admin_prod_del_"))
 async def cb_admin_prod_del(callback: CallbackQuery, lang='en'):
@@ -3815,6 +3833,7 @@ async def finalize_imported_product(message_or_msg, state: FSMContext, min_price
     final_price = calculate_dynamic_selling_price(ptype, m_val, min_price, cost, fallback_fixed_price=data.get('fixed_price', cost))
     
     from database import add_imported_product, broadcast_new_product_to_users, get_setting
+    req_email = 1 if (prod.get('requires_email') or prod.get('requiresEmailActivation')) else 0
     product_id = await add_imported_product(
         name_ar=prod.get('name_ar', prod.get('name_en')),
         name_en=prod.get('name_en'),
@@ -3829,7 +3848,8 @@ async def finalize_imported_product(message_or_msg, state: FSMContext, min_price
         pricing_type=ptype,
         margin_value=m_val,
         min_price=min_price,
-        last_provider_cost=cost
+        last_provider_cost=cost,
+        requires_email=req_email
     )
     
     bot_inst = message_or_msg.bot

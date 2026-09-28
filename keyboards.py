@@ -322,7 +322,7 @@ def get_admin_products_keyboard(products, lang='en') -> InlineKeyboardMarkup:
     builder.adjust(1)
     return builder.as_markup()
 
-def get_admin_product_edit_keyboard(product_id, lang='en', cat_name=None) -> InlineKeyboardMarkup:
+def get_admin_product_edit_keyboard(product_id, lang='en', cat_name=None, requires_email=0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_edit_details', lang), callback_data=f"admin_edit_fields_{product_id}")
     builder.button(text=get_text('btn_admin_pricing_strategy', lang), callback_data=f"admin_prod_pricing_{product_id}")
@@ -330,6 +330,8 @@ def get_admin_product_edit_keyboard(product_id, lang='en', cat_name=None) -> Inl
     builder.button(text=get_text('btn_admin_edit_emoji_btn', lang), callback_data=f"admin_edit_emoji_{product_id}")
     display_cat = cat_name if cat_name else get_text('cat_none', lang)
     builder.button(text=get_text('btn_prod_assign_cat', lang, cat_name=display_cat), callback_data=f"admin_prod_cat_{product_id}")
+    req_status = "🟢 ON" if requires_email else "🔴 OFF"
+    builder.button(text=get_text('btn_prod_req_email', lang, status=req_status), callback_data=f"admin_toggle_req_email_{product_id}")
     builder.button(text=get_text('btn_admin_delete_product_btn', lang), callback_data=f"admin_prod_del_{product_id}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
     builder.adjust(1)

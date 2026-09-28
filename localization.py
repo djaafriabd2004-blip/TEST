@@ -1441,6 +1441,72 @@ LOCALIZATION = {
         'en': "✅ Category updated!",
         'ar': "✅ تم تحديث الفئة بنجاح!",
         'ru': "✅ Категория обновлена!"
+    },
+    'ask_activation_email_single': {
+        'en': (
+            "📧 *Email Required for Activation*\n\n"
+            "🛍️ *Product:* {name}\n\n"
+            "This product is activated directly on your personal email account.\n"
+            "✍️ Please enter the **Email Address** you want to activate this subscription on:"
+        ),
+        'ar': (
+            "📧 *مطلوب البريد الإلكتروني للتفعيل*\n\n"
+            "🛍️ *المنتج:* {name}\n\n"
+            "يتم تفعيل هذا المنتج مباشرة على بريدك الإلكتروني الخاص.\n"
+            "✍️ يرجى إرسال **البريد الإلكتروني (Email)** الذي ترغب بتفعيل الاشتراك عليه:"
+        ),
+        'ru': (
+            "📧 *Требуется Email для активации*\n\n"
+            "🛍️ *Товар:* {name}\n\n"
+            "Этот товар активируется напрямую на ваш личный Email.\n"
+            "✍️ Пожалуйста, введите **Email адрес**, на الذي нужно активировать подписку:"
+        )
+    },
+    'ask_activation_email_multi': {
+        'en': (
+            "📧 *Emails Required for Activation*\n\n"
+            "🛍️ *Product:* {name} (x{qty})\n\n"
+            "This product is activated directly on customer email accounts.\n"
+            "✍️ Please send **{qty} email addresses** (one per line), or send **1 email address** to use for all {qty} subscriptions:"
+        ),
+        'ar': (
+            "📧 *مطلوب البريد الإلكتروني للتفعيل*\n\n"
+            "🛍️ *المنتج:* {name} (الكمية: {qty})\n\n"
+            "يتم تفعيل هذا المنتج مباشرة على البريد الإلكتروني.\n"
+            "✍️ يرجى إرسال **{qty} إيميلات** (كل إيميل في سطر مستقل)، أو أرسل **إيميلاً واحداً** لتفعيل جميع الاشتراكات عليه:"
+        ),
+        'ru': (
+            "📧 *Требуются Email адреса для активации*\n\n"
+            "🛍️ *Товар:* {name} (x{qty})\n\n"
+            "✍️ Пожалуйста, отправьте **{qty} Email адресов** (каждый с новой строки) или **1 Email адрес** для всех {qty} шт.:"
+        )
+    },
+    'invalid_activation_email': {
+        'en': "❌ Invalid email format. Please enter a valid email address (e.g. `example@gmail.com`):",
+        'ar': "❌ صيغة البريد الإلكتروني غير صحيحة. يرجى إرسال بريد إلكتروني صحيح (مثال: `example@gmail.com`):",
+        'ru': "❌ Неверный формат Email. Пожалуйста, введите корректный Email (например, `example@gmail.com`):"
+    },
+    'email_required_auto_detected': {
+        'en': (
+            "📧 *Email Address Required!*\n\n"
+            "This product requires your email address for direct activation (no balance was deducted).\n"
+            "Please click **🛒 Buy Now** below and enter your email address to complete the order."
+        ),
+        'ar': (
+            "📧 *هذا المنتج يتطلب بريدك الإلكتروني للتفعيل!*\n\n"
+            "يتم تفعيل هذا المنتج مباشرة على إيميل العميل (لم يتم خصم أي رصيد من محفظتك).\n"
+            "يرجى الضغط على **🛒 شراء الآن** بالأسفل وإدخال بريدك الإلكتروني لإتمام الطلب فوراً."
+        ),
+        'ru': (
+            "📧 *Требуется Email адрес!*\n\n"
+            "Для активации этого товара требуется ваш Email (средства не были списаны).\n"
+            "Нажмите **🛒 Купить сейчас** ниже и укажите ваш Email для оформления заказа."
+        )
+    },
+    'btn_prod_req_email': {
+        'en': "📧 Require Email: {status}",
+        'ar': "📧 طلب إيميل التفعيل: {status}",
+        'ru': "📧 Запрос Email: {status}"
     }
 }
 

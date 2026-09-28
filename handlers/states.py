@@ -34,6 +34,7 @@ class ProductStates(StatesGroup):
 
 class ShopStates(StatesGroup):
     waiting_for_buy_quantity = State()
+    waiting_for_activation_email = State()
     waiting_for_checkout_binance_txid = State()
     waiting_for_preorder_quantity = State()
 

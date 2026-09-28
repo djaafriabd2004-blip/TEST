@@ -95,6 +95,9 @@ async def get_products_api(request):
         if user_id:
             eff_price = await get_effective_product_price(p, user_id, 1)
             p_dict["price"] = eff_price
+        req_em = bool(p_dict.get("requires_email"))
+        p_dict["requires_email"] = req_em
+        p_dict["requiresEmailActivation"] = req_em
             
         result.append(p_dict)
     return web.json_response({"ok": True, "products": result})
@@ -124,6 +127,9 @@ async def get_product_detail_api(request):
     if user_id:
         eff_price = await get_effective_product_price(product, user_id, 1)
         p_dict["price"] = eff_price
+    req_em = bool(p_dict.get("requires_email"))
+    p_dict["requires_email"] = req_em
+    p_dict["requiresEmailActivation"] = req_em
         
     return web.json_response({"ok": True, "product": p_dict})
 
@@ -156,11 +162,12 @@ async def buy_api(request):
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
     client_order_id = data.get("client_order_id") or data.get("idempotency_key") or data.get("external_order_id") or data.get("client_order_reference")
+    customer_email = data.get("emails") or data.get("email") or data.get("customer_email")
     
     try:
-        # Pass client_order_id to buy_product to enable idempotency checks
+        # Pass client_order_id and customer_email to buy_product
         stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(
-            user_id, product_id, quantity, client_order_id=client_order_id
+            user_id, product_id, quantity, client_order_id=client_order_id, customer_email=customer_email
         )
         
         # Log/Broadcast sale to news channel if set
