@@ -79,3 +79,5 @@ class ProvidersStates(StatesGroup):
     waiting_for_pricing_type = State()
     waiting_for_margin_value = State()
     waiting_for_min_price = State()
+    waiting_for_field_mapping = State()
+

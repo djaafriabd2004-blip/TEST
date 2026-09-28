@@ -31,7 +31,68 @@ def normalize_provider_url(url: str) -> str:
             
     return url.rstrip('/')
 
-def extract_stock_from_dict(p, allow_boolean=True):
+def _parse_float_price(val):
+    if val is None or isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        cleaned = val.strip().upper()
+        for token in ['USDT', 'USD', 'EUR', 'RUB', '$', '€', '₽', ',']:
+            cleaned = cleaned.replace(token, '')
+        cleaned = cleaned.strip()
+        try:
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+def extract_price_from_dict(p, custom_field: str = None):
+    """
+    Universally extracts unit price/cost from any provider's JSON product dictionary.
+    Supports price, unit_price, price_usd, price_usdt, cost, cost_usd, cost_usdt,
+    rate, selling_price, amount, and custom user-mapped field names.
+    """
+    if not isinstance(p, dict):
+        return None
+
+    if custom_field and str(custom_field).strip().lower() not in ['', 'auto', 'none']:
+        cf = str(custom_field).strip()
+        val = p.get(cf)
+        parsed = _parse_float_price(val)
+        if parsed is not None:
+            return max(0.0, parsed)
+
+    price_keys = [
+        'price', 'unit_price', 'price_usd', 'price_usdt',
+        'cost', 'cost_usd', 'cost_usdt', 'unit_cost',
+        'rate', 'selling_price', 'amount_usd', 'amount_usdt',
+        'priceUsd', 'priceUsdt', 'unitPrice', 'value'
+    ]
+    for key in price_keys:
+        if key in p:
+            val = p.get(key)
+            if isinstance(val, dict):
+                for sub_k in ['amount', 'value', 'usd', 'usdt', 'price', 'cost']:
+                    parsed = _parse_float_price(val.get(sub_k))
+                    if parsed is not None:
+                        return max(0.0, parsed)
+            else:
+                parsed = _parse_float_price(val)
+                if parsed is not None:
+                    return max(0.0, parsed)
+
+    # Check nested pricing object if present
+    pricing_obj = p.get('pricing')
+    if isinstance(pricing_obj, dict):
+        for sub_k in price_keys:
+            parsed = _parse_float_price(pricing_obj.get(sub_k))
+            if parsed is not None:
+                return max(0.0, parsed)
+
+    return None
+
+def extract_stock_from_dict(p, allow_boolean=True, custom_field: str = None):
     """
     Universally extracts numeric stock from any provider's JSON product dictionary.
     Supports ShopDigital, ProdSeller, Supabase, Sellix, Whop, SMM Panels, WooCommerce,
@@ -40,6 +101,15 @@ def extract_stock_from_dict(p, allow_boolean=True):
     if not isinstance(p, dict):
         return None
     
+    if custom_field and str(custom_field).strip().lower() not in ['', 'auto', 'none']:
+        cf = str(custom_field).strip()
+        val = p.get(cf)
+        if val is not None and not isinstance(val, bool):
+            try:
+                return max(0, int(float(val)))
+            except (ValueError, TypeError):
+                pass
+
     # 1. Check numeric stock fields FIRST
     for key in ['stock', 'stock_count', 'quantity', 'qty', 'count', 'amount', 'inventory', 'available', 'available_stock', 'max', 'remains', 'balance']:
         val = p.get(key)

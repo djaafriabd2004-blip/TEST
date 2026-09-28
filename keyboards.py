@@ -456,11 +456,32 @@ def get_providers_list_keyboard(providers, lang='en') -> InlineKeyboardMarkup:
 def get_provider_manage_keyboard(provider_id, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🔑 Update API Token / تعديل المفتاح", callback_data=f"admin_prov_editkey_{provider_id}")
+    builder.button(text="⚙️ Custom Field Mapping / تخصيص الحقول", callback_data=f"admin_prov_map_{provider_id}")
     builder.button(text="📥 Pull/Import Products", callback_data=f"admin_prov_pull_{provider_id}")
     builder.button(text="❌ Delete Provider", callback_data=f"admin_prov_delete_{provider_id}")
     builder.button(text="🔙 Back", callback_data="admin_pull_external")
     builder.adjust(1)
     return builder.as_markup()
+
+def get_provider_field_mapping_keyboard(provider_id: int, mapping: dict = None, lang: str = 'en') -> InlineKeyboardMarkup:
+    mapping = mapping or {}
+    builder = InlineKeyboardBuilder()
+    p_field = mapping.get("price_field") or "Auto"
+    q_field = mapping.get("buy_qty_field") or "Auto"
+    pid_field = mapping.get("buy_pid_field") or "Auto"
+    s_field = mapping.get("stock_field") or "Auto"
+    ep_field = mapping.get("buy_endpoint") or "Auto"
+
+    builder.button(text=f"💵 Price Field: [{p_field}]", callback_data=f"admin_pmap_set_{provider_id}_price_field")
+    builder.button(text=f"🔢 Order Qty Field: [{q_field}]", callback_data=f"admin_pmap_set_{provider_id}_buy_qty_field")
+    builder.button(text=f"🆔 Order Product ID Field: [{pid_field}]", callback_data=f"admin_pmap_set_{provider_id}_buy_pid_field")
+    builder.button(text=f"📦 Stock Field: [{s_field}]", callback_data=f"admin_pmap_set_{provider_id}_stock_field")
+    builder.button(text=f"🛣️ Buy Endpoint: [{ep_field}]", callback_data=f"admin_pmap_set_{provider_id}_buy_endpoint")
+    builder.button(text="🔄 Reset All to Auto / إعادة التعيين تلقائياً", callback_data=f"admin_pmap_reset_{provider_id}")
+    builder.button(text="🔙 Back", callback_data=f"admin_prov_manage_{provider_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
 
 def get_provider_products_keyboard(products, lang='en', page=0, per_page=12) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()

@@ -3479,10 +3479,10 @@ async def fetch_provider_store_name(base_url, api_key):
     except Exception:
         return base_url
 
-async def fetch_provider_products(base_url, api_key):
+async def fetch_provider_products(base_url, api_key, field_mapping=None):
     from providers_engine import get_provider_adapter
     try:
-        adapter = get_provider_adapter(base_url, api_key)
+        adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
         catalog = await adapter.fetch_catalog()
         if catalog is not None:
             return catalog
@@ -3514,11 +3514,11 @@ async def cb_admin_prov_setup_new(callback: CallbackQuery, state: FSMContext, la
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_prov_manage_"))
-async def cb_admin_prov_manage(callback: CallbackQuery, lang='en'):
+async def cb_admin_prov_manage(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("❌ Unauthorized", show_alert=True)
         return
-        
+    await state.clear()
     provider_id = int(callback.data.replace("admin_prov_manage_", ""))
     from database import get_provider
     prov = await get_provider(provider_id)
@@ -3531,6 +3531,159 @@ async def cb_admin_prov_manage(callback: CallbackQuery, lang='en'):
     text = get_text('prov_manage_title', lang, url=display_name)
     await callback.message.edit_text(text, reply_markup=keyboards.get_provider_manage_keyboard(provider_id, lang), parse_mode="Markdown")
     await callback.answer()
+
+def _build_field_mapping_text(prov_dict: dict, mapping: dict, lang: str = 'en') -> str:
+    display_name = prov_dict.get('store_name') or prov_dict.get('base_url') or f"Provider #{prov_dict.get('id')}"
+    p_f = mapping.get("price_field") or "Auto (price, price_usdt, cost, unit_price...)"
+    q_f = mapping.get("buy_qty_field") or "Auto (sends both quantity & qty)"
+    pid_f = mapping.get("buy_pid_field") or "Auto (product_id, productId, item_id)"
+    s_f = mapping.get("stock_field") or "Auto (stock, available, qty...)"
+    ep_f = mapping.get("buy_endpoint") or "Auto (/api/v1/orders, /api/buy, /buy...)"
+    if lang == 'ar':
+        return (
+            f"⚙️ *تخصيص حقول API للمزود (Custom Field Mapping)*\n"
+            f"🔌 *المزود:* `{display_name}`\n\n"
+            f"يدعم البوت تلقائياً جميع المسميات الشائعة (`price`, `price_usdt`, `cost`, `quantity`, `qty`).\n"
+            f"في حال كان هذا المزود يشترط اسماً خاصاً لأي حقل، يمكنك تحديده يدوياً من الأزرار أدناه:\n\n"
+            f"💵 *حقل السعر (Price):* `{p_f}`\n"
+            f"🔢 *حقل الكمية عند الشراء (Qty):* `{q_f}`\n"
+            f"🆔 *حقل معرف المنتج (Product ID):* `{pid_f}`\n"
+            f"📦 *حقل المخزون (Stock):* `{s_f}`\n"
+            f"🛣️ *مسار الشراء (Buy Endpoint):* `{ep_f}`"
+        )
+    return (
+        f"⚙️ *Custom Field Mapping*\n"
+        f"🔌 *Provider:* `{display_name}`\n\n"
+        f"The bot natively detects standard fields (`price`, `price_usdt`, `cost`, `quantity`, `qty`).\n"
+        f"If this provider requires a specific custom parameter name, click a field below to override it manually:\n\n"
+        f"💵 *Price Field:* `{p_f}`\n"
+        f"🔢 *Order Qty Field:* `{q_f}`\n"
+        f"🆔 *Order Product ID Field:* `{pid_f}`\n"
+        f"📦 *Stock Field:* `{s_f}`\n"
+        f"🛣️ *Buy Endpoint:* `{ep_f}`"
+    )
+
+@router.callback_query(F.data.startswith("admin_prov_map_"))
+async def cb_admin_prov_map(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+    await state.clear()
+    provider_id = int(callback.data.replace("admin_prov_map_", ""))
+    from database import get_provider, get_provider_field_mapping
+    prov = await get_provider(provider_id)
+    if not prov:
+        await callback.answer("❌ Provider not found", show_alert=True)
+        return
+    mapping = await get_provider_field_mapping(provider_id)
+    text = _build_field_mapping_text(dict(prov), mapping, lang)
+    await callback.message.edit_text(
+        text,
+        reply_markup=keyboards.get_provider_field_mapping_keyboard(provider_id, mapping, lang),
+        parse_mode="Markdown"
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_pmap_reset_"))
+async def cb_admin_pmap_reset(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+    await state.clear()
+    provider_id = int(callback.data.replace("admin_pmap_reset_", ""))
+    from database import get_provider, update_provider_field_mapping
+    prov = await get_provider(provider_id)
+    if not prov:
+        await callback.answer("❌ Provider not found", show_alert=True)
+        return
+    await update_provider_field_mapping(provider_id, {})
+    await callback.answer("✅ All fields reset to Auto!", show_alert=True)
+    text = _build_field_mapping_text(dict(prov), {}, lang)
+    try:
+        await callback.message.edit_text(
+            text,
+            reply_markup=keyboards.get_provider_field_mapping_keyboard(provider_id, {}, lang),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+
+@router.callback_query(F.data.startswith("admin_pmap_set_"))
+async def cb_admin_pmap_set(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+    raw = callback.data.replace("admin_pmap_set_", "")
+    parts = raw.split("_", 1)
+    if len(parts) != 2 or not parts[0].isdigit():
+        await callback.answer("❌ Invalid selection", show_alert=True)
+        return
+    provider_id = int(parts[0])
+    field_key = parts[1]
+
+    examples_map = {
+        "price_field": ("Price Field (GET /products)", "`price_usdt`, `cost`, `price`, `unit_price`"),
+        "buy_qty_field": ("Order Quantity Field (POST /buy)", "`qty`, `quantity`, `amount`, `count`"),
+        "buy_pid_field": ("Order Product ID Field (POST /buy)", "`product_id`, `productId`, `item_id`, `id`"),
+        "stock_field": ("Stock Field (GET /products)", "`stock`, `qty`, `available`, `count`"),
+        "buy_endpoint": ("Custom Buy Endpoint Path", "`/api/buy`, `/buy`, `/v1/orders`, `/api/purchase`")
+    }
+    label, ex = examples_map.get(field_key, (field_key, "`value`"))
+    await state.set_state(ProvidersStates.waiting_for_field_mapping)
+    await state.update_data(pmap_provider_id=provider_id, pmap_field_key=field_key)
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔙 Cancel / إلغاء", callback_data=f"admin_prov_map_{provider_id}")
+
+    if lang == 'ar':
+        prompt = (
+            f"✏️ *تعديل: {label}*\n\n"
+            f"أرسل اسم الحقل المخصص كما يطلبه المزود بالضبط (أمثلة: {ex}).\n"
+            f"💡 أو أرسل `auto` لإعادة هذا الحقل للوضع التلقائي:"
+        )
+    else:
+        prompt = (
+            f"✏️ *Configure: {label}*\n\n"
+            f"Please send the exact parameter/field name required by this provider (e.g. {ex}).\n"
+            f"💡 Or send `auto` to reset this field to automatic detection:"
+        )
+    await callback.message.edit_text(prompt, reply_markup=kb.as_markup(), parse_mode="Markdown")
+    await callback.answer()
+
+@router.message(ProvidersStates.waiting_for_field_mapping)
+async def process_provider_field_mapping(message: Message, state: FSMContext, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    val = (message.text or "").strip()
+    data = await state.get_data()
+    provider_id = data.get("pmap_provider_id")
+    field_key = data.get("pmap_field_key")
+    await state.clear()
+
+    if not provider_id or not field_key:
+        await message.answer("❌ Session expired.")
+        return
+
+    from database import get_provider, get_provider_field_mapping, update_provider_field_mapping
+    prov = await get_provider(provider_id)
+    if not prov:
+        await message.answer("❌ Provider not found.")
+        return
+
+    mapping = await get_provider_field_mapping(provider_id)
+    if val.lower() in ["auto", "reset", "default", "none", "clear", "-"]:
+        mapping.pop(field_key, None)
+    else:
+        mapping[field_key] = val
+
+    await update_provider_field_mapping(provider_id, mapping)
+    text = _build_field_mapping_text(dict(prov), mapping, lang)
+    await message.answer(
+        f"✅ Updated `{field_key}` successfully!\n\n" + text,
+        reply_markup=keyboards.get_provider_field_mapping_keyboard(provider_id, mapping, lang),
+        parse_mode="Markdown"
+    )
 
 @router.callback_query(F.data.startswith("admin_prov_delete_"))
 async def cb_admin_prov_delete(callback: CallbackQuery, lang='en'):
@@ -3575,11 +3728,13 @@ async def process_provider_edit_key(message: Message, state: FSMContext, lang='e
         await message.answer("❌ Provider not found.")
         return
         
-    base_url = prov['base_url']
-    store_name = dict(prov).get('store_name')
+    prov_dict = dict(prov)
+    base_url = prov_dict['base_url']
+    store_name = prov_dict.get('store_name')
+    field_mapping = prov_dict.get('field_mapping')
     
     await message.answer("⏳ Testing new API key connection...")
-    products = await fetch_provider_products(base_url, new_key)
+    products = await fetch_provider_products(base_url, new_key, field_mapping=field_mapping)
     if products is None:
         await message.answer("❌ Connection test failed with new API key! Please check the key and try again.")
     else:
@@ -3599,8 +3754,9 @@ async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='e
         await callback.answer("❌ Provider not found", show_alert=True)
         return
         
+    prov_dict = dict(prov)
     await callback.message.edit_text("⏳ Fetching products from provider bot...")
-    products = await fetch_provider_products(prov['base_url'], prov['api_key'])
+    products = await fetch_provider_products(prov_dict['base_url'], prov_dict['api_key'], field_mapping=prov_dict.get('field_mapping'))
     
     if products is None:
         await callback.message.edit_text("❌ Failed to fetch products from provider bot. Please make sure the URL and API key are correct.", reply_markup=keyboards.get_admin_back_keyboard())

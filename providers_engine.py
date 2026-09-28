@@ -3,11 +3,13 @@ import asyncio
 import aiohttp
 import uuid
 import time
+import json
 from typing import List, Dict, Any, Optional
 
 from utils import (
     normalize_provider_url,
     extract_stock_from_dict,
+    extract_price_from_dict,
     extract_products_list_from_json,
     matches_product_id
 )
@@ -19,11 +21,46 @@ class BaseProviderAdapter:
     """
     Abstract base class defining standardized methods for all API providers.
     """
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
         self.raw_base_url = base_url.strip()
         self.base_url = normalize_provider_url(base_url)
         self.api_key = api_key.strip()
         self.provider_type = "generic"
+        if isinstance(field_mapping, str) and field_mapping.strip():
+            try:
+                parsed = json.loads(field_mapping)
+                self.field_mapping = parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                self.field_mapping = {}
+        elif isinstance(field_mapping, dict):
+            self.field_mapping = dict(field_mapping)
+        else:
+            self.field_mapping = {}
+
+    def _apply_order_mapping(self, payload: Dict[str, Any], item_id: Any, prov_pid: str, quantity: int) -> Dict[str, Any]:
+        """
+        Ensures both standard ('quantity', 'qty', 'product_id', 'productId', 'item_id')
+        and any custom user-defined field mappings are present in the order payload.
+        """
+        payload["quantity"] = int(quantity)
+        payload["qty"] = int(quantity)
+        custom_qty = (self.field_mapping.get("buy_qty_field") or "").strip()
+        if custom_qty:
+            payload[custom_qty] = int(quantity)
+        custom_pid = (self.field_mapping.get("buy_pid_field") or "").strip()
+        if custom_pid:
+            payload[custom_pid] = item_id
+        return payload
+
+    def _get_custom_buy_endpoints(self, default_endpoints: List[str]) -> List[str]:
+        custom_ep = (self.field_mapping.get("buy_endpoint") or "").strip()
+        if not custom_ep:
+            return default_endpoints
+        if custom_ep.startswith("http://") or custom_ep.startswith("https://"):
+            full_custom = custom_ep
+        else:
+            full_custom = f"{self.base_url}/{custom_ep.lstrip('/')}"
+        return [full_custom] + [ep for ep in default_endpoints if ep != full_custom]
 
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers = {
@@ -86,6 +123,7 @@ class BaseProviderAdapter:
         Fetches live stock count for a single product from provider API.
         """
         prov_pid = str(provider_product_id).strip()
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
         endpoints = [
             f"{self.base_url}/api/v1/products/{prov_pid}",
             f"{self.base_url}/v1/products/{prov_pid}",
@@ -102,21 +140,21 @@ class BaseProviderAdapter:
                             data = await resp.json()
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
-                                if matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p):
-                                    num_s = extract_stock_from_dict(single_p, allow_boolean=False)
+                                if matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p or (custom_stock_field and custom_stock_field in single_p)):
+                                    num_s = extract_stock_from_dict(single_p, allow_boolean=False, custom_field=custom_stock_field)
                                     if num_s is not None:
                                         return num_s
                                     if fallback_stock is None:
-                                        fallback_stock = extract_stock_from_dict(single_p, allow_boolean=True)
+                                        fallback_stock = extract_stock_from_dict(single_p, allow_boolean=True, custom_field=custom_stock_field)
                             
                             raw_list = extract_products_list_from_json(data)
                             for p in raw_list:
                                 if matches_product_id(p, prov_pid):
-                                    num_s = extract_stock_from_dict(p, allow_boolean=False)
+                                    num_s = extract_stock_from_dict(p, allow_boolean=False, custom_field=custom_stock_field)
                                     if num_s is not None:
                                         return num_s
                                     if fallback_stock is None:
-                                        fallback_stock = extract_stock_from_dict(p, allow_boolean=True)
+                                        fallback_stock = extract_stock_from_dict(p, allow_boolean=True, custom_field=custom_stock_field)
                 except Exception:
                     pass
             if fallback_stock is not None:
@@ -141,6 +179,7 @@ class BaseProviderAdapter:
         Fetches the live wholesale cost per unit directly from provider before purchase.
         """
         prov_pid = str(provider_product_id).strip()
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
         endpoints = [
             f"{self.base_url}/api/v1/products/{prov_pid}",
             f"{self.base_url}/v1/products/{prov_pid}",
@@ -156,7 +195,7 @@ class BaseProviderAdapter:
                             data = await resp.json()
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
-                                price_val = single_p.get('price') or single_p.get('unit_price') or single_p.get('price_usd') or single_p.get('rate')
+                                price_val = extract_price_from_dict(single_p, custom_field=custom_price_field)
                                 if price_val is not None:
                                     return float(price_val)
                 except Exception:
@@ -197,11 +236,13 @@ class BaseProviderAdapter:
             "product_id": item_id,
             "item_id": item_id,
             "quantity": int(quantity),
+            "qty": int(quantity),
             "external_order_id": order_ref,
             "client_order_reference": order_ref,
             "client_order_id": order_ref,
             "idempotency_key": order_ref
         }
+        self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
             email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
             if email_list:
@@ -213,14 +254,18 @@ class BaseProviderAdapter:
                     payload["emails"] = email_list[:int(quantity)]
                     payload["email"] = email_list[0]
         
-        endpoints = [
+        default_endpoints = [
             f"{self.base_url}/api/v1/orders",
             f"{self.base_url}/api/buy",
+            f"{self.base_url}/buy",
             f"{self.base_url}/v1/orders",
+            f"{self.base_url}/orders",
             f"{self.base_url}/api/purchase",
+            f"{self.base_url}/purchase",
             f"{self.base_url}/v1/purchases",
             f"{self.base_url}/api/v1/purchases"
         ]
+        endpoints = self._get_custom_buy_endpoints(default_endpoints)
 
         async def _req(s):
             last_err = "No response from provider"
@@ -237,10 +282,30 @@ class BaseProviderAdapter:
                                 raw_txt = await resp.text()
                                 buy_data = {"credentials": raw_txt}
                             return self._parse_delivery_data(buy_data, order_ref)
+                        elif resp.status == 422:
+                            # Fallback minimal payload retry in case provider rejects extra fields or expects strict schema
+                            custom_pid_k = (self.field_mapping.get("buy_pid_field") or "product_id").strip()
+                            custom_qty_k = (self.field_mapping.get("buy_qty_field") or "qty").strip()
+                            minimal_payload = {custom_pid_k: item_id, custom_qty_k: int(quantity)}
+                            if "email" in payload:
+                                minimal_payload["email"] = payload["email"]
+                            if "emails" in payload:
+                                minimal_payload["emails"] = payload["emails"]
+                            async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
+                                if resp2.status in [200, 201]:
+                                    try:
+                                        buy_data = await resp2.json()
+                                    except Exception:
+                                        raw_txt = await resp2.text()
+                                        buy_data = {"credentials": raw_txt}
+                                    return self._parse_delivery_data(buy_data, order_ref)
+                                last_err = await self._parse_error_response(resp2)
+                                logger.warning(f"Provider {ep} 422 fallback returned status {resp2.status}: {last_err}")
+                            continue
                         else:
                             last_err = await self._parse_error_response(resp)
                             logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
-                            if resp.status == 404 or "Cannot POST" in str(last_err) or "Not Found" in str(last_err):
+                            if resp.status in [404, 405] or "Cannot POST" in str(last_err) or "Not Found" in str(last_err) or "Method Not Allowed" in str(last_err):
                                 continue
                             break
                 except Exception as ep_err:
@@ -289,10 +354,18 @@ class BaseProviderAdapter:
 
     def _standardize_catalog(self, raw_list: List[Any]) -> List[Dict[str, Any]]:
         formatted = []
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
+        custom_id_field = (self.field_mapping.get("id_field") or "").strip() or None
+
         for p in raw_list:
             if not isinstance(p, dict):
                 continue
-            p_id = p.get("id") or p.get("product_id") or p.get("productId") or p.get("item_id") or p.get("service") or p.get("code")
+            p_id = None
+            if custom_id_field and p.get(custom_id_field) is not None:
+                p_id = p.get(custom_id_field)
+            if p_id is None:
+                p_id = p.get("id") or p.get("product_id") or p.get("productId") or p.get("item_id") or p.get("service") or p.get("code")
             if p_id is None:
                 continue
             
@@ -303,14 +376,12 @@ class BaseProviderAdapter:
             name_ar = p.get("name_ar") or p_name
             name_en = p.get("name_en") or p_name
             name_ru = p.get("name_ru") or p_name
-            try:
-                price_val = float(p.get("price") or p.get("unit_price") or p.get("price_usd") or p.get("rate") or 0.0)
-            except Exception:
-                price_val = 0.0
+            extracted_price = extract_price_from_dict(p, custom_field=custom_price_field)
+            price_val = float(extracted_price) if extracted_price is not None else 0.0
                 
-            stock_val = extract_stock_from_dict(p, allow_boolean=False)
+            stock_val = extract_stock_from_dict(p, allow_boolean=False, custom_field=custom_stock_field)
             if stock_val is None:
-                stock_val = extract_stock_from_dict(p, allow_boolean=True) or 0
+                stock_val = extract_stock_from_dict(p, allow_boolean=True, custom_field=custom_stock_field) or 0
                 
             req_email = bool(
                 p.get("requiresEmailActivation")
@@ -407,6 +478,16 @@ class BaseProviderAdapter:
             )
             if isinstance(last_err, dict):
                 last_err = last_err.get('message') or last_err.get('code') or str(last_err)
+            elif isinstance(last_err, list):
+                parts = []
+                for item in last_err:
+                    if isinstance(item, dict):
+                        loc = ".".join(str(x) for x in item.get("loc", []) if x != "body")
+                        msg = item.get("msg") or str(item)
+                        parts.append(f"{loc}: {msg}" if loc else str(msg))
+                    else:
+                        parts.append(str(item))
+                last_err = "; ".join(parts) if parts else f"HTTP {resp.status}"
             return str(last_err)
         except Exception:
             err_txt = await resp.text()
@@ -419,8 +500,8 @@ class BaseProviderAdapter:
 # 1. Pandora Digital Adapter (https://api.pandoradigital.shop)
 # -------------------------------------------------------------------------
 class PandoraProviderAdapter(BaseProviderAdapter):
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "pandora"
 
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
@@ -449,6 +530,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
 
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         prov_pid = str(provider_product_id).strip()
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
         headers = self.get_headers()
 
         async def _req(s):
@@ -456,13 +538,15 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                 async with s.post(
                     f"{self.base_url}/api/v1/quotes",
                     headers=headers,
-                    json={"product_id": prov_pid, "quantity": int(quantity)},
+                    json={"product_id": prov_pid, "quantity": int(quantity), "qty": int(quantity)},
                     timeout=aiohttp.ClientTimeout(total=8, connect=4)
                 ) as q_resp:
                     if q_resp.status in [200, 201]:
                         q_data = await q_resp.json()
-                        if isinstance(q_data, dict) and q_data.get("unit_price") is not None:
-                            return float(q_data["unit_price"])
+                        if isinstance(q_data, dict):
+                            u_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
+                            if u_price is not None:
+                                return float(u_price)
             except Exception:
                 pass
             try:
@@ -470,7 +554,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                     if p_resp.status == 200:
                         p_data = await p_resp.json()
                         if isinstance(p_data, dict):
-                            u_price = p_data.get("unit_price") or p_data.get("price")
+                            u_price = extract_price_from_dict(p_data, custom_field=custom_price_field)
                             if u_price is not None:
                                 return float(u_price)
             except Exception:
@@ -495,6 +579,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         headers = self.get_headers({"Idempotency-Key": order_ref})
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
 
         async def _req(s):
             # Step 1: Quote
@@ -504,13 +589,13 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                 async with s.post(
                     f"{self.base_url}/api/v1/quotes",
                     headers=headers,
-                    json={"product_id": prov_pid, "quantity": int(quantity)},
+                    json={"product_id": prov_pid, "quantity": int(quantity), "qty": int(quantity)},
                     timeout=aiohttp.ClientTimeout(total=10, connect=5)
                 ) as q_resp:
                     if q_resp.status in [200, 201]:
                         q_data = await q_resp.json()
                         if isinstance(q_data, dict):
-                            unit_price = q_data.get("unit_price")
+                            unit_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
                             price_version = q_data.get("price_version")
             except Exception as q_err:
                 logger.warning(f"Pandora quote error: {q_err}")
@@ -521,15 +606,17 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                         if p_resp.status == 200:
                             p_data = await p_resp.json()
                             if isinstance(p_data, dict):
-                                unit_price = p_data.get("unit_price")
+                                unit_price = extract_price_from_dict(p_data, custom_field=custom_price_field)
                 except Exception:
                     pass
 
             buy_payload = {
                 "product_id": prov_pid,
                 "quantity": int(quantity),
+                "qty": int(quantity),
                 "expected_unit_price": str(unit_price) if unit_price is not None else "1.00"
             }
+            self._apply_order_mapping(buy_payload, prov_pid, prov_pid, quantity)
             if price_version:
                 buy_payload["price_version"] = str(price_version)
             if order_ref:
@@ -544,8 +631,10 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                             email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
                         buy_payload["emails"] = email_list[:int(quantity)]
 
-            logger.info(f"Executing Pandora order on {self.base_url}/api/v1/orders with payload: {buy_payload}")
-            async with s.post(f"{self.base_url}/api/v1/orders", headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
+            ep_list = self._get_custom_buy_endpoints([f"{self.base_url}/api/v1/orders"])
+            ep = ep_list[0]
+            logger.info(f"Executing Pandora order on {ep} with payload: {buy_payload}")
+            async with s.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                 if resp.status in [200, 201]:
                     buy_data = await resp.json()
                     # Handle async processing
@@ -585,8 +674,8 @@ class AethelProviderAdapter(BaseProviderAdapter):
     Balance: GET /v1/balance
     Purchase: POST /v1/purchases {"item_id": 2, "quantity": 1} with Idempotency-Key
     """
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "aethel"
 
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -669,15 +758,18 @@ class AethelProviderAdapter(BaseProviderAdapter):
         })
         payload = {
             "item_id": item_id,
-            "quantity": int(quantity)
+            "quantity": int(quantity),
+            "qty": int(quantity)
         }
+        self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         
-        endpoints = [
+        default_endpoints = [
             f"{self.base_url}/v1/purchases",
             f"{self.base_url}/api/v1/purchases",
             f"{self.base_url}/v1/orders",
             f"{self.base_url}/api/v1/orders"
         ]
+        endpoints = self._get_custom_buy_endpoints(default_endpoints)
 
         async def _req(s):
             last_err = "No response from Aethel API"
@@ -714,8 +806,8 @@ class AethelProviderAdapter(BaseProviderAdapter):
 # 3. ProdSeller Adapter (https://prodseller.com)
 # -------------------------------------------------------------------------
 class ProdSellerProviderAdapter(BaseProviderAdapter):
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "prodseller"
 
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
@@ -758,9 +850,11 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
             "productId": prov_pid,
             "product_id": prov_pid,
             "quantity": int(quantity),
+            "qty": int(quantity),
             "external_order_id": order_ref,
             "client_order_reference": order_ref
         }
+        self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
             email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
             if email_list:
@@ -774,7 +868,8 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         headers = self.get_headers({"Idempotency-Key": order_ref})
 
         async def _req(s):
-            ep = f"{self.base_url}/v1/orders"
+            ep_list = self._get_custom_buy_endpoints([f"{self.base_url}/v1/orders"])
+            ep = ep_list[0]
             logger.info(f"Executing ProdSeller order on {ep} with payload: {payload}")
             async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                 if resp.status in [200, 201]:
@@ -797,8 +892,8 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
 # 4. ShopDigital Adapter (https://shopdigital...)
 # -------------------------------------------------------------------------
 class ShopDigitalProviderAdapter(BaseProviderAdapter):
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "shopdigital"
 
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
@@ -837,7 +932,8 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
         prov_pid = str(provider_product_id).strip()
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         headers = self.get_headers({"Idempotency-Key": order_ref})
-        ep = f"{self.base_url}/api/purchase"
+        ep_list = self._get_custom_buy_endpoints([f"{self.base_url}/api/purchase"])
+        ep = ep_list[0]
 
         async def _req(s):
             collected_items = []
@@ -845,8 +941,10 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
                 payload = {
                     "product_id": prov_pid,
                     "quantity": 1,
+                    "qty": 1,
                     "external_order_id": f"{order_ref}_{len(collected_items)}"
                 }
+                self._apply_order_mapping(payload, prov_pid, prov_pid, 1)
                 async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                     if resp.status in [200, 201]:
                         buy_data = await resp.json()
@@ -872,8 +970,8 @@ class ShopDigitalProviderAdapter(BaseProviderAdapter):
 # 5. Supabase Adapter (https://*.supabase.co)
 # -------------------------------------------------------------------------
 class SupabaseProviderAdapter(BaseProviderAdapter):
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "supabase"
 
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
@@ -911,8 +1009,10 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
             "productId": prov_pid,
             "product_id": prov_pid,
             "quantity": int(quantity),
+            "qty": int(quantity),
             "external_order_id": order_ref
         }
+        self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
             email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
             if email_list:
@@ -949,8 +1049,8 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
     Quote: POST /api/reseller/quote {"product_id": int, "quantity": int}
     Order: POST /api/reseller/orders {"product_id": int, "quantity": int, "idempotency_key": str}
     """
-    def __init__(self, base_url: str, api_key: str):
-        super().__init__(base_url, api_key)
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "ventebot"
 
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -1002,16 +1102,17 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
     async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
         prov_pid = str(provider_product_id).strip()
         item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
         
         async def _req(s):
             # Try quote endpoint
             try:
                 quote_url = f"{self.base_url}/api/reseller/quote"
-                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": 1}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as q_resp:
+                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": 1, "qty": 1}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as q_resp:
                     if q_resp.status == 200:
                         q_data = await q_resp.json()
                         if isinstance(q_data, dict):
-                            stk = extract_stock_from_dict(q_data, allow_boolean=True)
+                            stk = extract_stock_from_dict(q_data, allow_boolean=True, custom_field=custom_stock_field)
                             if stk is not None:
                                 return stk
                             if q_data.get('success') is True or 'unit_price' in q_data:
@@ -1067,16 +1168,17 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         prov_pid = str(provider_product_id).strip()
         item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
 
         async def _req(s):
             # 1. Try /api/reseller/quote
             try:
                 quote_url = f"{self.base_url}/api/reseller/quote"
-                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity)}, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
+                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity), "qty": int(quantity)}, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
                     if q_resp.status == 200:
                         q_data = await q_resp.json()
                         if isinstance(q_data, dict):
-                            u_price = q_data.get('unit_price') or q_data.get('price_usd') or q_data.get('price')
+                            u_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
                             if u_price is not None:
                                 return float(u_price)
             except Exception:
@@ -1114,8 +1216,10 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         payload = {
             "product_id": item_id,
             "quantity": int(quantity),
+            "qty": int(quantity),
             "idempotency_key": str(order_ref)
         }
+        self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
             email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
             if email_list:
@@ -1125,14 +1229,19 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                         email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
                     payload["emails"] = email_list[:int(quantity)]
         
-        endpoints = [
+        default_endpoints = [
             f"{self.base_url}/api/reseller/orders",
             f"{self.base_url}/reseller/orders",
             f"{self.base_url}/api/v1/orders",
             f"{self.base_url}/v1/orders",
             f"{self.base_url}/api/buy",
+            f"{self.base_url}/buy",
+            f"{self.base_url}/orders",
+            f"{self.base_url}/api/purchase",
+            f"{self.base_url}/purchase",
             f"{self.base_url}/api/v1/purchases"
         ]
+        endpoints = self._get_custom_buy_endpoints(default_endpoints)
 
         async def _req(s):
             last_err = "No response from VenteBot API"
@@ -1143,6 +1252,21 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                         if resp.status in [200, 201]:
                             buy_data = await resp.json()
                             return self._parse_delivery_data(buy_data, order_ref)
+                        elif resp.status == 422:
+                            custom_pid_k = (self.field_mapping.get("buy_pid_field") or "product_id").strip()
+                            custom_qty_k = (self.field_mapping.get("buy_qty_field") or "qty").strip()
+                            minimal_payload = {custom_pid_k: item_id, custom_qty_k: int(quantity)}
+                            if "email" in payload:
+                                minimal_payload["email"] = payload["email"]
+                            if "emails" in payload:
+                                minimal_payload["emails"] = payload["emails"]
+                            async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
+                                if resp2.status in [200, 201]:
+                                    buy_data = await resp2.json()
+                                    return self._parse_delivery_data(buy_data, order_ref)
+                                last_err = await self._parse_error_response(resp2)
+                                logger.warning(f"VenteBot {ep} 422 fallback returned status {resp2.status}: {last_err}")
+                            continue
                         else:
                             last_err = await self._parse_error_response(resp)
                             logger.warning(f"VenteBot order error on {ep}: HTTP {resp.status} - {last_err}")
@@ -1150,7 +1274,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                                 raise Exception(f"Out of stock ({last_err})")
                             elif resp.status == 402 or "balance" in str(last_err).lower():
                                 raise Exception(f"Provider balance insufficient: {last_err}")
-                            elif resp.status == 404 or "Cannot POST" in str(last_err):
+                            elif resp.status in [404, 405] or "Cannot POST" in str(last_err) or "Not Found" in str(last_err) or "Method Not Allowed" in str(last_err):
                                 continue
                             break
                 except Exception as ep_err:
@@ -1171,23 +1295,23 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
 # -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
-def get_provider_adapter(base_url: str, api_key: str) -> BaseProviderAdapter:
+def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[Any] = None) -> BaseProviderAdapter:
     """
     Factory function: Returns the specialized provider adapter based on base_url.
     """
     clean_url = str(base_url).lower().strip()
     
     if "pandoradigital" in clean_url:
-        return PandoraProviderAdapter(base_url, api_key)
+        return PandoraProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "hvmforum" in clean_url or "aethel" in clean_url or "mail-api" in clean_url:
-        return AethelProviderAdapter(base_url, api_key)
+        return AethelProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "prodseller" in clean_url:
-        return ProdSellerProviderAdapter(base_url, api_key)
+        return ProdSellerProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "shopdigital" in clean_url:
-        return ShopDigitalProviderAdapter(base_url, api_key)
+        return ShopDigitalProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "supabase.co" in clean_url:
-        return SupabaseProviderAdapter(base_url, api_key)
+        return SupabaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "railway.app" in clean_url or "reseller" in clean_url:
-        return VenteBotProviderAdapter(base_url, api_key)
+        return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     else:
-        return BaseProviderAdapter(base_url, api_key)
+        return BaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)

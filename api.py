@@ -95,6 +95,11 @@ async def get_products_api(request):
         if user_id:
             eff_price = await get_effective_product_price(p, user_id, 1)
             p_dict["price"] = eff_price
+        final_p = float(p_dict.get("price", 0.0))
+        p_dict["price_usd"] = final_p
+        p_dict["price_usdt"] = final_p
+        p_dict["unit_price"] = final_p
+        p_dict["cost"] = final_p
         req_em = bool(p_dict.get("requires_email"))
         p_dict["requires_email"] = req_em
         p_dict["requiresEmailActivation"] = req_em
@@ -127,6 +132,11 @@ async def get_product_detail_api(request):
     if user_id:
         eff_price = await get_effective_product_price(product, user_id, 1)
         p_dict["price"] = eff_price
+    final_p = float(p_dict.get("price", 0.0))
+    p_dict["price_usd"] = final_p
+    p_dict["price_usdt"] = final_p
+    p_dict["unit_price"] = final_p
+    p_dict["cost"] = final_p
     req_em = bool(p_dict.get("requires_email"))
     p_dict["requires_email"] = req_em
     p_dict["requiresEmailActivation"] = req_em
@@ -340,32 +350,41 @@ def create_api_app(bot) -> web.Application:
     app.router.add_get("/api/v1/balance", get_me_api)
     
     # 3. Catalog & Products routes
+    app.router.add_get("/products", get_products_api)
     app.router.add_get("/api/products", get_products_api)
     app.router.add_get("/v1/products", get_products_api)
     app.router.add_get("/api/v1/products", get_products_api)
+    app.router.add_get("/catalog", get_products_api)
     app.router.add_get("/api/catalog", get_products_api)
     app.router.add_get("/v1/catalog", get_products_api)
     app.router.add_get("/api/v1/catalog", get_products_api)
     
     # 4. Product Details
+    app.router.add_get("/products/{id}", get_product_detail_api)
     app.router.add_get("/api/products/{id}", get_product_detail_api)
     app.router.add_get("/v1/products/{id}", get_product_detail_api)
     app.router.add_get("/api/v1/products/{id}", get_product_detail_api)
     
     # 5. Order / Buy / Purchase routes
+    app.router.add_post("/buy", buy_api)
     app.router.add_post("/api/buy", buy_api)
+    app.router.add_post("/order", buy_api)
     app.router.add_post("/api/order", buy_api)
+    app.router.add_post("/orders", buy_api)
     app.router.add_post("/api/orders", buy_api)
     app.router.add_post("/v1/orders", buy_api)
     app.router.add_post("/api/v1/orders", buy_api)
     app.router.add_post("/v1/purchases", buy_api)
     app.router.add_post("/api/v1/purchases", buy_api)
+    app.router.add_post("/purchase", buy_api)
     app.router.add_post("/api/purchase", buy_api)
     
     # 6. Orders history & detail
+    app.router.add_get("/orders", get_order_history_api)
     app.router.add_get("/api/orders", get_order_history_api)
     app.router.add_get("/v1/orders", get_order_history_api)
     app.router.add_get("/api/v1/orders", get_order_history_api)
+    app.router.add_get("/orders/{id}", get_order_detail_api)
     app.router.add_get("/api/orders/{id}", get_order_detail_api)
     app.router.add_get("/v1/orders/{id}", get_order_detail_api)
     app.router.add_get("/api/v1/orders/{id}", get_order_detail_api)

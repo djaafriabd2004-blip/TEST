@@ -312,6 +312,10 @@ async def db_init():
             await db.execute("ALTER TABLE products ADD COLUMN requires_email INTEGER DEFAULT 0;")
         except Exception:
             pass
+        try:
+            await db.execute("ALTER TABLE providers ADD COLUMN field_mapping TEXT DEFAULT NULL;")
+        except Exception:
+            pass
             
         await db.commit()
 
@@ -561,6 +565,29 @@ async def delete_provider(provider_id):
         await db.execute("DELETE FROM providers WHERE id = ?;", (provider_id,))
         await db.commit()
 
+async def get_provider_field_mapping(provider_id: int) -> Dict[str, str]:
+    import json
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT field_mapping FROM providers WHERE id = ?;", (provider_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row['field_mapping']:
+                try:
+                    parsed = json.loads(row['field_mapping'])
+                    return parsed if isinstance(parsed, dict) else {}
+                except Exception:
+                    return {}
+            return {}
+
+async def update_provider_field_mapping(provider_id: int, mapping: Dict[str, str]):
+    import json
+    clean_map = {k: str(v).strip() for k, v in (mapping or {}).items() if v and str(v).strip()}
+    json_str = json.dumps(clean_map) if clean_map else None
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE providers SET field_mapping = ? WHERE id = ?;", (json_str, provider_id))
+        await db.commit()
+    invalidate_provider_stock_cache(provider_id=provider_id)
+
 async def add_imported_product(
     name_ar, name_en, name_ru, description_ar, description_en, description_ru,
     price, custom_emoji_id, provider_id, provider_product_id,
@@ -774,15 +801,16 @@ async def get_stock_count(product_id, use_cache=True):
                 provider_id = prod['provider_id']
                 provider_prod_id = prod['provider_product_id']
                 
-                async with db.execute("SELECT base_url, api_key FROM providers WHERE id = ?;", (provider_id,)) as prov_cursor:
+                async with db.execute("SELECT base_url, api_key, field_mapping FROM providers WHERE id = ?;", (provider_id,)) as prov_cursor:
                     prov = await prov_cursor.fetchone()
                     if not prov:
                         return local_count
                     base_url = prov['base_url']
                     api_key = prov['api_key']
+                    field_mapping = prov['field_mapping'] if 'field_mapping' in prov.keys() else None
                 
                 from providers_engine import get_provider_adapter
-                adapter = get_provider_adapter(base_url, api_key)
+                adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
                 
                 try:
                     num_stock = await adapter.fetch_stock(provider_prod_id)
@@ -820,7 +848,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
 
         # 2. Get all provider-linked products
         async with db.execute("""
-            SELECT p.id as product_id, p.provider_id, p.provider_product_id, pr.base_url, pr.api_key
+            SELECT p.id as product_id, p.provider_id, p.provider_product_id, pr.base_url, pr.api_key, pr.field_mapping
             FROM products p
             JOIN providers pr ON p.provider_id = pr.id
             WHERE p.provider_id IS NOT NULL;
@@ -829,7 +857,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
 
     if prov_prods:
         import asyncio
-        from utils import matches_product_id
+        from utils import matches_product_id, extract_price_from_dict
         from providers_engine import get_provider_adapter
 
         # Group items by provider to do 1 single bulk fetch per provider
@@ -840,6 +868,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
                 providers_group[pr_id] = {
                     "base_url": item['base_url'],
                     "api_key": item['api_key'],
+                    "field_mapping": item['field_mapping'] if 'field_mapping' in item.keys() else None,
                     "items": []
                 }
             providers_group[pr_id]["items"].append(item)
@@ -847,6 +876,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
         async def process_provider_products(pr_id, pr_data):
             base_url = pr_data["base_url"]
             api_key = pr_data["api_key"]
+            field_mapping = pr_data.get("field_mapping")
             items = pr_data["items"]
             
             # Check if all items in this provider already have valid cache
@@ -867,7 +897,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
                     stock_counts[it_pid] = stock_counts.get(it_pid, 0) + cached_s
                 return
 
-            adapter = get_provider_adapter(base_url, api_key)
+            adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
             catalog_products = None
             try:
                 catalog_products = await adapter.fetch_catalog()
@@ -892,7 +922,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
                             
                             # Automatically update last_provider_cost, dynamic pricing, and requires_email
                             try:
-                                p_cost = float(p.get('price') or p.get('unit_price') or p.get('price_usd') or 0.0)
+                                p_cost = float(extract_price_from_dict(p) or 0.0)
                                 p_req_email = 1 if (p.get('requires_email') or p.get('requiresEmailActivation')) else 0
                                 async with aiosqlite.connect(DB_NAME, timeout=10.0) as update_db:
                                     update_db.row_factory = aiosqlite.Row
@@ -1005,13 +1035,14 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
         provider_stock_data = []
         if remaining_qty > 0 and product['provider_id'] is not None:
             # Fetch provider credentials
-            async with db.execute("SELECT base_url, api_key FROM providers WHERE id = ?;", (product['provider_id'],)) as prov_cursor:
+            async with db.execute("SELECT base_url, api_key, field_mapping FROM providers WHERE id = ?;", (product['provider_id'],)) as prov_cursor:
                 prov = await prov_cursor.fetchone()
                 if not prov:
                     raise Exception("Product provider configuration not found")
                 
             from providers_engine import get_provider_adapter
-            adapter = get_provider_adapter(prov['base_url'], prov['api_key'])
+            prov_mapping = prov['field_mapping'] if 'field_mapping' in prov.keys() else None
+            adapter = get_provider_adapter(prov['base_url'], prov['api_key'], field_mapping=prov_mapping)
             raw_pid = product['provider_product_id']
             prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
 
