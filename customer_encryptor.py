@@ -91,12 +91,23 @@ BINANCE_SECRET_KEY=
         f.write(env_content)
     print(f"[2/4] Generated pre-configured .env for token {bot_token[:12]}...")
 
-    # 4. Create ZIP archive
-    zip_filename = f"customer_{clean_name}_bot"
-    zip_output_path = os.path.join(customers_dir, zip_filename)
-    shutil.make_archive(zip_output_path, 'zip', customer_folder)
-    final_zip = zip_output_path + ".zip"
-    
+    # 4. Create ZIP archive (excluding .git folder)
+    zip_filename = f"customer_{clean_name}_bot.zip"
+    final_zip = os.path.join(customers_dir, zip_filename)
+    if os.path.exists(final_zip):
+        os.remove(final_zip)
+        
+    with zipfile.ZipFile(final_zip, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(customer_folder):
+            if '.git' in dirs:
+                dirs.remove('.git')
+            for file in files:
+                if file.endswith('.zip'):
+                    continue
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, customer_folder)
+                zipf.write(file_path, arcname)
+
     # Also update root customer_bot.zip for convenient access
     root_zip = os.path.join(src_dir, "customer_bot.zip")
     shutil.copy2(final_zip, root_zip)
