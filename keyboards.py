@@ -96,7 +96,11 @@ def get_shop_home_keyboard(categories, standalone_products, stock_counts=None, l
         cat_dict = dict(cat)
         c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
         c_emoji = cat_dict.get('icon_emoji') or '📁'
-        builder.button(text=f"{c_emoji} {c_name}", callback_data=f"cat_view_{cat_dict['id']}")
+        c_custom_eid = cat_dict.get('custom_emoji_id')
+        if c_custom_eid:
+            builder.button(text=f"{c_name}", callback_data=f"cat_view_{cat_dict['id']}", icon_custom_emoji_id=str(c_custom_eid))
+        else:
+            builder.button(text=f"{c_emoji} {c_name}", callback_data=f"cat_view_{cat_dict['id']}")
         
     # 2. Standalone / Uncategorized products
     for product in standalone_products:
@@ -614,7 +618,11 @@ def get_admin_manage_categories_keyboard(categories, grouping_enabled='0', lang=
         cat_dict = dict(cat) if hasattr(cat, 'keys') else cat
         cat_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
         cat_emoji = cat_dict.get('icon_emoji') or '📁'
-        builder.button(text=f"{cat_emoji} {cat_name}", callback_data=f"admin_cat_view_{cat_dict['id']}")
+        c_custom_eid = cat_dict.get('custom_emoji_id')
+        if c_custom_eid:
+            builder.button(text=f"{cat_name}", callback_data=f"admin_cat_view_{cat_dict['id']}", icon_custom_emoji_id=str(c_custom_eid))
+        else:
+            builder.button(text=f"{cat_emoji} {cat_name}", callback_data=f"admin_cat_view_{cat_dict['id']}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data="admin_manage_products")
     builder.adjust(1)
     return builder.as_markup()
@@ -637,8 +645,12 @@ def get_admin_product_categories_picker(product_id, categories, current_cat_id=N
         c_id = cat_dict['id']
         c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
         c_emoji = cat_dict.get('icon_emoji') or '📁'
+        c_custom_eid = cat_dict.get('custom_emoji_id')
         mark = "✅ " if current_cat_id == c_id else ""
-        builder.button(text=f"{mark}{c_emoji} {c_name}", callback_data=f"admin_set_pcat_{product_id}_{c_id}")
+        if c_custom_eid:
+            builder.button(text=f"{mark}{c_name}", callback_data=f"admin_set_pcat_{product_id}_{c_id}", icon_custom_emoji_id=str(c_custom_eid))
+        else:
+            builder.button(text=f"{mark}{c_emoji} {c_name}", callback_data=f"admin_set_pcat_{product_id}_{c_id}")
     builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_prod_view_{product_id}")
     builder.adjust(1)
     return builder.as_markup()

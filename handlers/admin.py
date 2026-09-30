@@ -1628,13 +1628,25 @@ async def msg_admin_cat_name_submit(message: Message, state: FSMContext, lang='e
 async def msg_admin_cat_emoji_submit(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
-    text = message.text.strip()
+    text = (message.text or "").strip()
     data = await state.get_data()
     name = data.get("cat_name", "Category")
     await state.clear()
     
-    emoji = '📁' if text.lower() in ['/skip', 'skip', 'تخطي'] else text[:4].strip()
-    await add_category(name_en=name, name_ar=name, name_ru=name, icon_emoji=emoji)
+    custom_emoji_id = None
+    if text.lower() not in ['/skip', 'skip', 'تخطي', 'clear', 'حذف']:
+        if message.entities:
+            for entity in message.entities:
+                if entity.type == 'custom_emoji':
+                    custom_emoji_id = entity.custom_emoji_id
+                    break
+        if not custom_emoji_id and text.isdigit() and len(text) >= 15:
+            custom_emoji_id = text
+
+    emoji = '📁' if text.lower() in ['/skip', 'skip', 'تخطي', 'clear', 'حذف'] else (text[:4].strip() if not (text.isdigit() and len(text) >= 15) else '📁')
+    if not emoji:
+        emoji = '📁'
+    await add_category(name_en=name, name_ar=name, name_ru=name, icon_emoji=emoji, custom_emoji_id=custom_emoji_id)
     await message.answer(get_text('admin_cat_add_success', lang))
 
 @router.callback_query(F.data.startswith("admin_cat_view_"))
@@ -1649,12 +1661,14 @@ async def cb_admin_cat_view(callback: CallbackQuery, lang='en'):
     cat_dict = dict(cat)
     c_name = cat_dict.get(f'name_{lang}') or cat_dict.get('name_en')
     c_emoji = cat_dict.get('icon_emoji', '📁')
+    c_custom_eid = cat_dict.get('custom_emoji_id')
+    emoji_display = f"{c_emoji} (Custom ID: `{c_custom_eid}`)" if c_custom_eid else c_emoji
     
     prods = await get_products(category_id=cat_id)
     count = len(prods)
     
     kb = keyboards.get_admin_category_detail_keyboard(cat_id, lang)
-    text = get_text('admin_cat_detail_title', lang, name=c_name, emoji=c_emoji, count=count)
+    text = get_text('admin_cat_detail_title', lang, name=c_name, emoji=emoji_display, count=count)
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
     await callback.answer()
 
@@ -1680,7 +1694,14 @@ async def msg_admin_cat_rename_submit(message: Message, state: FSMContext, lang=
         cat = await get_category(cat_id)
         if cat:
             cat_dict = dict(cat)
-            await update_category(cat_id, name_en=text, name_ar=text, name_ru=text, icon_emoji=cat_dict.get('icon_emoji', '📁'))
+            await update_category(
+                cat_id,
+                name_en=text,
+                name_ar=text,
+                name_ru=text,
+                icon_emoji=cat_dict.get('icon_emoji', '📁'),
+                custom_emoji_id=cat_dict.get('custom_emoji_id')
+            )
             await message.answer(get_text('admin_cat_updated', lang))
 
 @router.callback_query(F.data.startswith("admin_cat_reemoji_"))
@@ -1697,7 +1718,7 @@ async def cb_admin_cat_reemoji(callback: CallbackQuery, state: FSMContext, lang=
 async def msg_admin_cat_reemoji_submit(message: Message, state: FSMContext, lang='en'):
     if not is_user_admin(message.from_user.id):
         return
-    text = message.text.strip()
+    text = (message.text or "").strip()
     data = await state.get_data()
     cat_id = data.get("edit_cat_id")
     await state.clear()
@@ -1705,8 +1726,28 @@ async def msg_admin_cat_reemoji_submit(message: Message, state: FSMContext, lang
         cat = await get_category(cat_id)
         if cat:
             cat_dict = dict(cat)
-            emoji = text[:4].strip()
-            await update_category(cat_id, name_en=cat_dict['name_en'], name_ar=cat_dict['name_ar'], name_ru=cat_dict['name_ru'], icon_emoji=emoji)
+            custom_emoji_id = None
+            if text.lower() in ['/skip', 'skip', 'تخطي', 'clear', 'حذف']:
+                emoji = '📁'
+            else:
+                if message.entities:
+                    for entity in message.entities:
+                        if entity.type == 'custom_emoji':
+                            custom_emoji_id = entity.custom_emoji_id
+                            break
+                if not custom_emoji_id and text.isdigit() and len(text) >= 15:
+                    custom_emoji_id = text
+                emoji = text[:4].strip() if not (text.isdigit() and len(text) >= 15) else (cat_dict.get('icon_emoji') or '📁')
+                if not emoji:
+                    emoji = '📁'
+            await update_category(
+                cat_id,
+                name_en=cat_dict['name_en'],
+                name_ar=cat_dict['name_ar'],
+                name_ru=cat_dict['name_ru'],
+                icon_emoji=emoji,
+                custom_emoji_id=custom_emoji_id
+            )
             await message.answer(get_text('admin_cat_updated', lang))
 
 @router.callback_query(F.data.startswith("admin_cat_del_"))

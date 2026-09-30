@@ -1403,9 +1403,9 @@ LOCALIZATION = {
         'ru': "📁 Введите название категории:"
     },
     'admin_cat_add_emoji_prompt': {
-        'en': "🎨 Send an emoji for this category (e.g. 📁, 🎮, 🎬) or send /skip:",
-        'ar': "🎨 أرسل إيموجي لهذه الفئة (مثال: 📁، 🎮، 🎬) أو أرسل /skip للتخطي:",
-        'ru': "🎨 Отправьте эмодзи для этой категории (например 📁, 🎮, 🎬) или отправьте /skip:"
+        'en': "🎨 Send a standard or **Telegram Premium Custom Emoji** for this category (e.g. 📁, 🎮, 🎬) or send /skip:",
+        'ar': "🎨 أرسل إيموجي عادي أو **إيموجي تيليجرام مميز (Premium Emoji)** لهذه الفئة (مثال: 📁، 🎮، 🎬) أو أرسل /skip للتخطي:",
+        'ru': "🎨 Отправьте обычный или **Telegram Premium эмодзи** для этой категории (например 📁, 🎮, 🎬) или отправьте /skip:"
     },
     'admin_cat_add_success': {
         'en': "✅ Category added successfully!",
@@ -1418,9 +1418,9 @@ LOCALIZATION = {
         'ru': "✏️ Введите новое название категории:"
     },
     'admin_cat_edit_emoji_prompt': {
-        'en': "🎨 Send new emoji for category (e.g. 📁, 🎮, 🎬):",
-        'ar': "🎨 أرسل الإيموجي الجديد للفئة:",
-        'ru': "🎨 Отправьте новый эмодзи для категории:"
+        'en': "🎨 Send the new emoji or **Telegram Premium Custom Emoji** for this category (or send /skip to reset to 📁):",
+        'ar': "🎨 أرسل الإيموجي الجديد للفئة (يدعم الإيموجي العادي أو **الإيموجي المميز Premium Emoji**، أو أرسل /skip للإرجاع إلى 📁):",
+        'ru': "🎨 Отправьте новый обычный или **Premium эмодзи** для категории (или /skip для сброса):"
     },
     'admin_cat_del_confirm': {
         'en': "⚠️ Are you sure you want to delete this category?\nProducts in this category will become standalone uncategorized products.",

@@ -247,6 +247,7 @@ async def db_init():
             name_ar TEXT NOT NULL,
             name_ru TEXT NOT NULL,
             icon_emoji TEXT DEFAULT '📁',
+            custom_emoji_id TEXT DEFAULT NULL,
             sort_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -309,6 +310,10 @@ async def db_init():
         except Exception:
             pass
         try:
+            await db.execute("ALTER TABLE categories ADD COLUMN custom_emoji_id TEXT DEFAULT NULL;")
+        except Exception:
+            pass
+        try:
             await db.execute("ALTER TABLE products ADD COLUMN requires_email INTEGER DEFAULT 0;")
         except Exception:
             pass
@@ -359,23 +364,26 @@ async def get_user(user_id):
 async def create_user(user_id, username, first_name, referred_by=None):
     ref_code = str(uuid.uuid4())[:8]
     async with aiosqlite.connect(DB_NAME) as db:
-        # Check if user already exists
-        async with db.execute("SELECT user_id FROM users WHERE user_id = ?;", (user_id,)) as cursor:
-            if await cursor.fetchone():
-                return
-        
-        # Verify if referred_by user exists
-        ref_by_id = None
-        if referred_by:
-            async with db.execute("SELECT user_id FROM users WHERE user_id = ?;", (referred_by,)) as cursor:
-                if await cursor.fetchone() and referred_by != user_id:
-                    ref_by_id = referred_by
-                    
-        await db.execute(
-            "INSERT INTO users (user_id, username, first_name, referred_by, referral_code) VALUES (?, ?, ?, ?, ?);",
-            (user_id, username, first_name, ref_by_id, ref_code)
-        )
-        await db.commit()
+        try:
+            # Check if user already exists
+            async with db.execute("SELECT user_id FROM users WHERE user_id = ?;", (user_id,)) as cursor:
+                if await cursor.fetchone():
+                    return
+            
+            # Verify if referred_by user exists
+            ref_by_id = None
+            if referred_by:
+                async with db.execute("SELECT user_id FROM users WHERE user_id = ?;", (referred_by,)) as cursor:
+                    if await cursor.fetchone() and referred_by != user_id:
+                        ref_by_id = referred_by
+                        
+            await db.execute(
+                "INSERT OR IGNORE INTO users (user_id, username, first_name, referred_by, referral_code) VALUES (?, ?, ?, ?, ?);",
+                (user_id, username, first_name, ref_by_id, ref_code)
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Handled concurrent registration in create_user for {user_id}: {e}")
 
 async def get_user_by_ref_code(ref_code):
     async with aiosqlite.connect(DB_NAME) as db:
@@ -693,20 +701,20 @@ async def get_category(cat_id):
         async with db.execute("SELECT * FROM categories WHERE id = ?;", (cat_id,)) as cursor:
             return await cursor.fetchone()
 
-async def add_category(name_en, name_ar, name_ru, icon_emoji='📁', sort_order=0):
+async def add_category(name_en, name_ar, name_ru, icon_emoji='📁', sort_order=0, custom_emoji_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(
-            "INSERT INTO categories (name_en, name_ar, name_ru, icon_emoji, sort_order) VALUES (?, ?, ?, ?, ?);",
-            (name_en, name_ar, name_ru, icon_emoji, sort_order)
+            "INSERT INTO categories (name_en, name_ar, name_ru, icon_emoji, custom_emoji_id, sort_order) VALUES (?, ?, ?, ?, ?, ?);",
+            (name_en, name_ar, name_ru, icon_emoji, custom_emoji_id, sort_order)
         )
         await db.commit()
         return cursor.lastrowid
 
-async def update_category(cat_id, name_en, name_ar, name_ru, icon_emoji='📁'):
+async def update_category(cat_id, name_en, name_ar, name_ru, icon_emoji='📁', custom_emoji_id=None):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
-            "UPDATE categories SET name_en = ?, name_ar = ?, name_ru = ?, icon_emoji = ? WHERE id = ?;",
-            (name_en, name_ar, name_ru, icon_emoji, cat_id)
+            "UPDATE categories SET name_en = ?, name_ar = ?, name_ru = ?, icon_emoji = ?, custom_emoji_id = ? WHERE id = ?;",
+            (name_en, name_ar, name_ru, icon_emoji, custom_emoji_id, cat_id)
         )
         await db.commit()
 
