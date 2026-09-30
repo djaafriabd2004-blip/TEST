@@ -23,8 +23,42 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
+async def _apply_user_effective_prices(products, user_id):
+    if not products or not user_id:
+        return products
+    custom_prices_map = {}
+    user_discount = 0.0
+    try:
+        async with aiosqlite.connect(DB_NAME, timeout=10.0) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT product_id, custom_price FROM user_product_prices WHERE user_id = ?;", (user_id,)) as cur:
+                for r in await cur.fetchall():
+                    custom_prices_map[r["product_id"]] = float(r["custom_price"])
+            async with db.execute("SELECT discount_percent FROM users WHERE user_id = ?;", (user_id,)) as u_cur:
+                u_row = await u_cur.fetchone()
+                if u_row and u_row["discount_percent"]:
+                    user_discount = float(u_row["discount_percent"])
+    except Exception:
+        return products
+
+    if not custom_prices_map and user_discount <= 0:
+        return products
+
+    updated = []
+    for p in products:
+        p_dict = dict(p)
+        pid = p_dict["id"]
+        if pid in custom_prices_map:
+            p_dict["price"] = round(custom_prices_map[pid], 2)
+        elif user_discount > 0:
+            base_u = get_product_unit_price(p_dict, 1)
+            p_dict["price"] = round(base_u * (1.0 - user_discount / 100.0), 2)
+        updated.append(p_dict)
+    return updated
+
 async def show_products_list(message_or_callback, lang='en', category_id=None):
     from database import get_categories, get_uncategorized_products, get_all_stock_counts
+    user_id = message_or_callback.from_user.id if hasattr(message_or_callback, 'from_user') and message_or_callback.from_user else None
     
     grouping_enabled = await get_setting("grouping_enabled", "0")
     
@@ -34,6 +68,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang, category_id=category_id)
         else:
+            products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
             text = get_text('shop_title', lang)
             kb = keyboards.get_products_keyboard(products, stock_counts, lang, category_id=category_id)
@@ -41,6 +76,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
         categories = await get_categories()
         standalone_products = await get_uncategorized_products()
         if categories:
+            standalone_products = await _apply_user_effective_prices(standalone_products, user_id)
             stock_counts = await get_all_stock_counts(standalone_products)
             text = get_text('shop_title', lang)
             kb = keyboards.get_shop_home_keyboard(categories, standalone_products, stock_counts, lang)
@@ -50,6 +86,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
                 text = get_text('shop_empty', lang)
                 kb = keyboards.get_products_keyboard([], {}, lang)
             else:
+                products = await _apply_user_effective_prices(products, user_id)
                 stock_counts = await get_all_stock_counts(products)
                 text = get_text('shop_title', lang)
                 kb = keyboards.get_products_keyboard(products, stock_counts, lang)
@@ -59,6 +96,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang)
         else:
+            products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
             text = get_text('shop_title', lang)
             kb = keyboards.get_products_keyboard(products, stock_counts, lang)
@@ -394,9 +432,9 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
         await message.answer("Product not found.")
         return
         
-    discount_pct = await get_user_discount(user_id)
-    unit_price = get_product_unit_price(product, qty)
-    price_to_pay = round((unit_price * (1 - discount_pct / 100)) * qty, 2)
+    from database import get_effective_product_price
+    effective_unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(effective_unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
     
     await state.clear()
@@ -627,10 +665,9 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     # 3. Check for partial delivery refund
     refund_amount = 0.0
     if actual_qty < qty:
-        # Calculate refund for undelivered items using correct tier unit price
-        discount_pct = await get_user_discount(user_id)
-        unit_price = get_product_unit_price(product, qty)
-        price_per_item = round(unit_price * (1 - discount_pct / 100), 2)
+        # Calculate refund for undelivered items using effective unit price (custom price / tier / discount)
+        from database import get_effective_product_price
+        price_per_item = await get_effective_product_price(product, user_id, qty)
         diff_qty = qty - actual_qty
         refund_amount = round(price_per_item * diff_qty, 2)
         

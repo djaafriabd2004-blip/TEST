@@ -17,10 +17,12 @@ async def api_key_auth_middleware(request, handler):
     # Extract API Key from multiple standard headers / query params
     api_key = (
         request.headers.get("X-API-Key") or
+        request.headers.get("X-Reseller-Key") or
         request.headers.get("Authorization") or
         request.headers.get("X-Auth-Token") or
         request.headers.get("api-key") or
         request.headers.get("api_key") or
+        request.headers.get("x-reseller-key") or
         request.query.get("api_key") or
         request.query.get("key") or
         request.query.get("token")
@@ -61,6 +63,7 @@ async def get_me_api(request):
     bal = float(user["balance"] or 0.0)
     return web.json_response({
         "ok": True,
+        "success": True,
         "store_name": store_name,
         "balance": bal,
         "balance_usd": f"{bal:.2f}",
@@ -78,22 +81,58 @@ async def get_me_api(request):
 async def get_products_api(request):
     user = request.get("user")
     user_id = user["user_id"] if user else None
-    from database import get_products, get_all_stock_counts, get_effective_product_price
+    from database import get_products, get_all_stock_counts
+    from utils import get_product_unit_price
     products = await get_products()
-    stock_counts = await get_all_stock_counts(products, use_cache=True)
+    try:
+        stock_counts = await asyncio.wait_for(get_all_stock_counts(products, use_cache=True), timeout=5.0)
+    except Exception as e:
+        logger.warning(f"get_all_stock_counts timed out or failed in get_products_api, using cached/local counts: {e}")
+        stock_counts = await get_all_stock_counts(products, use_cache=True, local_only=True)
+
+    custom_prices_map = {}
+    user_discount = 0.0
+    if user_id:
+        import aiosqlite
+        try:
+            from bot_config import DB_NAME
+        except ImportError:
+            from config import DB_NAME
+        try:
+            async with aiosqlite.connect(DB_NAME, timeout=10.0) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT product_id, custom_price FROM user_product_prices WHERE user_id = ?;", (user_id,)) as cur:
+                    for r in await cur.fetchall():
+                        custom_prices_map[r["product_id"]] = float(r["custom_price"])
+                async with db.execute("SELECT discount_percent FROM users WHERE user_id = ?;", (user_id,)) as u_cur:
+                    u_row = await u_cur.fetchone()
+                    if u_row and u_row["discount_percent"]:
+                        user_discount = float(u_row["discount_percent"])
+        except Exception as db_err:
+            logger.warning(f"Failed to batch-load user custom prices in get_products_api: {db_err}")
+
     result = []
     for p in products:
         p_dict = dict(p)
-        s_cnt = stock_counts.get(p_dict["id"], 0)
+        pid = p_dict["id"]
+        s_cnt = stock_counts.get(pid, 0)
         p_dict["stock"] = s_cnt
         p_dict["stock_count"] = s_cnt
         p_dict["quantity"] = s_cnt
         p_dict["inStock"] = bool(s_cnt > 0)
         
-        orig_price = float(p_dict.get("price", 0.0))
+        orig_price = float(p_dict.get("price", 0.0) or 0.0)
+        if orig_price <= 0 and float(p_dict.get("last_provider_cost") or 0.0) > 0:
+            orig_price = float(p_dict.get("last_provider_cost"))
+            p_dict["price"] = orig_price
         p_dict["original_price"] = orig_price
+
         if user_id:
-            eff_price = await get_effective_product_price(p, user_id, 1)
+            if pid in custom_prices_map:
+                eff_price = round(custom_prices_map[pid], 2)
+            else:
+                base_unit = get_product_unit_price(p_dict, 1)
+                eff_price = round(base_unit * (1.0 - user_discount / 100.0), 2)
             p_dict["price"] = eff_price
         final_p = float(p_dict.get("price", 0.0))
         p_dict["price_usd"] = final_p
@@ -105,7 +144,7 @@ async def get_products_api(request):
         p_dict["requiresEmailActivation"] = req_em
             
         result.append(p_dict)
-    return web.json_response({"ok": True, "products": result})
+    return web.json_response({"ok": True, "success": True, "products": result})
 
 async def get_product_detail_api(request):
     user = request.get("user")
@@ -121,16 +160,22 @@ async def get_product_detail_api(request):
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
     p_dict = dict(product)
-    s_cnt = await get_stock_count(product_id)
+    try:
+        s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=5.0)
+    except Exception:
+        s_cnt = 0
     p_dict["stock"] = s_cnt
     p_dict["stock_count"] = s_cnt
     p_dict["quantity"] = s_cnt
     p_dict["inStock"] = bool(s_cnt > 0)
     
-    orig_price = float(p_dict.get("price", 0.0))
+    orig_price = float(p_dict.get("price", 0.0) or 0.0)
+    if orig_price <= 0 and float(p_dict.get("last_provider_cost") or 0.0) > 0:
+        orig_price = float(p_dict.get("last_provider_cost"))
+        p_dict["price"] = orig_price
     p_dict["original_price"] = orig_price
     if user_id:
-        eff_price = await get_effective_product_price(product, user_id, 1)
+        eff_price = await get_effective_product_price(p_dict, user_id, 1)
         p_dict["price"] = eff_price
     final_p = float(p_dict.get("price", 0.0))
     p_dict["price_usd"] = final_p
@@ -141,7 +186,50 @@ async def get_product_detail_api(request):
     p_dict["requires_email"] = req_em
     p_dict["requiresEmailActivation"] = req_em
         
-    return web.json_response({"ok": True, "product": p_dict})
+    return web.json_response({"ok": True, "success": True, "product": p_dict})
+
+async def quote_api(request):
+    user = request.get("user")
+    user_id = user["user_id"] if user else None
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    raw_pid = data.get("product_id") or data.get("productId") or data.get("item_id") or data.get("id")
+    try:
+        product_id = int(str(raw_pid).strip())
+    except (ValueError, TypeError):
+        return web.json_response({"ok": False, "error": "product_id is required"}, status=400)
+    raw_qty = data.get("quantity") or data.get("qty") or 1
+    try:
+        qty = max(1, int(raw_qty))
+    except (ValueError, TypeError):
+        qty = 1
+    from database import get_product, get_stock_count, get_effective_product_price
+    product = await get_product(product_id)
+    if not product:
+        return web.json_response({"ok": False, "error": "Product not found"}, status=404)
+    p_dict = dict(product)
+    if float(p_dict.get("price", 0.0) or 0.0) <= 0 and float(p_dict.get("last_provider_cost") or 0.0) > 0:
+        p_dict["price"] = float(p_dict.get("last_provider_cost"))
+    unit_price = await get_effective_product_price(p_dict, user_id, qty) if user_id else float(p_dict.get("price", 0.0))
+    try:
+        s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=4.0)
+    except Exception:
+        s_cnt = 0
+    return web.json_response({
+        "ok": True,
+        "success": True,
+        "product_id": product_id,
+        "quantity": qty,
+        "unit_price": unit_price,
+        "price": unit_price,
+        "price_usd": unit_price,
+        "price_usdt": unit_price,
+        "total_price": round(unit_price * qty, 2),
+        "stock": s_cnt,
+        "inStock": bool(s_cnt >= qty)
+    })
 
 async def buy_api(request):
     user = request["user"]
@@ -244,11 +332,8 @@ async def buy_api(request):
                         
             # If partial delivery occurred, notify reseller/user as well
             if actual_qty < quantity:
-                from database import get_user_discount
-                discount_pct = await get_user_discount(user_id)
-                from utils import get_product_unit_price
-                unit_price = get_product_unit_price(product, quantity)
-                price_per_item = round(unit_price * (1 - discount_pct / 100), 2)
+                from database import get_effective_product_price
+                price_per_item = await get_effective_product_price(product, user_id, quantity)
                 diff_qty = quantity - actual_qty
                 refund_amount = round(price_per_item * diff_qty, 2)
                 
@@ -316,6 +401,7 @@ async def buy_api(request):
                     
         return web.json_response({
             "ok": True,
+            "success": True,
             "transaction_id": str(order_id) if order_id else None,
             "order_id": order_id,
             "product_id": product_id,
@@ -325,7 +411,8 @@ async def buy_api(request):
             "total_price": price_paid,
             "new_balance": new_balance,
             "purchase_time": purchase_time,
-            "items": stock_data_list
+            "items": stock_data_list,
+            "deliveredKeys": stock_data_list
         })
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=400)
@@ -340,11 +427,17 @@ def create_api_app(bot) -> web.Application:
     app.router.add_get("/api/health", health_api)
     app.router.add_get("/v1/health", health_api)
     app.router.add_get("/api/v1/health", health_api)
+    app.router.add_get("/api/reseller/health", health_api)
+    app.router.add_get("/reseller/health", health_api)
     
     # 2. Account & Balance routes
+    app.router.add_get("/me", get_me_api)
     app.router.add_get("/api/me", get_me_api)
     app.router.add_get("/v1/me", get_me_api)
     app.router.add_get("/api/v1/me", get_me_api)
+    app.router.add_get("/api/reseller/me", get_me_api)
+    app.router.add_get("/reseller/me", get_me_api)
+    app.router.add_get("/balance", get_me_api)
     app.router.add_get("/api/balance", get_me_api)
     app.router.add_get("/v1/balance", get_me_api)
     app.router.add_get("/api/v1/balance", get_me_api)
@@ -354,16 +447,24 @@ def create_api_app(bot) -> web.Application:
     app.router.add_get("/api/products", get_products_api)
     app.router.add_get("/v1/products", get_products_api)
     app.router.add_get("/api/v1/products", get_products_api)
+    app.router.add_get("/api/reseller/products", get_products_api)
+    app.router.add_get("/reseller/products", get_products_api)
     app.router.add_get("/catalog", get_products_api)
     app.router.add_get("/api/catalog", get_products_api)
     app.router.add_get("/v1/catalog", get_products_api)
     app.router.add_get("/api/v1/catalog", get_products_api)
     
-    # 4. Product Details
+    # 4. Product Details & Quotes
     app.router.add_get("/products/{id}", get_product_detail_api)
     app.router.add_get("/api/products/{id}", get_product_detail_api)
     app.router.add_get("/v1/products/{id}", get_product_detail_api)
     app.router.add_get("/api/v1/products/{id}", get_product_detail_api)
+    app.router.add_get("/api/reseller/products/{id}", get_product_detail_api)
+    app.router.add_get("/reseller/products/{id}", get_product_detail_api)
+    app.router.add_post("/api/reseller/quote", quote_api)
+    app.router.add_post("/reseller/quote", quote_api)
+    app.router.add_post("/api/v1/quotes", quote_api)
+    app.router.add_post("/v1/quotes", quote_api)
     
     # 5. Order / Buy / Purchase routes
     app.router.add_post("/buy", buy_api)
@@ -374,6 +475,8 @@ def create_api_app(bot) -> web.Application:
     app.router.add_post("/api/orders", buy_api)
     app.router.add_post("/v1/orders", buy_api)
     app.router.add_post("/api/v1/orders", buy_api)
+    app.router.add_post("/api/reseller/orders", buy_api)
+    app.router.add_post("/reseller/orders", buy_api)
     app.router.add_post("/v1/purchases", buy_api)
     app.router.add_post("/api/v1/purchases", buy_api)
     app.router.add_post("/purchase", buy_api)
@@ -384,10 +487,14 @@ def create_api_app(bot) -> web.Application:
     app.router.add_get("/api/orders", get_order_history_api)
     app.router.add_get("/v1/orders", get_order_history_api)
     app.router.add_get("/api/v1/orders", get_order_history_api)
+    app.router.add_get("/api/reseller/orders", get_order_history_api)
+    app.router.add_get("/reseller/orders", get_order_history_api)
     app.router.add_get("/orders/{id}", get_order_detail_api)
     app.router.add_get("/api/orders/{id}", get_order_detail_api)
     app.router.add_get("/v1/orders/{id}", get_order_detail_api)
     app.router.add_get("/api/v1/orders/{id}", get_order_detail_api)
+    app.router.add_get("/api/reseller/orders/{id}", get_order_detail_api)
+    app.router.add_get("/reseller/orders/{id}", get_order_detail_api)
     
     return app
 

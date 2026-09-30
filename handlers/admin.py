@@ -3864,36 +3864,44 @@ async def cb_admin_prov_page(callback: CallbackQuery, state: FSMContext, lang='e
         pass
     await callback.answer()
 
-@router.callback_query(F.data.startswith("admin_prov_sel_"))
+@router.callback_query(F.data.startswith("admin_prov_sel_") | F.data.startswith("admin_prov_sidx_"))
 async def cb_admin_prov_select_product(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
         await callback.answer("❌ Unauthorized", show_alert=True)
         return
         
-    raw_prod_id = callback.data.replace("admin_prov_sel_", "")
     data = await state.get_data()
     products = data.get('prov_products', [])
     
     selected_prod = None
-    for p in products:
-        if str(p['id']) == raw_prod_id:
-            selected_prod = p
-            break
+    if callback.data.startswith("admin_prov_sidx_"):
+        try:
+            idx = int(callback.data.replace("admin_prov_sidx_", ""))
+            if 0 <= idx < len(products):
+                selected_prod = products[idx]
+        except ValueError:
+            pass
+    else:
+        raw_prod_id = callback.data.replace("admin_prov_sel_", "")
+        for p in products:
+            if str(p['id']) == raw_prod_id:
+                selected_prod = p
+                break
             
     if not selected_prod:
         await callback.answer("❌ Selected product not found", show_alert=True)
         return
         
     cost = float(selected_prod.get('price', 0.0))
-    prod_name = selected_prod.get('name_en') or selected_prod.get('name_ar') or f"Product #{raw_prod_id}"
+    prod_name = selected_prod.get('name_en') or selected_prod.get('name_ar') or f"Product #{selected_prod.get('id')}"
     await state.update_data(selected_prov_prod=selected_prod)
     
     text = get_text('pricing_select_strategy_title', lang, name=prod_name, cost=cost)
-    await callback.message.edit_text(
-        text,
-        reply_markup=keyboards.get_admin_pricing_type_keyboard(lang=lang, is_import=True),
-        parse_mode="Markdown"
-    )
+    kb = keyboards.get_admin_pricing_type_keyboard(lang=lang, is_import=True)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode=None)
     await callback.answer()
 
 @router.callback_query(F.data.startswith("admin_imp_ptype_"))
@@ -3988,15 +3996,15 @@ async def finalize_imported_product(message_or_msg, state: FSMContext, min_price
     from utils import calculate_dynamic_selling_price
     final_price = calculate_dynamic_selling_price(ptype, m_val, min_price, cost, fallback_fixed_price=data.get('fixed_price', cost))
     
-    from database import add_imported_product, broadcast_new_product_to_users, get_setting
+    from database import add_imported_product, broadcast_new_product_to_users, get_setting, set_cached_provider_stock
     req_email = 1 if (prod.get('requires_email') or prod.get('requiresEmailActivation')) else 0
     product_id = await add_imported_product(
         name_ar=prod.get('name_ar', prod.get('name_en')),
         name_en=prod.get('name_en'),
         name_ru=prod.get('name_ru', prod.get('name_en')),
-        description_ar="",
-        description_en="",
-        description_ru="",
+        description_ar=prod.get('description_ar', ''),
+        description_en=prod.get('description_en', ''),
+        description_ru=prod.get('description_ru', ''),
         price=final_price,
         custom_emoji_id=prod.get('custom_emoji_id'),
         provider_id=prov_id,
@@ -4007,6 +4015,11 @@ async def finalize_imported_product(message_or_msg, state: FSMContext, min_price
         last_provider_cost=cost,
         requires_email=req_email
     )
+    if product_id and prod.get('stock') is not None:
+        try:
+            set_cached_provider_stock(product_id, int(prod.get('stock', 0)))
+        except Exception:
+            pass
     
     bot_inst = message_or_msg.bot
     if product_id:
@@ -4037,7 +4050,10 @@ async def finalize_imported_product(message_or_msg, state: FSMContext, min_price
             logger.error(f"Failed to log imported product announcement to news channel: {e}")
             
     text = get_text('prov_import_success', lang, name=prod.get('name_en'), price=final_price)
-    await message_or_msg.answer(text, parse_mode="Markdown")
+    try:
+        await message_or_msg.answer(text, parse_mode="Markdown")
+    except Exception:
+        await message_or_msg.answer(text, parse_mode=None)
     await state.clear()
 
 @router.message(ProvidersStates.waiting_for_price)

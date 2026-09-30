@@ -826,7 +826,7 @@ async def get_stock_count(product_id, use_cache=True):
                 
         return local_count
 
-async def get_all_stock_counts(products=None, use_cache=True):
+async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
     """
     Optimized batch function to get stock counts for all products in 1 DB connection
     with intelligent in-memory TTL caching and single bulk requests per provider.
@@ -848,16 +848,23 @@ async def get_all_stock_counts(products=None, use_cache=True):
 
         # 2. Get all provider-linked products
         async with db.execute("""
-            SELECT p.id as product_id, p.provider_id, p.provider_product_id, pr.base_url, pr.api_key, pr.field_mapping
+            SELECT p.id as product_id, p.provider_id, p.provider_product_id,
+                   p.pricing_type, p.margin_value, p.min_price, p.price, p.requires_email,
+                   pr.base_url, pr.api_key, pr.field_mapping
             FROM products p
             JOIN providers pr ON p.provider_id = pr.id
             WHERE p.provider_id IS NOT NULL;
         """) as cursor:
             prov_prods = await cursor.fetchall()
 
-    if prov_prods:
+    if prov_prods and local_only:
+        for item in prov_prods:
+            it_pid = item['product_id']
+            if it_pid in _PROVIDER_STOCK_CACHE:
+                stock_counts[it_pid] = stock_counts.get(it_pid, 0) + _PROVIDER_STOCK_CACHE[it_pid][0]
+    elif prov_prods:
         import asyncio
-        from utils import matches_product_id, extract_price_from_dict
+        from utils import matches_product_id, extract_price_from_dict, calculate_dynamic_selling_price
         from providers_engine import get_provider_adapter
 
         # Group items by provider to do 1 single bulk fetch per provider
@@ -872,6 +879,8 @@ async def get_all_stock_counts(products=None, use_cache=True):
                     "items": []
                 }
             providers_group[pr_id]["items"].append(item)
+
+        pending_db_updates = []
 
         async def process_provider_products(pr_id, pr_data):
             base_url = pr_data["base_url"]
@@ -900,7 +909,7 @@ async def get_all_stock_counts(products=None, use_cache=True):
             adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
             catalog_products = None
             try:
-                catalog_products = await adapter.fetch_catalog()
+                catalog_products = await asyncio.wait_for(adapter.fetch_catalog(), timeout=12.0)
             except Exception as e:
                 logger.warning(f"Error fetching bulk catalog for provider {pr_id}: {e}")
 
@@ -920,33 +929,30 @@ async def get_all_stock_counts(products=None, use_cache=True):
                             stock_counts[it_pid] = local_c + num_s
                             matched = True
                             
-                            # Automatically update last_provider_cost, dynamic pricing, and requires_email
+                            # Collect DB updates in memory to execute in a single batch transaction
                             try:
                                 p_cost = float(extract_price_from_dict(p) or 0.0)
                                 p_req_email = 1 if (p.get('requires_email') or p.get('requiresEmailActivation')) else 0
-                                async with aiosqlite.connect(DB_NAME, timeout=10.0) as update_db:
-                                    update_db.row_factory = aiosqlite.Row
-                                    async with update_db.execute("SELECT pricing_type, margin_value, min_price, price, requires_email FROM products WHERE id = ?;", (it_pid,)) as p_cur:
-                                        cur_p = await p_cur.fetchone()
-                                    if cur_p:
-                                        cur_req = int(cur_p['requires_email'] or 0) if 'requires_email' in cur_p.keys() else 0
-                                        new_req = 1 if (p_req_email or cur_req) else 0
-                                        if p_cost > 0:
-                                            p_type = cur_p['pricing_type'] or 'fixed'
-                                            m_val = float(cur_p['margin_value'] or 0.0)
-                                            min_p = float(cur_p['min_price'] or 0.0)
-                                            if p_type in ['margin_fixed', 'margin_percent']:
-                                                from utils import calculate_dynamic_selling_price
-                                                new_selling_price = calculate_dynamic_selling_price(p_type, m_val, min_p, p_cost, float(cur_p['price'] or 0.0))
-                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, price = ?, requires_email = ? WHERE id = ?;", (p_cost, new_selling_price, new_req, it_pid))
-                                            else:
-                                                await update_db.execute("UPDATE products SET last_provider_cost = ?, requires_email = ? WHERE id = ?;", (p_cost, new_req, it_pid))
-                                            await update_db.commit()
-                                        elif new_req != cur_req:
-                                            await update_db.execute("UPDATE products SET requires_email = ? WHERE id = ?;", (new_req, it_pid))
-                                            await update_db.commit()
+                                cur_req = int(it['requires_email'] or 0) if 'requires_email' in it.keys() else 0
+                                new_req = 1 if (p_req_email or cur_req) else 0
+                                cur_price = float(it['price'] or 0.0)
+                                if p_cost > 0:
+                                    p_type = it['pricing_type'] or 'fixed'
+                                    m_val = float(it['margin_value'] or 0.0)
+                                    min_p = float(it['min_price'] or 0.0)
+                                    if p_type in ['margin_fixed', 'margin_percent']:
+                                        new_selling_price = calculate_dynamic_selling_price(p_type, m_val, min_p, p_cost, cur_price)
+                                        pending_db_updates.append((p_cost, new_selling_price, new_req, it_pid))
+                                    elif cur_price <= 0:
+                                        # Auto-heal previously imported $0.00 products
+                                        healed_price = max(p_cost, min_p)
+                                        pending_db_updates.append((p_cost, healed_price, new_req, it_pid))
+                                    else:
+                                        pending_db_updates.append((p_cost, cur_price, new_req, it_pid))
+                                elif new_req != cur_req:
+                                    pending_db_updates.append((None, None, new_req, it_pid))
                             except Exception as sync_p_err:
-                                logger.debug(f"Price/email sync error for {it_pid}: {sync_p_err}")
+                                logger.debug(f"Price/email sync prep error for {it_pid}: {sync_p_err}")
                             break
 
                 if not matched:
@@ -978,10 +984,30 @@ async def get_all_stock_counts(products=None, use_cache=True):
         # Process all providers concurrently
         await asyncio.gather(*(process_provider_products(pr_id, pr_data) for pr_id, pr_data in providers_group.items()), return_exceptions=True)
 
+        # Apply all collected price/cost/email updates in a single DB connection
+        if pending_db_updates:
+            try:
+                async with aiosqlite.connect(DB_NAME, timeout=15.0) as update_db:
+                    await update_db.execute("PRAGMA busy_timeout = 15000;")
+                    for p_cost, new_price, new_req, it_pid in pending_db_updates:
+                        if p_cost is not None and new_price is not None:
+                            await update_db.execute(
+                                "UPDATE products SET last_provider_cost = ?, price = ?, requires_email = ? WHERE id = ?;",
+                                (p_cost, new_price, new_req, it_pid)
+                            )
+                        else:
+                            await update_db.execute(
+                                "UPDATE products SET requires_email = ? WHERE id = ?;",
+                                (new_req, it_pid)
+                            )
+                    await update_db.commit()
+            except Exception as batch_upd_err:
+                logger.debug(f"Batch product sync error: {batch_upd_err}")
+
     # Fill default 0 for products with no stock
     if products:
         for p in products:
-            p_id = p['id'] if isinstance(p, dict) else (p.get('id') if isinstance(p, dict) else None)
+            p_id = p['id'] if isinstance(p, dict) or hasattr(p, 'keys') else None
             if p_id and p_id not in stock_counts:
                 stock_counts[p_id] = 0
 
@@ -1046,44 +1072,39 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             raw_pid = product['provider_product_id']
             prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
 
-            # PRE-PURCHASE LIVE COST VERIFICATION & PRICE PROTECTION
+            # PRE-PURCHASE LIVE COST SYNC (Auto-updates cost & dynamic price without falsely halting discounted/custom-priced orders)
             prod_dict = dict(product)
             pricing_type = prod_dict.get('pricing_type') or 'fixed'
             margin_value = float(prod_dict.get('margin_value') or 0.0)
             min_price = float(prod_dict.get('min_price') or 0.0)
             
             try:
-                live_cost = await adapter.fetch_live_product_price(prov_pid, remaining_qty)
+                live_cost = await asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, remaining_qty), timeout=6.0)
             except Exception as e:
                 logger.warning(f"Failed to fetch live product price for {product_id}: {e}")
                 live_cost = None
 
             if live_cost is not None and live_cost > 0:
-                await db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (live_cost, product_id))
-                await db.commit()
-                
                 from utils import calculate_dynamic_selling_price
+                cur_base_price = float(prod_dict.get('price') or 0.0)
                 required_selling_price = calculate_dynamic_selling_price(
                     pricing_type=pricing_type,
                     margin_value=margin_value,
                     min_price=min_price,
                     provider_cost=live_cost,
-                    fallback_fixed_price=float(prod_dict.get('price') or 0.0)
+                    fallback_fixed_price=cur_base_price if cur_base_price > 0 else live_cost
                 )
-                
-                # Verify that the price paid per item covers wholesale cost and price floor
-                if (final_price_per_item + 0.005) < live_cost:
-                    set_cached_provider_stock(product_id, 0)
-                    raise Exception(f"Provider cost increased to ${live_cost:.2f} (selling at ${final_price_per_item:.2f}). Order halted to protect funds.")
-                elif pricing_type in ['margin_fixed', 'margin_percent'] and (final_price_per_item + 0.005) < required_selling_price:
-                    set_cached_provider_stock(product_id, 0)
-                    raise Exception(f"Provider cost changed to ${live_cost:.2f}. Required protected price is ${required_selling_price:.2f}. Order halted.")
+                if pricing_type in ['margin_fixed', 'margin_percent'] or cur_base_price <= 0:
+                    await db.execute("UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;", (live_cost, required_selling_price, product_id))
+                else:
+                    await db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (live_cost, product_id))
+                await db.commit()
 
             try:
                 delivered_items = await adapter.execute_order(
                     provider_product_id=prov_pid,
                     quantity=remaining_qty,
-                    expected_price=product['price'] if isinstance(product, dict) and 'price' in product else 1.00,
+                    expected_price=float(prod_dict.get('price') or 1.00),
                     client_order_ref=client_order_id,
                     customer_email=customer_email
                 )
@@ -1094,7 +1115,7 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 if "email requis" in err_lower or "email required" in err_lower or "requires email" in err_lower:
                     await db.execute("UPDATE products SET requires_email = 1 WHERE id = ?;", (product_id,))
                     await db.commit()
-                else:
+                elif "out of stock" in err_lower or "stock" in err_lower or "depleted" in err_lower:
                     set_cached_provider_stock(product_id, 0)
                 raise pe
 

@@ -18,16 +18,24 @@ def normalize_provider_url(url: str) -> str:
     if not url.startswith('http://') and not url.startswith('https://'):
         url = 'https://' + url
         
-    for suffix in [
+    suffixes = [
         '/api/swagger', '/swagger', '/api/reseller/openapi.json', '/openapi.json',
+        '/api/reseller/products', '/reseller/products',
         '/api/reseller', '/reseller',
         '/docs', '/api-docs', '/api/docs', 
         '/api/v1/products', '/api/products', '/v1/products', '/products', 
         '/api/v1/catalog', '/v1/catalog', '/catalog', 
         '/api/v1', '/api', '/v1'
-    ]:
-        if url.endswith(suffix):
-            url = url[:-len(suffix)].rstrip('/')
+    ]
+    changed = True
+    while changed:
+        changed = False
+        lower_url = url.lower()
+        for suffix in suffixes:
+            if lower_url.endswith(suffix):
+                url = url[:-len(suffix)].rstrip('/')
+                changed = True
+                break
             
     return url.rstrip('/')
 
@@ -164,12 +172,24 @@ def extract_products_list_from_json(data):
             if isinstance(val, list):
                 return val
             if isinstance(val, dict):
-                for subkey in ['products', 'items', 'list', 'goods', 'catalog']:
+                if 'categories' in val and isinstance(val['categories'], list):
+                    nested_items = []
+                    for cat in val['categories']:
+                        if isinstance(cat, dict):
+                            cat_items = cat.get('items') or cat.get('products') or cat.get('goods') or []
+                            if isinstance(cat_items, list):
+                                for it in cat_items:
+                                    if isinstance(it, dict):
+                                        nested_items.append(it)
+                    if nested_items:
+                        return nested_items
+                for subkey in ['products', 'items', 'list', 'goods', 'catalog', 'data']:
                     subval = val.get(subkey)
                     if isinstance(subval, list):
                         return subval
-                return [val]
-        if 'id' in data or 'product_id' in data or 'productId' in data or 'service' in data or 'item_id' in data:
+                if any(k in val for k in ['id', '_id', 'product_id', 'productId', 'service', 'item_id', 'code', 'sku']):
+                    return [val]
+        if any(k in data for k in ['id', '_id', 'product_id', 'productId', 'service', 'item_id', 'code', 'sku']):
             return [data]
     return []
 
@@ -489,7 +509,12 @@ async def send_message_with_retry(send_func, *args, retries=3, delay=1.5, **kwar
             return await send_func(*args, **kwargs)
         except Exception as e:
             err_str = str(e).lower()
-            if ("can't parse entities" in err_str or "bad request" in err_str or "entity" in err_str) and "parse_mode" in kwargs:
+            if any(perm in err_str for perm in [
+                "forbidden", "blocked by the user", "user is deactivated",
+                "chat not found", "bot was kicked", "have no rights to send"
+            ]):
+                raise e
+            if ("can't parse entities" in err_str or "entity" in err_str or "find end of the entity" in err_str) and "parse_mode" in kwargs:
                 kwargs_no_pm = kwargs.copy()
                 kwargs_no_pm["parse_mode"] = None
                 try:

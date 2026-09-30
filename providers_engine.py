@@ -86,6 +86,8 @@ class BaseProviderAdapter:
             f"{self.base_url}/v1/products",
             f"{self.base_url}/api/products",
             f"{self.base_url}/products",
+            f"{self.base_url}/api/reseller/products",
+            f"{self.base_url}/reseller/products",
             f"{self.base_url}/api/v1/catalog",
             f"{self.base_url}/v1/catalog",
             f"{self.base_url}/api/catalog",
@@ -93,24 +95,27 @@ class BaseProviderAdapter:
         ]
         
         async def _req(s):
+            saw_empty_valid = False
             for url in endpoints:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
                             try:
-                                data = await resp.json()
+                                data = await resp.json(content_type=None)
                             except Exception:
                                 continue
                             raw_list = extract_products_list_from_json(data)
                             if raw_list:
-                                return self._standardize_catalog(raw_list)
-                            elif isinstance(data, dict) and (data.get('ok') is True or data.get('status') == 'success' or 'products' in data):
-                                return []
+                                standardized = self._standardize_catalog(raw_list)
+                                if standardized:
+                                    return standardized
+                            if isinstance(data, dict) and (data.get('ok') is True or data.get('status') == 'success' or 'products' in data):
+                                saw_empty_valid = True
                             elif isinstance(data, list) and len(data) == 0:
-                                return []
+                                saw_empty_valid = True
                 except Exception as e:
                     logger.debug(f"Catalog probe {url} failed: {e}")
-            return None
+            return [] if saw_empty_valid else None
 
         if session:
             return await _req(session)
@@ -137,10 +142,10 @@ class BaseProviderAdapter:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            data = await resp.json(content_type=None)
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
-                                if matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p or (custom_stock_field and custom_stock_field in single_p)):
+                                if isinstance(single_p, dict) and (matches_product_id(single_p, prov_pid) or ('stock' in single_p or 'quantity' in single_p or 'inStock' in single_p or (custom_stock_field and custom_stock_field in single_p))):
                                     num_s = extract_stock_from_dict(single_p, allow_boolean=False, custom_field=custom_stock_field)
                                     if num_s is not None:
                                         return num_s
@@ -192,7 +197,7 @@ class BaseProviderAdapter:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            data = await resp.json(content_type=None)
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
                                 price_val = extract_price_from_dict(single_p, custom_field=custom_price_field)
@@ -260,6 +265,8 @@ class BaseProviderAdapter:
             f"{self.base_url}/buy",
             f"{self.base_url}/v1/orders",
             f"{self.base_url}/orders",
+            f"{self.base_url}/api/reseller/orders",
+            f"{self.base_url}/reseller/orders",
             f"{self.base_url}/api/purchase",
             f"{self.base_url}/purchase",
             f"{self.base_url}/v1/purchases",
@@ -277,7 +284,7 @@ class BaseProviderAdapter:
                     async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                         if resp.status in [200, 201]:
                             try:
-                                buy_data = await resp.json()
+                                buy_data = await resp.json(content_type=None)
                             except Exception:
                                 raw_txt = await resp.text()
                                 buy_data = {"credentials": raw_txt}
@@ -294,7 +301,7 @@ class BaseProviderAdapter:
                             async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
                                 if resp2.status in [200, 201]:
                                     try:
-                                        buy_data = await resp2.json()
+                                        buy_data = await resp2.json(content_type=None)
                                     except Exception:
                                         raw_txt = await resp2.text()
                                         buy_data = {"credentials": raw_txt}
@@ -305,10 +312,19 @@ class BaseProviderAdapter:
                         else:
                             last_err = await self._parse_error_response(resp)
                             logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
-                            if resp.status in [404, 405] or "Cannot POST" in str(last_err) or "Not Found" in str(last_err) or "Method Not Allowed" in str(last_err):
-                                continue
-                            break
+                            err_l = str(last_err).lower()
+                            if resp.status == 402 or "balance" in err_l:
+                                raise Exception(f"Provider balance insufficient: {last_err}")
+                            elif resp.status == 409 or "out of stock" in err_l or "stock" in err_l:
+                                raise Exception(f"Out of stock ({last_err})")
+                            elif "email requis" in err_l or "email required" in err_l or "requires email" in err_l:
+                                raise Exception(f"Provider error: {last_err}")
+                            elif resp.status in [401, 403] or "invalid api key" in err_l or "unauthorized" in err_l:
+                                break
+                            continue
                 except Exception as ep_err:
+                    if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err) or "email" in str(ep_err).lower():
+                        raise ep_err
                     logger.warning(f"Provider request error on {ep}: {ep_err}")
                     last_err = str(ep_err)
             
@@ -329,6 +345,8 @@ class BaseProviderAdapter:
             f"{self.base_url}/v1/me",
             f"{self.base_url}/api/me",
             f"{self.base_url}/me",
+            f"{self.base_url}/api/reseller/me",
+            f"{self.base_url}/reseller/me",
             f"{self.base_url}/v1/balance",
             f"{self.base_url}/api/v1/balance",
             f"{self.base_url}/api/balance",
@@ -339,7 +357,7 @@ class BaseProviderAdapter:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            data = await resp.json(content_type=None)
                             if isinstance(data, dict):
                                 return data
                 except Exception:
@@ -365,7 +383,10 @@ class BaseProviderAdapter:
             if custom_id_field and p.get(custom_id_field) is not None:
                 p_id = p.get(custom_id_field)
             if p_id is None:
-                p_id = p.get("id") or p.get("product_id") or p.get("productId") or p.get("item_id") or p.get("service") or p.get("code")
+                for id_k in ["id", "_id", "product_id", "productId", "item_id", "service", "code", "sku", "slug"]:
+                    if p.get(id_k) is not None:
+                        p_id = p.get(id_k)
+                        break
             if p_id is None:
                 continue
             
@@ -378,6 +399,13 @@ class BaseProviderAdapter:
             name_ru = p.get("name_ru") or p_name
             extracted_price = extract_price_from_dict(p, custom_field=custom_price_field)
             price_val = float(extracted_price) if extracted_price is not None else 0.0
+            if price_val <= 0 and p.get("original_price") is not None:
+                try:
+                    orig_p = float(p.get("original_price") or 0.0)
+                    if orig_p > 0:
+                        price_val = orig_p
+                except (ValueError, TypeError):
+                    pass
                 
             stock_val = extract_stock_from_dict(p, allow_boolean=False, custom_field=custom_stock_field)
             if stock_val is None:
@@ -388,6 +416,7 @@ class BaseProviderAdapter:
                 or p.get("requires_email")
                 or (isinstance(p.get("delivery"), dict) and p["delivery"].get("requiresEmailActivation"))
             )
+            desc_default = str(p.get("description") or p.get("description_en") or p.get("description_ar") or "")
 
             formatted.append({
                 "id": str(p_id),
@@ -395,11 +424,12 @@ class BaseProviderAdapter:
                 "name_ar": name_ar,
                 "name_en": name_en,
                 "name_ru": name_ru,
-                "description": "",
-                "description_ar": "",
-                "description_en": "",
-                "description_ru": "",
+                "description": desc_default,
+                "description_ar": str(p.get("description_ar") or desc_default),
+                "description_en": str(p.get("description_en") or desc_default),
+                "description_ru": str(p.get("description_ru") or desc_default),
                 "price": price_val,
+                "original_price": float(p.get("original_price") or price_val),
                 "stock": stock_val,
                 "custom_emoji_id": p.get("custom_emoji_id"),
                 "requires_email": req_email,
@@ -1077,21 +1107,24 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         ]
         
         async def _req(s):
+            saw_empty_valid = False
             for url in endpoints:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            data = await resp.json(content_type=None)
                             raw_list = extract_products_list_from_json(data)
                             if raw_list:
-                                return self._standardize_catalog(raw_list)
-                            elif isinstance(data, dict) and (data.get('success') is True or data.get('ok') is True or 'products' in data):
-                                return []
+                                standardized = self._standardize_catalog(raw_list)
+                                if standardized:
+                                    return standardized
+                            if isinstance(data, dict) and (data.get('success') is True or data.get('ok') is True or 'products' in data):
+                                saw_empty_valid = True
                             elif isinstance(data, list) and len(data) == 0:
-                                return []
+                                saw_empty_valid = True
                 except Exception as e:
                     logger.debug(f"VenteBot catalog probe {url} failed: {e}")
-            return None
+            return [] if saw_empty_valid else None
 
         if session:
             return await _req(session)
@@ -1105,12 +1138,31 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
         
         async def _req(s):
-            # Try quote endpoint
+            # 1. Try single product detail endpoints first
+            for url in [
+                f"{self.base_url}/api/v1/products/{prov_pid}",
+                f"{self.base_url}/api/products/{prov_pid}",
+                f"{self.base_url}/products/{prov_pid}"
+            ]:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            if isinstance(data, dict):
+                                single_p = data.get('product') or data.get('data') or data
+                                if isinstance(single_p, dict):
+                                    stk = extract_stock_from_dict(single_p, allow_boolean=True, custom_field=custom_stock_field)
+                                    if stk is not None:
+                                        return stk
+                except Exception:
+                    pass
+
+            # 2. Try quote endpoint
             try:
                 quote_url = f"{self.base_url}/api/reseller/quote"
                 async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": 1, "qty": 1}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as q_resp:
                     if q_resp.status == 200:
-                        q_data = await q_resp.json()
+                        q_data = await q_resp.json(content_type=None)
                         if isinstance(q_data, dict):
                             stk = extract_stock_from_dict(q_data, allow_boolean=True, custom_field=custom_stock_field)
                             if stk is not None:
@@ -1124,7 +1176,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
             except Exception:
                 pass
             
-            # Fallback: search products catalog
+            # 3. Fallback: search products catalog
             catalog = await self.fetch_catalog(s)
             if catalog:
                 for p in catalog:
@@ -1152,7 +1204,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
+                            data = await resp.json(content_type=None)
                             if isinstance(data, dict):
                                 return data
                 except Exception:
@@ -1171,19 +1223,37 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
 
         async def _req(s):
-            # 1. Try /api/reseller/quote
+            # 1. Try single product detail endpoints first
+            for url in [
+                f"{self.base_url}/api/v1/products/{prov_pid}",
+                f"{self.base_url}/api/products/{prov_pid}",
+                f"{self.base_url}/products/{prov_pid}"
+            ]:
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            if isinstance(data, dict):
+                                single_p = data.get('product') or data.get('data') or data
+                                u_price = extract_price_from_dict(single_p, custom_field=custom_price_field)
+                                if u_price is not None:
+                                    return float(u_price)
+                except Exception:
+                    pass
+
+            # 2. Try /api/reseller/quote
             try:
                 quote_url = f"{self.base_url}/api/reseller/quote"
                 async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity), "qty": int(quantity)}, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
                     if q_resp.status == 200:
-                        q_data = await q_resp.json()
+                        q_data = await q_resp.json(content_type=None)
                         if isinstance(q_data, dict):
                             u_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
                             if u_price is not None:
                                 return float(u_price)
             except Exception:
                 pass
-            # 2. Fallback to catalog
+            # 3. Fallback to catalog
             catalog = await self.fetch_catalog(s)
             if catalog:
                 for p in catalog:
@@ -1250,7 +1320,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                     logger.info(f"Executing VenteBot order on {ep} with payload: {payload}")
                     async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
                         if resp.status in [200, 201]:
-                            buy_data = await resp.json()
+                            buy_data = await resp.json(content_type=None)
                             return self._parse_delivery_data(buy_data, order_ref)
                         elif resp.status == 422:
                             custom_pid_k = (self.field_mapping.get("buy_pid_field") or "product_id").strip()
@@ -1262,7 +1332,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                                 minimal_payload["emails"] = payload["emails"]
                             async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
                                 if resp2.status in [200, 201]:
-                                    buy_data = await resp2.json()
+                                    buy_data = await resp2.json(content_type=None)
                                     return self._parse_delivery_data(buy_data, order_ref)
                                 last_err = await self._parse_error_response(resp2)
                                 logger.warning(f"VenteBot {ep} 422 fallback returned status {resp2.status}: {last_err}")
@@ -1270,15 +1340,18 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                         else:
                             last_err = await self._parse_error_response(resp)
                             logger.warning(f"VenteBot order error on {ep}: HTTP {resp.status} - {last_err}")
-                            if resp.status == 409 or "insufficient" in str(last_err).lower() or "stock" in str(last_err).lower():
-                                raise Exception(f"Out of stock ({last_err})")
-                            elif resp.status == 402 or "balance" in str(last_err).lower():
+                            err_l = str(last_err).lower()
+                            if resp.status == 402 or "balance" in err_l:
                                 raise Exception(f"Provider balance insufficient: {last_err}")
-                            elif resp.status in [404, 405] or "Cannot POST" in str(last_err) or "Not Found" in str(last_err) or "Method Not Allowed" in str(last_err):
-                                continue
-                            break
+                            elif resp.status == 409 or "stock" in err_l or "insufficient" in err_l:
+                                raise Exception(f"Out of stock ({last_err})")
+                            elif "email requis" in err_l or "email required" in err_l or "requires email" in err_l:
+                                raise Exception(f"Provider error: {last_err}")
+                            elif resp.status in [401, 403] or "invalid api key" in err_l or "unauthorized" in err_l:
+                                break
+                            continue
                 except Exception as ep_err:
-                    if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err):
+                    if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err) or "email" in str(ep_err).lower():
                         raise ep_err
                     logger.warning(f"VenteBot purchase error on {ep}: {ep_err}")
                     last_err = str(ep_err)
@@ -1311,7 +1384,8 @@ def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[An
         return ShopDigitalProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "supabase.co" in clean_url:
         return SupabaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
-    elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "railway.app" in clean_url or "reseller" in clean_url:
+    elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "/api/reseller" in clean_url or "/reseller" in clean_url:
         return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     else:
         return BaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
+

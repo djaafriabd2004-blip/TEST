@@ -498,12 +498,15 @@ def get_provider_products_keyboard(products, lang='en', page=0, per_page=12) -> 
     end_idx = start_idx + per_page
     page_products = products[start_idx:end_idx]
 
-    for prod in page_products:
+    for idx_in_page, prod in enumerate(page_products):
+        abs_idx = start_idx + idx_in_page
         name = prod.get('name_en') or prod.get('name_ar') or f"ID: {prod['id']}"
         if len(name) > 30:
             name = name[:27] + "..."
         price = prod.get('price', 0.0)
-        builder.button(text=f"📥 {name} (${price:.2f})", callback_data=f"admin_prov_sel_{prod['id']}")
+        raw_cb = f"admin_prov_sel_{prod['id']}"
+        cb_data = raw_cb if len(raw_cb.encode('utf-8')) <= 64 else f"admin_prov_sidx_{abs_idx}"
+        builder.button(text=f"📥 {name} (${price:.2f})", callback_data=cb_data)
 
     adjust_pattern = [1] * len(page_products)
 
