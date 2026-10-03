@@ -341,7 +341,7 @@ async def get_button_emojis():
     keys = [
         'btn_emoji_shop', 'btn_emoji_orders', 'btn_emoji_charge',
         'btn_emoji_referral', 'btn_emoji_support', 'btn_emoji_language',
-        'btn_emoji_admin'
+        'btn_emoji_admin', 'btn_emoji_preorders', 'btn_emoji_reseller_api'
     ]
     result = {}
     async with aiosqlite.connect(DB_NAME) as db:

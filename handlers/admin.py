@@ -621,10 +621,12 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         btn_names = {
             'shop': get_text('btn_shop', lang),
             'orders': get_text('btn_my_orders', lang),
-            'charge': get_text('btn_charge', lang),
+            'preorders': get_text('btn_my_preorders', lang),
+            'charge': get_text('btn_charge_balance', lang),
             'referral': get_text('btn_referral', lang),
             'support': get_text('btn_support', lang),
             'language': get_text('btn_language', lang),
+            'reseller_api': get_text('btn_reseller_api', lang),
             'admin': get_text('btn_admin_panel', lang),
         }
         w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
@@ -2054,10 +2056,12 @@ async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lan
         'welcome': {'en': "🔷 Welcome", 'ar': "🔷 الترحيب", 'ru': "🔷 Приветствие"},
         'shop': {'en': "🛒 Shop", 'ar': "🛒 المتجر", 'ru': "🛒 Магазин"},
         'orders': {'en': "📦 My Orders", 'ar': "📦 مشترياتي", 'ru': "📦 Мои заказы"},
+        'preorders': {'en': "⏳ My Pre-orders", 'ar': "⏳ حجوزاتي", 'ru': "⏳ Мои предзаказы"},
         'charge': {'en': "💳 Charge", 'ar': "💳 شحن الرصيد", 'ru': "💳 Пополнить"},
         'referral': {'en': "👥 Referral", 'ar': "👥 الإحالة", 'ru': "👥 Рефералы"},
         'support': {'en': "🎧 Support", 'ar': "🎧 الدعم", 'ru': "🎧 Поддержка"},
         'language': {'en': "🌐 Language", 'ar': "🌐 اللغة", 'ru': "🌐 Язык"},
+        'reseller_api': {'en': "🔑 Reseller API", 'ar': "🔑 بوابة الموزعين", 'ru': "🔑 API Реселлера"},
         'admin': {'en': "⚙️ Admin", 'ar': "⚙️ الإدارة", 'ru': "⚙️ Админ-панель"},
     }
     name_dict = btn_names.get(btn_key, {'en': btn_key, 'ar': btn_key, 'ru': btn_key})
@@ -2066,9 +2070,9 @@ async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lan
     await state.set_state(AdminStates.waiting_for_btn_emoji)
     
     prompt_dict = {
-        'en': f"🎨 Send an animated Premium Custom Emoji for *{name}*, or type /skip to remove the current emoji.",
-        'ar': f"🎨 أرسل إيموجي مميز ومتحرك (Premium Custom Emoji) لـ *{name}*، أو أرسل /skip لإزالة الإيموجي الحالي.",
-        'ru': f"🎨 Отправьте анимированный эмодзи (Telegram Premium) для *{name}*, или введите /skip для удаления эмодзи."
+        'en': f"🎨 Send an animated Premium Custom Emoji (or paste its numeric ID) for *{name}*, or type /skip to remove the current emoji.",
+        'ar': f"🎨 أرسل إيموجي مميز ومتحرك أو الصق معرفه الرقمي (ID) لـ *{name}*، أو أرسل /skip لإزالة الإيموجي الحالي.",
+        'ru': f"🎨 Отправьте эмодзи (Telegram Premium) или вставьте его ID для *{name}*, или введите /skip для удаления."
     }
     await callback.message.answer(prompt_dict.get(lang, prompt_dict['en']), parse_mode="Markdown")
     await callback.answer()
@@ -2084,11 +2088,38 @@ async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
         return
     
     custom_emoji_id = ""
-    if message.text != '/skip' and message.entities:
-        for entity in message.entities:
-            if entity.type == 'custom_emoji':
-                custom_emoji_id = entity.custom_emoji_id
-                break
+    raw_text = (message.text or message.caption or "").strip()
+    
+    if raw_text != '/skip':
+        # 1. From custom_emoji entity (direct Telegram Premium emoji)
+        if message.entities:
+            for entity in message.entities:
+                if entity.type == 'custom_emoji':
+                    custom_emoji_id = str(entity.custom_emoji_id).strip()
+                    break
+        elif message.caption_entities:
+            for entity in message.caption_entities:
+                if entity.type == 'custom_emoji':
+                    custom_emoji_id = str(entity.custom_emoji_id).strip()
+                    break
+                    
+        # 2. From sticker custom_emoji_id
+        if not custom_emoji_id and message.sticker and getattr(message.sticker, 'custom_emoji_id', None):
+            custom_emoji_id = str(message.sticker.custom_emoji_id).strip()
+            
+        # 3. From raw numeric ID or HTML tg-emoji tag
+        if not custom_emoji_id and raw_text:
+            if raw_text.isdigit() and len(raw_text) >= 10:
+                custom_emoji_id = raw_text
+            else:
+                import re
+                m = re.search(r'emoji[-_]id=["\']?(\d+)["\']?', raw_text)
+                if m:
+                    custom_emoji_id = m.group(1)
+                else:
+                    m2 = re.search(r'\b(\d{15,22})\b', raw_text)
+                    if m2:
+                        custom_emoji_id = m2.group(1)
     
     # Welcome emoji uses a different setting key
     if btn_key == 'welcome':
