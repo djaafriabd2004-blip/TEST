@@ -81,9 +81,11 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
 
 @router.message(F.text.in_(get_button_variants('btn_language')))
 async def show_language_menu(message: Message, lang='en'):
+    from database import get_language_emojis
+    lang_emojis = await get_language_emojis()
     await message.answer(
         get_text('select_lang', lang),
-        reply_markup=keyboards.get_language_keyboard()
+        reply_markup=keyboards.get_language_keyboard(lang_emojis=lang_emojis)
     )
 
 @router.callback_query(F.data.startswith("set_lang_"))

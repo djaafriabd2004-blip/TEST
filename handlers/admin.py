@@ -8,7 +8,7 @@ from database import (
     add_stock, bulk_add_stock, get_stock_count, get_setting, set_setting, get_all_users,
     get_user, get_referral_count, get_all_pending_payments, get_stats,
     get_stock_notification_subscribers, clear_stock_notifications, get_user_full_report,
-    get_sales_last_24h, get_button_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users,
+    get_sales_last_24h, get_button_emojis, get_language_emojis, ban_user, unban_user, is_user_banned, get_all_banned_users,
     get_categories, get_category, add_category, update_category, delete_category,
     update_product_order, update_product_category, update_category_order
 )
@@ -618,6 +618,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
     elif menu == "admin_emoji_settings":
         custom_enabled = await get_setting("custom_emojis_enabled", "1")
         emojis = await get_button_emojis()
+        lang_emojis = await get_language_emojis()
         from database import DEFAULT_WELCOME_EMOJI_ID
         welcome_eid = await get_setting('welcome_emoji_id', DEFAULT_WELCOME_EMOJI_ID if custom_enabled == '1' else '')
         btn_names = {
@@ -631,16 +632,32 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             'reseller_api': get_text('btn_reseller_api', lang),
             'admin': get_text('btn_admin_panel', lang),
         }
+        lang_flags = [
+            ('en', "🇺🇸 English"),
+            ('ar', "🇸🇦 العربية"),
+            ('fr', "🇫🇷 Français"),
+            ('zh', "🇨🇳 中文"),
+            ('hi', "🇮🇳 हिन्दी"),
+            ('ko', "🇰🇷 한국어"),
+            ('ru', "🇷🇺 Русский"),
+        ]
         status_mode = ("🟢 " + get_text('status_enabled', lang)) if custom_enabled == "1" else ("🔴 " + get_text('status_disabled', lang))
         w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
         text = get_text('admin_settings_emoji_title', lang) + f" ({status_mode})\n\n"
         text += f"🔷 *Welcome Emoji:* {w_status}\n"
         text += "──────────────\n"
+        text += "*🔘 Main Menu Buttons:*\n"
         for key, name in btn_names.items():
             emoji_id = emojis.get(key)
             status = f"`{emoji_id[:12]}...`" if emoji_id else "❌ None"
             clean_name = strip_leading_emoji(name)
             text += f"▫️ {clean_name}: {status}\n"
+        
+        text += "\n*🌐 Language Flags (أعلام اللغات):*\n"
+        for l_code, l_label in lang_flags:
+            l_eid = lang_emojis.get(l_code)
+            l_status = f"`{l_eid[:12]}...`" if l_eid else "❌ Default"
+            text += f"▫️ {l_label}: {l_status}\n"
         
         # Toggle and Reset buttons
         toggle_label = get_text('btn_admin_toggle_custom_emojis', lang, status=status_mode)
@@ -651,6 +668,13 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         for key, name in btn_names.items():
             clean_btn_name = strip_leading_emoji(name)
             builder.button(text=f"🎨 {clean_btn_name}", callback_data=f"admin_set_btn_emoji_{key}")
+            
+        for l_code, l_label in lang_flags:
+            builder.button(text=f"🚩 {l_label}", callback_data=f"admin_set_btn_emoji_lang_{l_code}")
+            
+        builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
+        builder.adjust(1, 1, 1, 2, 2, 2, 2, 1, 2, 2, 2, 1, 1)
+        return text, builder.as_markup()
     
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
@@ -2073,6 +2097,13 @@ async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lan
         'language': {'en': "🌐 Language", 'ar': "🌐 اللغة", 'ru': "🌐 Язык"},
         'reseller_api': {'en': "🔑 Reseller API", 'ar': "🔑 بوابة الموزعين", 'ru': "🔑 API Реселлера"},
         'admin': {'en': "⚙️ Admin", 'ar': "⚙️ الإدارة", 'ru': "⚙️ Админ-панель"},
+        'lang_en': {'en': "🇺🇸 English Flag", 'ar': "🇺🇸 علم الإنجليزية", 'ru': "🇺🇸 Флаг Английского"},
+        'lang_ar': {'en': "🇸🇦 Arabic Flag", 'ar': "🇸🇦 علم العربية", 'ru': "🇸🇦 Флаг Арабского"},
+        'lang_fr': {'en': "🇫🇷 French Flag", 'ar': "🇫🇷 علم الفرنسية", 'ru': "🇫🇷 Флаг Французского"},
+        'lang_zh': {'en': "🇨🇳 Chinese Flag", 'ar': "🇨🇳 علم الصينية", 'ru': "🇨🇳 Флаг Китайского"},
+        'lang_hi': {'en': "🇮🇳 Hindi Flag", 'ar': "🇮🇳 علم الهندية", 'ru': "🇮🇳 Флаг Хинди"},
+        'lang_ko': {'en': "🇰🇷 Korean Flag", 'ar': "🇰🇷 علم الكورية", 'ru': "🇰🇷 Флаг Корейского"},
+        'lang_ru': {'en': "🇷🇺 Russian Flag", 'ar': "🇷🇺 علم الروسية", 'ru': "🇷🇺 Флаг Русского"},
     }
     name_dict = btn_names.get(btn_key, {'en': btn_key, 'ar': btn_key, 'ru': btn_key})
     name = name_dict.get(lang, name_dict['en'])
@@ -2081,7 +2112,7 @@ async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lan
     
     prompt_dict = {
         'en': f"🎨 Send an animated Premium Custom Emoji (or paste its numeric ID) for *{name}*, or type /skip to remove the current emoji.",
-        'ar': f"🎨 أرسل إيموجي مميز ومتحرك أو الصق معرفه الرقمي (ID) لـ *{name}*، أو أرسل /skip لإزالة الإيموجي الحالي.",
+        'ar': f"🎨 أرسل إيموجي مميز ومتحرك أو الصق معرفه الرقمي (ID) لـ *{name}*، أو أرسل /skip لإزالة الإيموجي واستعادة الافتراضي.",
         'ru': f"🎨 Отправьте эмодзи (Telegram Premium) или вставьте его ID для *{name}*, или введите /skip для удаления."
     }
     await callback.message.answer(prompt_dict.get(lang, prompt_dict['en']), parse_mode="Markdown")
@@ -2131,17 +2162,30 @@ async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
                     if m2:
                         custom_emoji_id = m2.group(1)
     
-    # Welcome emoji uses a different setting key
+    # Save setting according to key type
     if btn_key == 'welcome':
         await set_setting("welcome_emoji_id", custom_emoji_id)
+    elif btn_key.startswith("lang_"):
+        lang_code = btn_key.replace("lang_", "")
+        await set_setting(f"lang_emoji_{lang_code}", custom_emoji_id)
     else:
         await set_setting(f"btn_emoji_{btn_key}", custom_emoji_id)
     
+    btn_names = {
+        'welcome': "🔷 Welcome", 'shop': "🛒 Shop", 'orders': "📦 Orders",
+        'preorders': "⏳ Pre-orders", 'charge': "💳 Charge", 'referral': "👥 Referral",
+        'support': "🎧 Support", 'language': "🌐 Language", 'reseller_api': "🔑 Reseller API",
+        'admin': "⚙️ Admin", 'lang_en': "🇺🇸 English Flag", 'lang_ar': "🇸🇦 Arabic Flag",
+        'lang_fr': "🇫🇷 French Flag", 'lang_zh': "🇨🇳 Chinese Flag", 'lang_hi': "🇮🇳 Hindi Flag",
+        'lang_ko': "🇰🇷 Korean Flag", 'lang_ru': "🇷🇺 Russian Flag"
+    }
+    display_name = btn_names.get(btn_key, btn_key)
+    
     if custom_emoji_id:
         success_dict = {
-            'en': f"✅ Emoji set successfully for *{btn_key}* button!\nID: `{custom_emoji_id}`\n\n💡 Send /start to see the changes.",
-            'ar': f"✅ تم تعيين الإيموجي بنجاح للزر *{btn_key}*!\nالمعرف: `{custom_emoji_id}`\n\n💡 أرسل /start لمشاهدة التغييرات.",
-            'ru': f"✅ Эмодзи успешно установлен для кнопки *{btn_key}*!\nID: `{custom_emoji_id}`\n\n💡 Введите /start чтобы увидеть изменения."
+            'en': f"✅ Emoji set successfully for *{display_name}*!\nID: `{custom_emoji_id}`\n\n💡 Send /start to see the changes.",
+            'ar': f"✅ تم تعيين الإيموجي بنجاح لـ *{display_name}*!\nالمعرف: `{custom_emoji_id}`\n\n💡 أرسل /start أو افتح القائمة لمشاهدة التغييرات.",
+            'ru': f"✅ Эмодзи успешно установлен для *{display_name}*!\nID: `{custom_emoji_id}`\n\n💡 Введите /start чтобы увидеть изменения."
         }
         await message.answer(
             success_dict.get(lang, success_dict['en']),
@@ -2150,9 +2194,9 @@ async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
         )
     else:
         removed_dict = {
-            'en': f"✅ Emoji removed from *{btn_key}* button.\n\n💡 Send /start to see the changes.",
-            'ar': f"✅ تم إزالة الإيموجي من الزر *{btn_key}*.\n\n💡 أرسل /start لمشاهدة التغييرات.",
-            'ru': f"✅ Эмодзи удален с кнопки *{btn_key}*.\n\n💡 Введите /start чтобы увидеть изменения."
+            'en': f"✅ Emoji removed from *{display_name}*.\n\n💡 Send /start to see the changes.",
+            'ar': f"✅ تم إزالة الإيموجي من *{display_name}* واستعادة الافتراضي.\n\n💡 أرسل /start لمشاهدة التغييرات.",
+            'ru': f"✅ Эмодзи удален для *{display_name}*.\n\n💡 Введите /start чтобы увидеть изменения."
         }
         await message.answer(
             removed_dict.get(lang, removed_dict['en']),

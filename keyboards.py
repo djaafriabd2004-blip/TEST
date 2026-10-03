@@ -52,15 +52,28 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
         
     return builder.as_markup(resize_keyboard=True)
 
-def get_language_keyboard() -> InlineKeyboardMarkup:
+def get_language_keyboard(lang_emojis=None) -> InlineKeyboardMarkup:
+    if lang_emojis is None:
+        lang_emojis = {}
     builder = InlineKeyboardBuilder()
-    builder.button(text="🇺🇸 English", callback_data="set_lang_en")
-    builder.button(text="🇸🇦 العربية", callback_data="set_lang_ar")
-    builder.button(text="🇫🇷 Français", callback_data="set_lang_fr")
-    builder.button(text="🇨🇳 中文", callback_data="set_lang_zh")
-    builder.button(text="🇮🇳 हिन्दी", callback_data="set_lang_hi")
-    builder.button(text="🇰🇷 한국어", callback_data="set_lang_ko")
-    builder.button(text="🇷🇺 Русский", callback_data="set_lang_ru")
+    
+    langs = [
+        ('en', "🇺🇸 English", "English"),
+        ('ar', "🇸🇦 العربية", "العربية"),
+        ('fr', "🇫🇷 Français", "Français"),
+        ('zh', "🇨🇳 中文", "中文"),
+        ('hi', "🇮🇳 हिन्दी", "हिन्दी"),
+        ('ko', "🇰🇷 한국어", "한국어"),
+        ('ru', "🇷🇺 Русский", "Русский"),
+    ]
+    
+    for code, full_text, clean_text in langs:
+        emoji_id = lang_emojis.get(code)
+        if emoji_id:
+            builder.button(text=clean_text, callback_data=f"set_lang_{code}", icon_custom_emoji_id=str(emoji_id))
+        else:
+            builder.button(text=full_text, callback_data=f"set_lang_{code}")
+            
     builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 

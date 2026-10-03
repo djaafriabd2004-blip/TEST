@@ -389,13 +389,31 @@ async def get_button_emojis():
     return result
 
 async def reset_button_emojis_to_default():
-    """Reset all button emojis and welcome emoji to default values."""
+    """Reset all button emojis and welcome emoji to default values, and clear custom flag emojis."""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('welcome_emoji_id', ?);", (DEFAULT_WELCOME_EMOJI_ID,))
         for k, v in DEFAULT_BUTTON_EMOJIS.items():
             await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);", (f"btn_emoji_{k}", v))
+        for code in SUPPORTED_LANGUAGES:
+            await db.execute("DELETE FROM settings WHERE key = ?;", (f"lang_emoji_{code}",))
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_emojis_enabled', '1');")
         await db.commit()
+
+async def get_language_emojis():
+    """Fetch all language flag custom emoji settings as a dict: {'en': '...', 'ar': '...', ...}"""
+    is_enabled = await get_setting("custom_emojis_enabled", "1")
+    if is_enabled == "0":
+        return {}
+    keys = [f"lang_emoji_{code}" for code in SUPPORTED_LANGUAGES]
+    result = {}
+    async with aiosqlite.connect(DB_NAME) as db:
+        for key in keys:
+            async with db.execute("SELECT value FROM settings WHERE key = ?;", (key,)) as cursor:
+                row = await cursor.fetchone()
+                if row and row[0]:
+                    code = key.replace('lang_emoji_', '')
+                    result[code] = row[0]
+    return result
 
 # User Helpers
 async def get_user(user_id):
