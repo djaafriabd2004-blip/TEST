@@ -27,6 +27,17 @@ DEFAULT_BUTTON_EMOJIS = {
     'admin': '5330399283030013876',
 }
 
+DEFAULT_LANGUAGE_EMOJIS = {
+    'ar': '5188644677699510586',
+    'en': '5474446335744680905',
+    'fr': '5467600364033286654',
+    'zh': '5381995004329730721',
+    'ko': '5460972177974672624',
+    'hi': '5445209411029050250',
+    'ru': '5398017006165305287',
+    'pt': '5382075788369605892',
+}
+
 async def db_init():
     if os.path.isdir(DB_NAME):
         raise RuntimeError(
@@ -305,6 +316,8 @@ async def db_init():
             'btn_emoji_reseller_api': DEFAULT_BUTTON_EMOJIS['reseller_api'],
             'btn_emoji_admin': DEFAULT_BUTTON_EMOJIS['admin'],
         }
+        for code, val in DEFAULT_LANGUAGE_EMOJIS.items():
+            default_settings[f'lang_emoji_{code}'] = val
         for key, val in default_settings.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
             
@@ -389,13 +402,13 @@ async def get_button_emojis():
     return result
 
 async def reset_button_emojis_to_default():
-    """Reset all button emojis and welcome emoji to default values, and clear custom flag emojis."""
+    """Reset all button emojis, welcome emoji, and language flags to default preset values."""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('welcome_emoji_id', ?);", (DEFAULT_WELCOME_EMOJI_ID,))
         for k, v in DEFAULT_BUTTON_EMOJIS.items():
             await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);", (f"btn_emoji_{k}", v))
-        for code in SUPPORTED_LANGUAGES:
-            await db.execute("DELETE FROM settings WHERE key = ?;", (f"lang_emoji_{code}",))
+        for code, v in DEFAULT_LANGUAGE_EMOJIS.items():
+            await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);", (f"lang_emoji_{code}", v))
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_emojis_enabled', '1');")
         await db.commit()
 
@@ -410,9 +423,11 @@ async def get_language_emojis():
         for key in keys:
             async with db.execute("SELECT value FROM settings WHERE key = ?;", (key,)) as cursor:
                 row = await cursor.fetchone()
-                if row and row[0]:
-                    code = key.replace('lang_emoji_', '')
-                    result[code] = row[0]
+                code = key.replace('lang_emoji_', '')
+                if row is not None:
+                    result[code] = row[0] if row[0] else ""
+                else:
+                    result[code] = DEFAULT_LANGUAGE_EMOJIS.get(code, "")
     return result
 
 # User Helpers
