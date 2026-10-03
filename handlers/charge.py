@@ -6,7 +6,7 @@ from database import (
     is_payment_processed, get_payment_by_method, reject_payment, get_button_emojis
 )
 from crypto_verifier import verify_crypto_transaction, is_tx_too_old_error, get_max_tx_age_seconds, is_amount_matching
-from localization import get_text
+from localization import get_text, get_button_variants
 from handlers.states import ChargeStates
 from cryptobot_client import create_cryptobot_invoice, get_cryptobot_invoice
 try:
@@ -38,11 +38,7 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
     else:
         await message_or_callback.answer(text, reply_markup=kb, parse_mode="Markdown")
 
-@router.message(F.text.in_([
-    get_text('btn_charge_balance', 'en'),
-    get_text('btn_charge_balance', 'ar'),
-    get_text('btn_charge_balance', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_charge_balance')))
 async def cmd_charge(message: Message, lang='en'):
     await show_charge_menu(message, message.from_user.id, lang)
 

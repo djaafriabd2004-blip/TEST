@@ -2,7 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from database import get_user, get_setting
-from localization import get_text
+from localization import get_text, get_button_variants
 from handlers.states import SupportStates, AdminStates
 import keyboards
 try:
@@ -14,11 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-@router.message(F.text.in_([
-    get_text('btn_support', 'en'),
-    get_text('btn_support', 'ar'),
-    get_text('btn_support', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_support')))
 async def cmd_support(message: Message, lang='en'):
     support_username = await get_setting("support_username", "None")
     if not support_username or support_username == "None":

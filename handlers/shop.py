@@ -13,7 +13,7 @@ from database import (
     get_user_discount, is_subscribed_stock_notification, subscribe_stock_notification,
     unsubscribe_stock_notification
 )
-from localization import get_text
+from localization import get_text, get_button_variants
 from handlers.states import ShopStates
 import keyboards
 import asyncio
@@ -134,11 +134,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
     else:
         await message_or_callback.answer(text, reply_markup=kb, parse_mode="Markdown")
 
-@router.message(F.text.in_([
-    get_text('btn_shop', 'en'),
-    get_text('btn_shop', 'ar'),
-    get_text('btn_shop', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_shop')))
 async def cmd_shop(message: Message, lang='en'):
     await show_products_list(message, lang)
 

@@ -12,7 +12,7 @@ from database import (
     get_categories, get_category, add_category, update_category, delete_category,
     update_product_order, update_product_category, update_category_order
 )
-from localization import get_text
+from localization import get_text, get_button_variants, strip_leading_emoji
 from utils import get_product_name
 from handlers.states import ProductStates, StockStates, AdminStates, CategoryStates
 import keyboards
@@ -122,12 +122,12 @@ async def cb_admin_unban_user(callback: CallbackQuery, lang='en'):
     except Exception:
         pass
 
-@router.message(F.text.in_([
-    get_text('btn_admin_panel', 'en'),
-    get_text('btn_admin_panel', 'ar'),
-    get_text('btn_admin_panel', 'ru'),
+@router.message(F.text.in_(get_button_variants('btn_admin_panel') + [
     "🔧 Admin Panel",
-    "Admin Panel"
+    "Admin Panel",
+    "لوحة الإدارة",
+    "لوحة التحكم",
+    "Админ-панель"
 ]))
 async def cmd_admin_panel(message: Message, lang='en'):
     if not is_user_admin(message.from_user.id):

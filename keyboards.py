@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from localization import get_text
+from localization import get_text, strip_leading_emoji
 try:
     import bot_config as config
 except ImportError:
@@ -24,22 +24,30 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
     ]
     
     for text_key, emoji_key, style in buttons:
-        kwargs = {"text": get_text(text_key, lang)}
+        raw_text = get_text(text_key, lang)
+        emoji_id = button_emojis.get(emoji_key)
+        kwargs = {}
         if style:
             kwargs["style"] = style
-        emoji_id = button_emojis.get(emoji_key)
         if emoji_id:
             kwargs["icon_custom_emoji_id"] = emoji_id
+            kwargs["text"] = strip_leading_emoji(raw_text)
+        else:
+            kwargs["text"] = raw_text
         builder.button(**kwargs)
     
     builder.adjust(2, 2, 2, 2)
     
     if is_admin:
         # Add admin panel on its own line
-        admin_kwargs = {"text": get_text('btn_admin_panel', lang), "style": "danger"}
+        admin_raw = get_text('btn_admin_panel', lang)
         admin_emoji = button_emojis.get('admin')
+        admin_kwargs = {"style": "danger"}
         if admin_emoji:
             admin_kwargs["icon_custom_emoji_id"] = admin_emoji
+            admin_kwargs["text"] = strip_leading_emoji(admin_raw)
+        else:
+            admin_kwargs["text"] = admin_raw
         builder.row(KeyboardButton(**admin_kwargs))
         
     return builder.as_markup(resize_keyboard=True)

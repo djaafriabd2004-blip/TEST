@@ -2,7 +2,7 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from database import create_user, get_user, update_user_lang, get_referral_count, get_user_by_ref_code, get_setting, get_orders, get_button_emojis
-from localization import get_text
+from localization import get_text, get_button_variants
 import keyboards
 import logging
 
@@ -74,11 +74,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
         parse_mode="HTML"
     )
 
-@router.message(F.text.in_([
-    get_text('btn_language', 'en'),
-    get_text('btn_language', 'ar'),
-    get_text('btn_language', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_language')))
 async def show_language_menu(message: Message, lang='en'):
     await message.answer(
         get_text('select_lang', lang),
@@ -129,11 +125,7 @@ async def process_set_lang(callback: CallbackQuery, is_admin=False):
     )
     await callback.message.delete()
 
-@router.message(F.text.in_([
-    get_text('btn_referral', 'en'),
-    get_text('btn_referral', 'ar'),
-    get_text('btn_referral', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_referral')))
 async def show_referral_menu(message: Message, bot: Bot, db_user, lang='en'):
     user_id = message.from_user.id
     ref_code = db_user['referral_code']
@@ -157,11 +149,7 @@ async def show_referral_menu(message: Message, bot: Bot, db_user, lang='en'):
     
     await message.answer(msg_text, parse_mode="Markdown", disable_web_page_preview=True)
 
-@router.message(F.text.in_([
-    get_text('btn_my_orders', 'en'),
-    get_text('btn_my_orders', 'ar'),
-    get_text('btn_my_orders', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_my_orders')))
 async def show_orders_menu(message: Message, lang='en'):
     user_id = message.from_user.id
     orders = await get_orders(user_id)
@@ -207,11 +195,7 @@ async def show_orders_menu(message: Message, lang='en'):
     info_text = {"en": "📥 Want all your products in a file?", "ar": "📥 تريد جميع منتجاتك في ملف؟", "ru": "📥 Хотите все товары в файле?"}
     await message.answer(info_text.get(lang, info_text['en']), reply_markup=builder.as_markup())
 
-@router.message(F.text.in_([
-    get_text('btn_my_preorders', 'en'),
-    get_text('btn_my_preorders', 'ar'),
-    get_text('btn_my_preorders', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_my_preorders')))
 async def show_preorders_menu(message: Message, lang='en'):
     user_id = message.from_user.id
     from database import get_user_pre_orders
@@ -316,11 +300,7 @@ async def cb_download_orders_txt(callback: CallbackQuery, lang='en'):
 
 # --- User Reseller API Key Handlers ---
 @router.message(Command("api"))
-@router.message(F.text.in_([
-    get_text('btn_reseller_api', 'en'),
-    get_text('btn_reseller_api', 'ar'),
-    get_text('btn_reseller_api', 'ru')
-]))
+@router.message(F.text.in_(get_button_variants('btn_reseller_api')))
 async def cmd_user_api(message: Message, lang='en'):
     user_id = message.from_user.id
     

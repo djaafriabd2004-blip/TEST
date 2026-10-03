@@ -1545,3 +1545,25 @@ def get_text(key, lang='en', **kwargs):
         except Exception:
             return text
     return text
+
+import re
+_LEADING_EMOJI_PATTERN = re.compile(r'^[^\w\s\u0600-\u06FF\u0400-\u04FF]+[\s\u200b]*')
+
+def strip_leading_emoji(text: str) -> str:
+    """Strips leading standard emojis and whitespace from text so custom emoji replaces it cleanly."""
+    if not text:
+        return ""
+    return _LEADING_EMOJI_PATTERN.sub('', text).strip()
+
+def get_button_variants(key: str) -> list[str]:
+    """Return all language variants of a button text, both with and without leading emojis for seamless router matching."""
+    variants = set()
+    for l in ['en', 'ar', 'ru']:
+        raw = get_text(key, l)
+        if raw and not raw.startswith('['):
+            variants.add(raw)
+            clean = strip_leading_emoji(raw)
+            if clean:
+                variants.add(clean)
+    return list(variants)
+
