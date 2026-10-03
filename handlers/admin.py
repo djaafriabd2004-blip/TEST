@@ -640,6 +640,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             ('hi', "🇮🇳 हिन्दी"),
             ('ko', "🇰🇷 한국어"),
             ('ru', "🇷🇺 Русский"),
+            ('pt', "🇵🇹 Português"),
         ]
         status_mode = ("🟢 " + get_text('status_enabled', lang)) if custom_enabled == "1" else ("🔴 " + get_text('status_disabled', lang))
         w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
@@ -673,7 +674,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             builder.button(text=f"🚩 {l_label}", callback_data=f"admin_set_btn_emoji_lang_{l_code}")
             
         builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
-        builder.adjust(1, 1, 1, 2, 2, 2, 2, 1, 2, 2, 2, 1, 1)
+        builder.adjust(1, 1, 1, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1)
         return text, builder.as_markup()
     
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
@@ -2104,6 +2105,7 @@ async def cb_admin_set_btn_emoji(callback: CallbackQuery, state: FSMContext, lan
         'lang_hi': {'en': "🇮🇳 Hindi Flag", 'ar': "🇮🇳 علم الهندية", 'ru': "🇮🇳 Флаг Хинди"},
         'lang_ko': {'en': "🇰🇷 Korean Flag", 'ar': "🇰🇷 علم الكورية", 'ru': "🇰🇷 Флаг Корейского"},
         'lang_ru': {'en': "🇷🇺 Russian Flag", 'ar': "🇷🇺 علم الروسية", 'ru': "🇷🇺 Флаг Русского"},
+        'lang_pt': {'en': "🇵🇹 Portuguese Flag", 'ar': "🇵🇹 علم البرتغالية", 'ru': "🇵🇹 Флаг Португальского"},
     }
     name_dict = btn_names.get(btn_key, {'en': btn_key, 'ar': btn_key, 'ru': btn_key})
     name = name_dict.get(lang, name_dict['en'])
@@ -2177,7 +2179,7 @@ async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
         'support': "🎧 Support", 'language': "🌐 Language", 'reseller_api': "🔑 Reseller API",
         'admin': "⚙️ Admin", 'lang_en': "🇺🇸 English Flag", 'lang_ar': "🇸🇦 Arabic Flag",
         'lang_fr': "🇫🇷 French Flag", 'lang_zh': "🇨🇳 Chinese Flag", 'lang_hi': "🇮🇳 Hindi Flag",
-        'lang_ko': "🇰🇷 Korean Flag", 'lang_ru': "🇷🇺 Russian Flag"
+        'lang_ko': "🇰🇷 Korean Flag", 'lang_ru': "🇷🇺 Russian Flag", 'lang_pt': "🇵🇹 Portuguese Flag"
     }
     display_name = btn_names.get(btn_key, btn_key)
     

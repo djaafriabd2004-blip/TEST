@@ -86,6 +86,18 @@ LOCALIZATION = {
             "</blockquote>\n\n"
             "📌 <i>아래 메뉴에서 원하는 옵션을 선택하세요</i> 👇"
         ),
+        'pt': (
+            "{welcome_emoji} <b>{store_name}</b>\n"
+            "══════════════════\n\n"
+            "Olá <b>{name}</b>! 👋\n\n"
+            "<blockquote>"
+            "🆔 <b>ID:</b> <code>{user_id}</code>\n"
+            "💎 <b>Saldo:</b> <code>${balance:.2f} USD</code>\n"
+            "👥 <b>Convidados:</b> <code>{ref_count}</code> usuários\n"
+            "🤝 <b>Convidado por:</b> <code>{referred_by}</code>"
+            "</blockquote>\n\n"
+            "📌 <i>Escolha uma opção no menu abaixo</i> 👇"
+        ),
     },
     'btn_shop': {
         'en': "🛍️ Shop",
@@ -94,7 +106,8 @@ LOCALIZATION = {
         'fr': "🛍️ Boutique",
         'zh': "🛍️ 商店",
         'hi': "🛍️ दुकान",
-        'ko': "🛍️ 상점"
+        'ko': "🛍️ 상점",
+        'pt': "🛍️ Loja"
     },
     'btn_my_orders': {
         'en': "📦 My Orders",
@@ -103,7 +116,8 @@ LOCALIZATION = {
         'fr': "📦 Mes commandes",
         'zh': "📦 我的订单",
         'hi': "📦 मेरे ऑर्डर",
-        'ko': "📦 내 주문"
+        'ko': "📦 내 주문",
+        'pt': "📦 Meus Pedidos"
     },
     'btn_support': {
         'en': "🎧 Support",
@@ -112,7 +126,8 @@ LOCALIZATION = {
         'fr': "🎧 Support",
         'zh': "🎧 客服支持",
         'hi': "🎧 सहायता",
-        'ko': "🎧 고객지원"
+        'ko': "🎧 고객지원",
+        'pt': "🎧 Suporte"
     },
     'btn_charge_balance': {
         'en': "💳 Charge Balance",
@@ -121,7 +136,8 @@ LOCALIZATION = {
         'fr': "💳 Recharger le solde",
         'zh': "💳 余额充值",
         'hi': "💳 बैलेंस रिचार्ज",
-        'ko': "💳 잔액 충전"
+        'ko': "💳 잔액 충전",
+        'pt': "💳 Recarregar Saldo"
     },
     'btn_other_payment_methods': {
         'en': "💳 Other Payment Methods",
@@ -130,7 +146,8 @@ LOCALIZATION = {
         'fr': "💳 Autres moyens de paiement",
         'zh': "💳 其他支付方式",
         'hi': "💳 अन्य भुगतान विधियां",
-        'ko': "💳 기타 결제 수단"
+        'ko': "💳 기타 결제 수단",
+        'pt': "💳 Outros Métodos de Pagamento"
     },
     'btn_referral': {
         'en': "🔗 Referral Link",
@@ -139,7 +156,8 @@ LOCALIZATION = {
         'fr': "🔗 Lien de parrainage",
         'zh': "🔗 推广邀请",
         'hi': "🔗 रेफरल लिंक",
-        'ko': "🔗 추천인 링크"
+        'ko': "🔗 추천인 링크",
+        'pt': "🔗 Link de Indicação"
     },
     'btn_language': {
         'en': "🌐 Language / اللغة",
@@ -148,7 +166,8 @@ LOCALIZATION = {
         'fr': "🌐 Langue / Language",
         'zh': "🌐 语言 / Language",
         'hi': "🌐 भाषा / Language",
-        'ko': "🌐 언어 / Language"
+        'ko': "🌐 언어 / Language",
+        'pt': "🌐 Idioma / Language"
     },
     'btn_reseller_api': {
         'en': "🔑 Reseller API",
@@ -157,7 +176,8 @@ LOCALIZATION = {
         'fr': "🔑 API Revendeur",
         'zh': "🔑 分销商 API",
         'hi': "🔑 पुनर्विक्रेता API",
-        'ko': "🔑 리셀러 API"
+        'ko': "🔑 리셀러 API",
+        'pt': "🔑 API de Revendedor"
     },
     'btn_admin_panel': {
         'en': "⚙️ Admin Panel",
@@ -166,7 +186,8 @@ LOCALIZATION = {
         'fr': "⚙️ Panneau Admin",
         'zh': "⚙️ 管理面板",
         'hi': "⚙️ व्यवस्थापक पैनल",
-        'ko': "⚙️ 관리자 패널"
+        'ko': "⚙️ 관리자 패널",
+        'pt': "⚙️ Painel de Administração"
     },
     'btn_my_preorders': {
         'en': "⏳ My Pre-orders",
@@ -175,7 +196,8 @@ LOCALIZATION = {
         'fr': "⏳ Mes précommandes",
         'zh': "⏳ 我的预订",
         'hi': "⏳ मेरे प्री-ऑर्डर",
-        'ko': "⏳ 내 사전예약"
+        'ko': "⏳ 내 사전예약",
+        'pt': "⏳ Minhas Pré-encomendas"
     },
     'btn_preorder': {
         'en': "⏳ Reserve / Pre-order",
@@ -184,37 +206,44 @@ LOCALIZATION = {
         'fr': "⏳ Réserver / Précommander",
         'zh': "⏳ 预订商品",
         'hi': "⏳ प्री-ऑर्डर बुक करें",
-        'ko': "⏳ 사전 예약하기"
+        'ko': "⏳ 사전 예약하기",
+        'pt': "⏳ Reservar / Pré-encomenda"
     },
     'preorder_title': {
         'en': "⏳ *Pre-order Reservation*\n\n🛒 *Product:* {name}\n💵 *Price per item:* `${price:.2f} USD`\n\nThis product is currently out of stock. You can reserve it now, and the bot will automatically buy and deliver it to you as soon as new stock is added!\n\n✍️ Enter quantity you want to reserve:",
         'ar': "⏳ *حجز المنتج مسبقاً*\n\n🛒 *المنتج:* {name}\n💵 *سعر القطعة:* `${price:.2f} USD`\n\nهذا المنتج غير متوفر حالياً. يمكنك حجزه الآن وسيقوم البوت تلقائياً بشرائه وتسليمه لك فور توفر مخزون جديد!\n\n✍️ أرسل الكمية التي ترغب في حجزها:",
-        'ru': "⏳ *Предзаказ товара*\n\n🛒 *Товар:* {name}\n💵 *Цена за шт:* `${price:.2f} USD`\n\nЭтого товара сейчас нет в наличии. Вы можете забронировать его, и бот автоматически выдаст его вам при пополнении!\n\n✍️ Введите количество для бронирования:"
+        'ru': "⏳ *Предзаказ товара*\n\n🛒 *Товар:* {name}\n💵 *Цена за шт:* `${price:.2f} USD`\n\nЭтого товара сейчас нет в наличии. Вы можете забронировать его, и бот автоматически выдаст его вам при пополнении!\n\n✍️ Введите количество для бронирования:",
+        'pt': "⏳ *Reserva de Pré-encomenda*\n\n🛒 *Produto:* {name}\n💵 *Preço unitário:* `${price:.2f} USD`\n\nEste produto está esgotado. Pode reservá-lo agora e o bot entregará automaticamente assim que houver stock novo!\n\n✍️ Digite a quantidade que deseja reservar:"
     },
     'preorder_success': {
         'en': "✅ *Product Reserved Successfully!*\n\n💰 **`${amount:.2f} USD`** has been locked from your balance. The bot will deliver the items immediately upon restock.\n\n💡 You can view or cancel your reservation in the **My Pre-orders** section.",
         'ar': "✅ *تم حجز المنتج بنجاح!*\n\n💰 تم تعليق مبلغ **`${amount:.2f} USD`** من رصيدك. وسيقوم البوت بتسليم المنتجات لك فور توفرها بالمخزون تلقائياً.\n\n💡 يمكنك استعراض حجزك أو إلغاؤه واستعادة الرصيد من قائمة **حجوزاتي**.",
-        'ru': "✅ *Товар успешно забронирован!*\n\n💰 Сумма **`${amount:.2f} USD`** была заблокирована на вашем балансе. Бот выдаст товар сразу после пополнения.\n\n💡 Вы можете отменить предзаказ в меню **Мои предзаказы**."
+        'ru': "✅ *Товар успешно забронирован!*\n\n💰 Сумма **`${amount:.2f} USD`** была заблокирована на вашем балансе. Бот выдаст товар сразу после пополнения.\n\n💡 Вы можете отменить предзаказ в меню **Мои предзаказы**.",
+        'pt': "✅ *Produto Reservado com Sucesso!*\n\n💰 **`${amount:.2f} USD`** foram bloqueados do seu saldo. O bot entregará os itens imediatamente após o reabastecimento.\n\n💡 Você pode ver ou cancelar a sua reserva na seção **Minhas Pré-encomendas**."
     },
     'my_preorders_title': {
         'en': "⏳ *Your Active Pre-orders:*",
         'ar': "⏳ *حجوزاتك النشطة المعلقة:*",
-        'ru': "⏳ *Ваши активные предзаказы:*"
+        'ru': "⏳ *Ваши активные предзаказы:*",
+        'pt': "⏳ *Suas Pré-encomendas Ativas:*"
     },
     'my_preorders_empty': {
         'en': "📭 You don't have any active pre-orders.",
         'ar': "📭 ليس لديك أي حجوزات نشطة حالياً.",
-        'ru': "📭 У вас нет активных предзаказов."
+        'ru': "📭 У вас нет активных предзаказов.",
+        'pt': "📭 Você não tem nenhuma pré-encomenda ativa."
     },
     'preorder_item': {
         'en': "⏳ *Pre-order #{id}*\n🛍️ *Product:* {name}\n📦 *Quantity:* `{qty}`\n💰 *Locked Amount:* `${price:.2f} USD`\n📅 *Date:* {date}\n\n",
         'ar': "⏳ *حجز #{id}*\n🛍️ *المنتج:* {name}\n📦 *الكمية:* `{qty}`\n💰 *المبلغ المعلق:* `${price:.2f} USD`\n📅 *التاريخ:* {date}\n\n",
-        'ru': "⏳ *Предзаказ #{id}*\n🛍️ *Товар:* {name}\n📦 *Количество:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n📅 *Дата:* {date}\n\n"
+        'ru': "⏳ *Предзаказ #{id}*\n🛍️ *Товар:* {name}\n📦 *Количество:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n📅 *Дата:* {date}\n\n",
+        'pt': "⏳ *Pré-encomenda #{id}*\n🛍️ *Produto:* {name}\n📦 *Quantidade:* `{qty}`\n💰 *Valor Bloqueado:* `${price:.2f} USD`\n📅 *Data:* {date}\n\n"
     },
     'btn_cancel_preorder': {
         'en': "❌ Cancel Reservation & Refund",
         'ar': "❌ إلغاء الحجز واسترداد الرصيد",
-        'ru': "❌ Отменить бронь и вернуть"
+        'ru': "❌ Отменить бронь и вернуть",
+        'pt': "❌ Cancelar Reserva e Reembolsar"
     },
     'select_lang': {
         'en': "🌍 Please select your language:",
@@ -223,7 +252,8 @@ LOCALIZATION = {
         'fr': "🌍 Veuillez choisir votre langue :",
         'zh': "🌍 请选择您的语言：",
         'hi': "🌍 कृपया अपनी भाषा चुनें:",
-        'ko': "🌍 언어를 선택해 주세요:"
+        'ko': "🌍 언어를 선택해 주세요:",
+        'pt': "🌍 Por favor, selecione o seu idioma:"
     },
     'lang_updated': {
         'en': "✅ Language updated to English!",
@@ -232,7 +262,8 @@ LOCALIZATION = {
         'fr': "✅ Langue modifiée en Français !",
         'zh': "✅ 语言已切换为中文！",
         'hi': "✅ भाषा बदलकर हिन्दी कर दी गई है!",
-        'ko': "✅ 언어가 한국어로 변경되었습니다!"
+        'ko': "✅ 언어가 한국어로 변경되었습니다!",
+        'pt': "✅ Idioma atualizado para Português!"
     },
     'support_info': {
         'en': "💬 To contact support, please contact the admin directly: @{username}",
@@ -241,7 +272,8 @@ LOCALIZATION = {
         'fr': "💬 Pour contacter le support, écrivez directement à l'administrateur : @{username}",
         'zh': "💬 如需联系客服，请直接联系管理员：@{username}",
         'hi': "💬 सहायता के लिए, कृपया व्यवस्थापक से संपर्क करें: @{username}",
-        'ko': "💬 고객지원이 필요하시면 관리자에게 직접 문의해주세요: @{username}"
+        'ko': "💬 고객지원이 필요하시면 관리자에게 직접 문의해주세요: @{username}",
+        'pt': "💬 Para contactar o suporte, envie mensagem diretamente ao administrador: @{username}"
     },
     'btn_contact_support': {
         'en': "🎧 Contact Support",
@@ -250,7 +282,8 @@ LOCALIZATION = {
         'fr': "🎧 Contacter le support",
         'zh': "🎧 联系客服",
         'hi': "🎧 सहायता से संपर्क करें",
-        'ko': "🎧 고객센터 문의"
+        'ko': "🎧 고객센터 문의",
+        'pt': "🎧 Contactar Suporte"
     },
     'support_no_handle': {
         'en': "❌ Support is currently unavailable.",
@@ -259,12 +292,14 @@ LOCALIZATION = {
         'fr': "❌ Le support est actuellement indisponible.",
         'zh': "❌ 客服暂不可用。",
         'hi': "❌ सहायता वर्तमान में अनुपलब्ध है।",
-        'ko': "❌ 현재 고객지원을 이용할 수 없습니다."
+        'ko': "❌ 현재 고객지원을 이용할 수 없습니다.",
+        'pt': "❌ O suporte está indisponível no momento."
     },
     'support_ticket_sent': {
         'en': "✅ Your message has been sent to support. We will get back to you shortly.",
         'ar': "✅ تم إرسال رسالتك إلى الدعم. سنرد عليك في أقرب وقت ممكن.",
-        'ru': "✅ Ваше сообщение отправлено в поддержку. Мы ответим вам в ближайшее время."
+        'ru': "✅ Ваше сообщение отправлено в поддержку. Мы ответим вам в ближайшее время.",
+        'pt': "✅ A sua mensagem foi enviada ao suporte. Responderemos em breve."
     },
     'support_new_ticket': {
         'en': "📬 New Support Ticket from {name} (`{user_id}`):\n\n💬 `{message}`",
@@ -279,7 +314,8 @@ LOCALIZATION = {
     'referral_msg': {
         'en': "🔗 *Referral System*\n\nShare your referral link with friends. You will receive a fixed reward of **`${bonus} USD`** in your balance once your invited friend makes their first purchase inside the bot!\n\n👥 *Your Referrals:* `{count}`\n💰 *Total Earned:* `${earned:.2f} USD`\n\n📋 *Your Link:* `{link}`",
         'ar': "🔗 *نظام الإحالات*\n\nشارك رابط الإحالة الخاص بك مع أصدقائك. ستحصل على مكافأة ثابتة بقيمة **`{bonus} USD`** في محفظتك مباشرة بمجرد قيام الصديق الذي قمت بدعوته بإجراء أول عملية شراء له داخل البوت!\n\n👥 *عدد إحالاتك:* `{count}`\n💰 *إجمالي الأرباح:* `${earned:.2f} USD`\n\n📋 *رابطك:* `{link}`",
-        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Вы получите фиксированное вознаграждение в размере **`${bonus} USD`** на свой баланс, как только приглашенный вами друг совершит свою первую покупку в боте!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`"
+        'ru': "🔗 *Реферальная система*\n\nПоделитесь своей реферальной ссылкой. Вы получите фиксированное вознаграждение в размере **`${bonus} USD`** на свой баланс, как только приглашенный вами друг совершит свою первую покупку в боте!\n\n👥 *Ваши рефералы:* `{count}`\n💰 *Всего заработано:* `${earned:.2f} USD`\n\n📋 *Ваша ссылка:* `{link}`",
+        'pt': "🔗 *Sistema de Indicação*\n\nCompartilhe o seu link com amigos. Receberá uma recompensa fixa de **`${bonus} USD`** no seu saldo assim que o amigo fizer a sua primeira compra no bot!\n\n👥 *Seus Convidados:* `{count}`\n💰 *Total Ganho:* `${earned:.2f} USD`\n\n📋 *Seu Link:* `{link}`"
     },
     'referral_new_user_joined': {
         'en': "🎉 *Referral First Purchase Reward!*\n\nUser *{name}* whom you invited has made their first purchase! A fixed bonus of **`${bonus} USD`** has been successfully credited to your wallet balance.",
@@ -289,17 +325,20 @@ LOCALIZATION = {
     'my_orders_title': {
         'en': "📦 *Your Purchase History:*",
         'ar': "📦 *سجل مشترياتك:*",
-        'ru': "📦 *История ваших покупок:*"
+        'ru': "📦 *История ваших покупок:*",
+        'pt': "📦 *Seu Histórico de Compras:*"
     },
     'my_orders_empty': {
         'en': "📭 You haven't made any purchases yet.",
         'ar': "📭 لم تقم بأي عمليات شراء بعد.",
-        'ru': "📭 Вы еще не совершали покупок."
+        'ru': "📭 Вы еще не совершали покупок.",
+        'pt': "📭 Você ainda não fez nenhuma compra."
     },
     'order_item': {
         'en': "🆔 *Order #{id}*\n🛍️ *Product:* {name}\n💵 *Paid:* `${price:.2f} USD`\n📅 *Date:* {date}\n📦 *Data delivered:* \n`{data}`\n\n" + ("=" * 20),
         'ar': "🆔 *طلب #{id}*\n🛍️ *المنتج:* {name}\n💵 *المدفوع:* `${price:.2f} USD`\n📅 *التاريخ:* {date}\n📦 *البيانات المرسلة:* \n`{data}`\n\n" + ("=" * 20),
-        'ru': "🆔 *Заказ #{id}*\n🛍️ *Товар:* {name}\n💵 *Оплачено:* `${price:.2f} USD`\n📅 *Дата:* {date}\n📦 *Доставленные данные:* \n`{data}`\n\n" + ("=" * 20)
+        'ru': "🆔 *Заказ #{id}*\n🛍️ *Товар:* {name}\n💵 *Оплачено:* `${price:.2f} USD`\n📅 *Дата:* {date}\n📦 *Доставленные данные:* \n`{data}`\n\n" + ("=" * 20),
+        'pt': "🆔 *Pedido #{id}*\n🛍️ *Produto:* {name}\n💵 *Pago:* `${price:.2f} USD`\n📅 *Data:* {date}\n📦 *Dados entregues:* \n`{data}`\n\n" + ("=" * 20)
     },
     'shop_title': {
         'en': "🛍️ *Store Products*\nSelect a product to view details and purchase:",
@@ -308,7 +347,8 @@ LOCALIZATION = {
         'fr': "🛍️ *Produits de la boutique*\nChoisissez un produit pour voir les détails et acheter :",
         'zh': "🛍️ *商店商品*\n请选择商品以查看详情并购买：",
         'hi': "🛍️ *स्टोर उत्पाद*\nविवरण देखने और खरीदने के लिए उत्पाद चुनें:",
-        'ko': "🛍️ *상점 상품 목록*\n상세 정보 확인 및 구매를 위해 상품을 선택하세요:"
+        'ko': "🛍️ *상점 상품 목록*\n상세 정보 확인 및 구매를 위해 상품을 선택하세요:",
+        'pt': "🛍️ *Produtos da Loja*\nSelecione um produto para ver detalhes e comprar:"
     },
     'shop_empty': {
         'en': "📭 No products available right now.",
@@ -317,12 +357,14 @@ LOCALIZATION = {
         'fr': "📭 Aucun produit disponible pour le moment.",
         'zh': "📭 当前暂无可用商品。",
         'hi': "📭 इस समय कोई उत्पाद उपलब्ध नहीं है।",
-        'ko': "📭 현재 이용 가능한 상품이 없습니다."
+        'ko': "📭 현재 이용 가능한 상품이 없습니다.",
+        'pt': "📭 Não há produtos disponíveis no momento."
     },
     'product_details': {
         'en': "🛍️ *Product:* {name}\n\n📝 *Description:* {desc}\n\n💵 *Price:* {price}\n📦 *Stock:* `{stock}` available",
         'ar': "🛍️ *المنتج:* {name}\n\n📝 *الوصف:* {desc}\n\n💵 *السعر:* {price}\n📦 *المخزون:* `{stock}` متوفر",
-        'ru': "🛍️ *Товар:* {name}\n\n📝 *Описание:* {desc}\n\n💵 *Цена:* {price}\n📦 *В наличии:* `{stock}` шт."
+        'ru': "🛍️ *Товар:* {name}\n\n📝 *Описание:* {desc}\n\n💵 *Цена:* {price}\n📦 *В наличии:* `{stock}` шт.",
+        'pt': "🛍️ *Produto:* {name}\n\n📝 *Descrição:* {desc}\n\n💵 *Preço:* {price}\n📦 *Stock:* `{stock}` disponível"
     },
     'btn_buy': {
         'en': "🛒 Buy Now",
@@ -331,7 +373,8 @@ LOCALIZATION = {
         'fr': "🛒 Acheter",
         'zh': "🛒 立即购买",
         'hi': "🛒 अभी खरीदें",
-        'ko': "🛒 지금 구매"
+        'ko': "🛒 지금 구매",
+        'pt': "🛒 Comprar Agora"
     },
     'btn_back': {
         'en': "🔙 Back",
@@ -340,52 +383,62 @@ LOCALIZATION = {
         'fr': "🔙 Retour",
         'zh': "🔙 返回",
         'hi': "🔙 वापस",
-        'ko': "🔙 뒤로가기"
+        'ko': "🔙 뒤로가기",
+        'pt': "🔙 Voltar"
     },
     'out_of_stock': {
         'en': "❌ Sorry, this product is out of stock.",
         'ar': "❌ عذراً، هذا المنتج غير متوفر في المخزون حالياً.",
-        'ru': "❌ К сожалению, товара нет в наличии."
+        'ru': "❌ К сожалению, товара нет в наличии.",
+        'pt': "❌ Desculpe, este produto está esgotado."
     },
     'buy_quantity_prompt': {
         'en': "🛒 *Buying:* {name}\n📦 *Available Stock:* {stock}\n\n✏️ Please enter the quantity you want to buy (1 - {stock}):",
         'ar': "🛒 *شراء:* {name}\n📦 *المخزون المتوفر:* {stock}\n\n✏️ يرجى إدخال الكمية التي ترغب في شرائها (1 - {stock}):",
-        'ru': "🛒 *Покупка:* {name}\n📦 *Доступный остаток:* {stock}\n\n✏️ Пожалуйста, введите количество, которое хотите купить (1 - {stock}):"
+        'ru': "🛒 *Покупка:* {name}\n📦 *Доступный остаток:* {stock}\n\n✏️ Пожалуйста, введите количество, которое хотите купить (1 - {stock}):",
+        'pt': "🛒 *Comprando:* {name}\n📦 *Stock Disponível:* {stock}\n\n✏️ Digite a quantidade que deseja comprar (1 - {stock}):"
     },
     'invalid_quantity': {
         'en': "❌ Invalid quantity. Please enter a number between 1 and {max_stock}:",
         'ar': "❌ كمية غير صالحة. يرجى إدخال رقم بين 1 و {max_stock}:",
-        'ru': "❌ Неверное количество. Пожалуйста, введите число от 1 до {max_stock}:"
+        'ru': "❌ Неверное количество. Пожалуйста, введите число от 1 до {max_stock}:",
+        'pt': "❌ Quantidade inválida. Digite um número entre 1 e {max_stock}:"
     },
     'insufficient_balance': {
         'en': "❌ Insufficient balance. Please charge your balance first. Your balance is `${balance:.2f} USD` but the product costs `${price:.2f} USD`.",
         'ar': "❌ الرصيد غير كافٍ. يرجى شحن رصيدك أولاً. رصيدك الحالي هو `${balance:.2f} USD` وسعر المنتج هو `${price:.2f} USD`.",
-        'ru': "❌ Недостаточно средств. Пожалуйста, пополните баланс. Ваш баланс `${balance:.2f} USD`, стоимость товара `${price:.2f} USD`."
+        'ru': "❌ Недостаточно средств. Пожалуйста, пополните баланс. Ваш баланс `${balance:.2f} USD`, стоимость товара `${price:.2f} USD`.",
+        'pt': "❌ Saldo insuficiente. Recarregue o seu saldo primeiro. O seu saldo é `${balance:.2f} USD` mas o produto custa `${price:.2f} USD`."
     },
     'purchase_success': {
         'en': "🎉 *Purchase Successful!*\n\n🛍️ *Product:* {name}\n💵 *Paid:* `${price:.2f} USD`\n📦 *Your Item/Credentials:* \n\n`{data}`\n\nThank you for shopping with us! ❤️",
         'ar': "🎉 *تمت عملية الشراء بنجاح!*\n\n🛍️ *المنتج:* {name}\n💵 *المدفوع:* `${price:.2f} USD`\n📦 *بيانات المنتج:* \n\n`{data}`\n\nشكراً لشرائك من متجرنا! ❤️",
-        'ru': "🎉 *Покупка успешно совершена!*\n\n🛍️ *Товар:* {name}\n💵 *Оплачено:* `${price:.2f} USD`\n📦 *Ваши данные:* \n\n`{data}`\n\nСпасибо за покупку! ❤️"
+        'ru': "🎉 *Покупка успешно совершена!*\n\n🛍️ *Товар:* {name}\n💵 *Оплачено:* `${price:.2f} USD`\n📦 *Ваши данные:* \n\n`{data}`\n\nСпасибо за покупку! ❤️",
+        'pt': "🎉 *Compra Realizada com Sucesso!*\n\n🛍️ *Produto:* {name}\n💵 *Pago:* `${price:.2f} USD`\n📦 *Seus Dados / Produto:* \n\n`{data}`\n\nObrigado por comprar conosco! ❤️"
     },
     'purchase_success_continued': {
         'en': "📦 *Your Item/Credentials (Continued):* \n\n`{data}`",
         'ar': "📦 *بيانات المنتج (تابع):* \n\n`{data}`",
-        'ru': "📦 *Ваши данные (Продолжение):* \n\n`{data}`"
+        'ru': "📦 *Ваши данные (Продолжение):* \n\n`{data}`",
+        'pt': "📦 *Seus Dados / Produto (continuação):* \n\n`{data}`"
     },
     'checkout_payment_prompt': {
         'en': "🛒 *Checkout* ({name} x{qty})\n💵 *Total Price:* `${price:.2f} USD`\n\n👇 Choose your preferred payment method below to complete the purchase:",
         'ar': "🛒 *الدفع لشراء:* {name} (الكمية {qty})\n💵 *السعر الإجمالي:* `${price:.2f} USD`\n\n👇 اختر طريقة الدفع المفضلة لديك لإتمام عملية الشراء:",
-        'ru': "🛒 *Оплата заказа* ({name} x{qty})\n💵 *Итого:* `${price:.2f} USD`\n\n👇 Выберите способ оплаты для завершения покупки:"
+        'ru': "🛒 *Оплата заказа* ({name} x{qty})\n💵 *Итого:* `${price:.2f} USD`\n\n👇 Выберите способ оплаты для завершения покупки:",
+        'pt': "🛒 *Finalizar Compra* ({name} x{qty})\n💵 *Preço Total:* `${price:.2f} USD`\n\n👇 Escolha a forma de pagamento abaixo para concluir a compra:"
     },
     'btn_pay_balance': {
         'en': "💰 Pay with Wallet Balance (${balance:.2f})",
         'ar': "💰 الدفع من رصيد المحفظة (${balance:.2f})",
-        'ru': "💰 Оплатить с баланса кошелька (${balance:.2f})"
+        'ru': "💰 Оплатить с баланса кошелька (${balance:.2f})",
+        'pt': "💰 Pagar com Saldo da Carteira (${balance:.2f})"
     },
     'btn_pay_binance': {
         'en': "🔶 Pay with Binance Pay (Instant)",
         'ar': "🔶 الدفع عبر Binance Pay (فوري)",
-        'ru': "🔶 Оплатить через Binance Pay"
+        'ru': "🔶 Оплатить через Binance Pay",
+        'pt': "🔶 Pagar com Binance Pay (Instantâneo)"
     },
     'checkout_binance_created': {
         'en': "🔶 *Binance Pay Order Created!*\n\n1. Click the button below to pay via Binance Pay.\n2. Once paid, click **Check Payment Status** to receive your product.",
@@ -430,27 +483,32 @@ LOCALIZATION = {
     'charge_title': {
         'en': "💳 *Charge Balance*\n\nChoose your preferred payment method below. Your current balance is `${balance:.2f} USD`.",
         'ar': "💳 *شحن الرصيد*\n\nاختر طريقة الدفع المفضلة لديك أدناه. رصيدك الحالي هو `${balance:.2f} USD`.",
-        'ru': "💳 *Пополнение баланса*\n\nВыберите предпочтительный способ оплаты. Ваш текущий баланс: `${balance:.2f} USD`."
+        'ru': "💳 *Пополнение баланса*\n\nВыберите предпочтительный способ оплаты. Ваш текущий баланс: `${balance:.2f} USD`.",
+        'pt': "💳 *Recarregar Saldo*\n\nEscolha o método de pagamento abaixo. O seu saldo atual é `${balance:.2f} USD`."
     },
     'btn_binance_pay': {
         'en': "🔸 Binance Pay (USDT)",
         'ar': "🔸 بايننس باي (USDT)",
-        'ru': "🔸 Binance Pay (USDT)"
+        'ru': "🔸 Binance Pay (USDT)",
+        'pt': "🔸 Binance Pay (USDT)"
     },
     'btn_stars': {
         'en': "⭐️ Telegram Stars",
         'ar': "⭐️ نجوم تلغرام",
-        'ru': "⭐️ Telegram Stars"
+        'ru': "⭐️ Telegram Stars",
+        'pt': "⭐️ Telegram Stars"
     },
     'btn_cryptobot': {
         'en': "🤖 Crypto Bot (USDT/TON/BTC)",
         'ar': "🤖 كريبتو بوت (USDT/TON/BTC)",
-        'ru': "🤖 Crypto Bot (USDT/TON/BTC)"
+        'ru': "🤖 Crypto Bot (USDT/TON/BTC)",
+        'pt': "🤖 Crypto Bot (USDT/TON/BTC)"
     },
     'btn_cryptotransfer': {
         'en': "🪙 Crypto Transfer (Manual)",
         'ar': "🪙 تحويل العملات الرقمية (يدوي)",
-        'ru': "🪙 Крипто-перевод (Вручную)"
+        'ru': "🪙 Крипто-перевод (Вручную)",
+        'pt': "🪙 Transferência Crypto (Manual)"
     },
     'crypto_select_coin': {
         'en': "🌍 Select cryptocurrency / اختر العملة الرقمية / Выберите криптовалюту:",
@@ -490,12 +548,14 @@ LOCALIZATION = {
     'enter_amount_usd': {
         'en': "💵 *Deposit Amount Request*\n\n⚠️ *IMPORTANT:* Please enter the amount you want to deposit in USD (Minimum $1.00) *BEFORE* making any transfer or sending payment.\n\n✍️ Enter the USD amount now:",
         'ar': "💵 *طلب تحديد مبلغ الشحن*\n\n⚠️ *تنبيه هام:* يرجى إدخال وتحديد المبلغ الذي تريد شحنه بالدولار (الحد الأدنى $1.00) *قَبْلَ* القيام بأي عملية تحويل أو إرسال أموال.\n\n✍️ أدخل قيمة المبلغ بالدولار الآن:",
-        'ru': "💵 *Сумма пополнения баланса*\n\n⚠️ *ВАЖНО:* Пожалуйста, укажите сумму, которую хотите внести в USD (Минимум $1.00) *ДО* совершения платежа или перевода.\n\n✍️ Введите сумму в USD сейчас:"
+        'ru': "💵 *Сумма пополнения баланса*\n\n⚠️ *ВАЖНО:* Пожалуйста, укажите сумму, которую хотите внести в USD (Минимум $1.00) *ДО* совершения платежа или перевода.\n\n✍️ Введите сумму в USD сейчас:",
+        'pt': "💵 *Valor do Depósito*\n\n⚠️ *IMPORTANTE:* Digite o valor que deseja depositar em USD (Mínimo $1.00) *ANTES* de efetuar qualquer transferência ou pagamento.\n\n✍️ Digite o valor em USD agora:"
     },
     'invalid_amount': {
         'en': "❌ Invalid amount. Please enter a positive number greater than or equal to 1.",
         'ar': "❌ مبلغ غير صالح. يرجى إدخال رقم موجب أكبر من أو يساوي 1.",
-        'ru': "❌ Неверная сумма. Введите положительное число не меньше 1."
+        'ru': "❌ Неверная сумма. Введите положительное число не меньше 1.",
+        'pt': "❌ Valor inválido. Digite um número positivo maior ou igual a 1."
     },
     'binance_instructions': {
         'en': "🔸 *Binance Pay Deposit*\n\n💰 *Amount:* `${amount:.2f} USD`\n\nClick the button below to pay via Binance. After paying, click the status button below to check and confirm your payment.",
@@ -570,27 +630,32 @@ LOCALIZATION = {
     'btn_notify_stock': {
         'en': "🔔 Notify Me When Available",
         'ar': "🔔 أبلغني عند التوفر",
-        'ru': "🔔 Уведомить о наличии"
+        'ru': "🔔 Уведомить о наличии",
+        'pt': "🔔 Notificar-me quando disponível"
     },
     'btn_cancel_notify_stock': {
         'en': "🔕 Cancel Notification",
         'ar': "🔕 إلغاء الإشعار",
-        'ru': "🔕 Отменить уведомление"
+        'ru': "🔕 Отменить уведомление",
+        'pt': "🔕 Cancelar notificação"
     },
     'notify_stock_subscribed': {
         'en': "🔔 You will be notified when *{name}* is back in stock!",
         'ar': "🔔 سيتم إشعارك عند توفر *{name}* مجدداً!",
-        'ru': "🔔 Вы получите уведомление, когда *{name}* появится в наличии!"
+        'ru': "🔔 Вы получите уведомление, когда *{name}* появится в наличии!",
+        'pt': "🔔 Será notificado assim que *{name}* voltar ao stock!"
     },
     'notify_stock_unsubscribed': {
         'en': "🔕 Notification cancelled for *{name}*.",
         'ar': "🔕 تم إلغاء الإشعار لمنتج *{name}*.",
-        'ru': "🔕 Уведомление отменено для *{name}*."
+        'ru': "🔕 Уведомление отменено для *{name}*.",
+        'pt': "🔕 Notificação cancelada para *{name}*."
     },
     'notify_stock_available': {
         'en': "🔔 *Product Available!*\n\n🛍 *{name}* is back in stock!\n📦 *Available:* `{stock}` items\n💵 *Price:* `${price:.2f} USD`\n\nHurry up before it runs out! 🏃",
         'ar': "🔔 *المنتج متوفر!*\n\n🛍 *{name}* عاد للمخزون!\n📦 *المتوفر:* `{stock}` قطعة\n💵 *السعر:* `${price:.2f} USD`\n\nأسرع قبل النفاذ! 🏃",
-        'ru': "🔔 *Товар в наличии!*\n\n🛍 *{name}* снова в наличии!\n📦 *Доступно:* `{stock}` шт.\n💵 *Цена:* `${price:.2f} USD`\n\nУспейте купить! 🏃"
+        'ru': "🔔 *Товар в наличии!*\n\n🛍 *{name}* снова в наличии!\n📦 *Доступно:* `{stock}` шт.\n💵 *Цена:* `${price:.2f} USD`\n\nУспейте купить! 🏃",
+        'pt': "🔔 *Produto Disponível!*\n\n🛍 *{name}* está de volta ao stock!\n📦 *Disponível:* `{stock}` itens\n💵 *Preço:* `${price:.2f} USD`\n\nCorra antes que acabe! 🏃"
     },
     'btn_generate_api_key': {
         'en': "➕ Generate API Key",
@@ -1668,7 +1733,8 @@ LOCALIZATION = {
         'fr': "🎨 Émojis personnalisés : {status}",
         'zh': "🎨 自定义表情：{status}",
         'hi': "🎨 कस्टम इमोजी: {status}",
-        'ko': "🎨 커스텀 이모지: {status}"
+        'ko': "🎨 커스텀 이모지: {status}",
+        'pt': "🎨 Emojis Personalizados: {status}"
     },
     'btn_admin_reset_emojis': {
         'en': "🔄 Restore Default Emojis",
@@ -1677,7 +1743,8 @@ LOCALIZATION = {
         'fr': "🔄 Restaurer les émojis par défaut",
         'zh': "🔄 恢复默认表情",
         'hi': "🔄 डिफ़ॉल्ट इमोजी रीसेट करें",
-        'ko': "🔄 기본 이모지로 복원"
+        'ko': "🔄 기본 이모지로 복원",
+        'pt': "🔄 Restaurar Emojis Padrão"
     },
     'toast_custom_emojis_enabled': {
         'en': "🟢 Custom animated emojis enabled!",
@@ -1686,7 +1753,8 @@ LOCALIZATION = {
         'fr': "🟢 Émojis personnalisés activés !",
         'zh': "🟢 已开启自定义动态表情！",
         'hi': "🟢 कस्टम एनिमेटेड इमोजी सक्षम!",
-        'ko': "🟢 커스텀 애니메이션 이모지가 활성화되었습니다!"
+        'ko': "🟢 커스텀 애니메이션 이모지가 활성화되었습니다!",
+        'pt': "🟢 Emojis animados personalizados ativados!"
     },
     'toast_custom_emojis_disabled': {
         'en': "🔴 Standard emojis active (Classic)",
@@ -1695,7 +1763,8 @@ LOCALIZATION = {
         'fr': "🔴 Émojis classiques activés",
         'zh': "🔴 经典标准表情已激活",
         'hi': "🔴 मानक क्लासिक इमोजी सक्रिय",
-        'ko': "🔴 표준 클래식 이모지가 활성화되었습니다"
+        'ko': "🔴 표준 클래식 이모지가 활성화되었습니다",
+        'pt': "🔴 Emojis padrão ativos (Clássico)"
     },
     'toast_emojis_reset': {
         'en': "✅ Custom emojis restored to default presets!",
@@ -1704,7 +1773,8 @@ LOCALIZATION = {
         'fr': "✅ Émojis personnalisés réinitialisés avec succès !",
         'zh': "✅ 自定义表情已重置为默认预设！",
         'hi': "✅ कस्टम इमोजी डिफ़ॉल्ट पर रीसेट हो गए!",
-        'ko': "✅ 커스텀 이모지가 기본 설정으로 복원되었습니다!"
+        'ko': "✅ 커스텀 이모지가 기본 설정으로 복원되었습니다!",
+        'pt': "✅ Emojis personalizados restaurados para os padrões!"
     },
     'status_enabled': {
         'en': "Enabled",
@@ -1713,7 +1783,8 @@ LOCALIZATION = {
         'fr': "Activé",
         'zh': "已开启",
         'hi': "सक्षम",
-        'ko': "활성화됨"
+        'ko': "활성화됨",
+        'pt': "Ativado"
     },
     'status_disabled': {
         'en': "Disabled",
@@ -1722,11 +1793,12 @@ LOCALIZATION = {
         'fr': "Désactivé",
         'zh': "已关闭",
         'hi': "अक्षम",
-        'ko': "비활성화됨"
+        'ko': "비활성화됨",
+        'pt': "Desativado"
     }
 }
 
-SUPPORTED_LANGUAGES = ['en', 'ar', 'ru', 'fr', 'zh', 'hi', 'ko']
+SUPPORTED_LANGUAGES = ['en', 'ar', 'ru', 'fr', 'zh', 'hi', 'ko', 'pt']
 
 def get_text(key, lang='en', **kwargs):
     if key not in LOCALIZATION:

@@ -65,6 +65,7 @@ def get_language_keyboard(lang_emojis=None) -> InlineKeyboardMarkup:
         ('hi', "🇮🇳 हिन्दी", "हिन्दी"),
         ('ko', "🇰🇷 한국어", "한국어"),
         ('ru', "🇷🇺 Русский", "Русский"),
+        ('pt', "🇵🇹 Português", "Português"),
     ]
     
     for code, full_text, clean_text in langs:
@@ -74,7 +75,7 @@ def get_language_keyboard(lang_emojis=None) -> InlineKeyboardMarkup:
         else:
             builder.button(text=full_text, callback_data=f"set_lang_{code}")
             
-    builder.adjust(2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2)
     return builder.as_markup()
 
 def get_products_keyboard(products, stock_counts=None, lang='en', category_id=None) -> InlineKeyboardMarkup:
