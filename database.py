@@ -1108,11 +1108,12 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                     await db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (live_cost, product_id))
                 await db.commit()
 
+            cost_to_pass = float(live_cost if (live_cost is not None and live_cost > 0) else (prod_dict.get('last_provider_cost') or prod_dict.get('price') or 1.00))
             try:
                 delivered_items = await adapter.execute_order(
                     provider_product_id=prov_pid,
                     quantity=remaining_qty,
-                    expected_price=float(prod_dict.get('price') or 1.00),
+                    expected_price=cost_to_pass,
                     client_order_ref=client_order_id,
                     customer_email=customer_email
                 )

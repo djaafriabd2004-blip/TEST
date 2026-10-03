@@ -4,7 +4,7 @@ import aiohttp
 import uuid
 import time
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from utils import (
     normalize_provider_url,
@@ -507,12 +507,33 @@ class BaseProviderAdapter:
                 err_json.get('message') or err_json.get('detail') or f"HTTP {resp.status}"
             )
             if isinstance(last_err, dict):
-                last_err = last_err.get('message') or last_err.get('code') or str(last_err)
+                msg = str(last_err.get('message') or last_err.get('code') or "")
+                details = last_err.get('details')
+                if details:
+                    if isinstance(details, list):
+                        parts = []
+                        for item in details:
+                            if isinstance(item, dict):
+                                loc = ".".join(str(x) for x in item.get("loc", []) if x not in ("body", ""))
+                                d_msg = item.get("msg") or str(item)
+                                parts.append(f"{loc}: {d_msg}" if loc else str(d_msg))
+                            else:
+                                parts.append(str(item))
+                        d_str = "; ".join(parts)
+                        last_err = f"{msg} ({d_str})" if msg and d_str else (msg or d_str)
+                    elif isinstance(details, dict):
+                        d_parts = [f"{k}: {v}" for k, v in details.items()]
+                        d_str = "; ".join(d_parts)
+                        last_err = f"{msg} ({d_str})" if msg and d_str else (msg or d_str)
+                    else:
+                        last_err = f"{msg} ({details})" if msg else str(details)
+                else:
+                    last_err = msg or str(last_err)
             elif isinstance(last_err, list):
                 parts = []
                 for item in last_err:
                     if isinstance(item, dict):
-                        loc = ".".join(str(x) for x in item.get("loc", []) if x != "body")
+                        loc = ".".join(str(x) for x in item.get("loc", []) if x not in ("body", ""))
                         msg = item.get("msg") or str(item)
                         parts.append(f"{loc}: {msg}" if loc else str(msg))
                     else:
@@ -530,12 +551,71 @@ class BaseProviderAdapter:
 # 1. Pandora Digital Adapter (https://api.pandoradigital.shop)
 # -------------------------------------------------------------------------
 class PandoraProviderAdapter(BaseProviderAdapter):
+    """
+    Pandora Digital Reseller API Adapter (https://api.pandoradigital.shop/docs)
+    Strict OpenAPI 3.1 schema compliance (additionalProperties: false on Quotes & Orders).
+    """
     def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
         super().__init__(base_url, api_key, field_mapping=field_mapping)
         self.provider_type = "pandora"
 
+    @staticmethod
+    def _parse_pid_and_variant(provider_product_id: Any) -> Tuple[str, Optional[str]]:
+        prov_pid_str = str(provider_product_id).strip()
+        for sep in [":", "#", "__variant__", "__"]:
+            if sep in prov_pid_str:
+                parts = prov_pid_str.split(sep, 1)
+                p_id = parts[0].strip()
+                v_id = parts[1].strip() or None
+                return p_id, v_id
+        return prov_pid_str, None
+
+    def _standardize_pandora_catalog(self, raw_list: List[Any]) -> List[Dict[str, Any]]:
+        formatted = []
+        for p in raw_list:
+            if not isinstance(p, dict):
+                continue
+            base_id = p.get("id")
+            if not base_id:
+                continue
+            var_id = p.get("variant_id")
+            var_name = p.get("variant_name")
+            p_id = f"{base_id}:{var_id}" if var_id else str(base_id)
+
+            p_name = p.get("name") or f"Product {p_id}"
+            if var_name:
+                p_name = f"{p_name} ({var_name})"
+
+            unit_p = p.get("unit_price")
+            price_val = float(unit_p) if unit_p is not None else 0.0
+
+            stock_val = p.get("available_stock")
+            stock_int = int(stock_val) if stock_val is not None else 0
+
+            desc = str(p.get("description") or "")
+            formatted.append({
+                "id": str(p_id),
+                "name": p_name,
+                "name_ar": p_name,
+                "name_en": p_name,
+                "name_ru": p_name,
+                "description": desc,
+                "description_ar": desc,
+                "description_en": desc,
+                "description_ru": desc,
+                "price": price_val,
+                "original_price": price_val,
+                "stock": stock_int,
+                "custom_emoji_id": None,
+                "requires_email": False,
+                "requiresEmailActivation": False
+            })
+        return formatted
+
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
         endpoints = [
+            f"{self.base_url}/api/v1/products?limit=100",
+            f"{self.base_url}/v1/products?limit=100",
             f"{self.base_url}/api/v1/products",
             f"{self.base_url}/v1/products"
         ]
@@ -547,7 +627,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                             data = await resp.json()
                             raw_list = extract_products_list_from_json(data)
                             if raw_list:
-                                return self._standardize_catalog(raw_list)
+                                return self._standardize_pandora_catalog(raw_list)
                 except Exception as e:
                     logger.debug(f"Pandora catalog probe {url} failed: {e}")
             return []
@@ -558,33 +638,76 @@ class PandoraProviderAdapter(BaseProviderAdapter):
             async with aiohttp.ClientSession() as s:
                 return await _req(s)
 
-    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
-        prov_pid = str(provider_product_id).strip()
-        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
         headers = self.get_headers()
 
         async def _req(s):
             try:
+                q_payload: Dict[str, Any] = {"product_id": pid, "quantity": 1}
+                if var_id:
+                    q_payload["variant_id"] = var_id
                 async with s.post(
                     f"{self.base_url}/api/v1/quotes",
                     headers=headers,
-                    json={"product_id": prov_pid, "quantity": int(quantity), "qty": int(quantity)},
+                    json=q_payload,
+                    timeout=aiohttp.ClientTimeout(total=8, connect=4)
+                ) as q_resp:
+                    if q_resp.status in [200, 201]:
+                        q_data = await q_resp.json()
+                        if isinstance(q_data, dict) and "available_stock" in q_data:
+                            stk = q_data.get("available_stock")
+                            return int(stk) if stk is not None else None
+            except Exception:
+                pass
+
+            try:
+                async with s.get(f"{self.base_url}/api/v1/products/{pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as p_resp:
+                    if p_resp.status == 200:
+                        p_data = await p_resp.json()
+                        if isinstance(p_data, dict) and "available_stock" in p_data:
+                            stk = p_data.get("available_stock")
+                            return int(stk) if stk is not None else None
+            except Exception:
+                pass
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        headers = self.get_headers()
+
+        async def _req(s):
+            try:
+                q_payload: Dict[str, Any] = {"product_id": pid, "quantity": int(quantity)}
+                if var_id:
+                    q_payload["variant_id"] = var_id
+                async with s.post(
+                    f"{self.base_url}/api/v1/quotes",
+                    headers=headers,
+                    json=q_payload,
                     timeout=aiohttp.ClientTimeout(total=8, connect=4)
                 ) as q_resp:
                     if q_resp.status in [200, 201]:
                         q_data = await q_resp.json()
                         if isinstance(q_data, dict):
-                            u_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
+                            u_price = q_data.get("unit_price")
                             if u_price is not None:
                                 return float(u_price)
             except Exception:
                 pass
+
             try:
-                async with s.get(f"{self.base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as p_resp:
+                async with s.get(f"{self.base_url}/api/v1/products/{pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as p_resp:
                     if p_resp.status == 200:
                         p_data = await p_resp.json()
                         if isinstance(p_data, dict):
-                            u_price = extract_price_from_dict(p_data, custom_field=custom_price_field)
+                            u_price = p_data.get("unit_price")
                             if u_price is not None:
                                 return float(u_price)
             except Exception:
@@ -606,86 +729,145 @@ class PandoraProviderAdapter(BaseProviderAdapter):
         session: Optional[aiohttp.ClientSession] = None,
         customer_email: Optional[Any] = None
     ) -> List[str]:
-        prov_pid = str(provider_product_id).strip()
-        order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        order_ref = str(client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}")[:100]
         headers = self.get_headers({"Idempotency-Key": order_ref})
-        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
 
         async def _req(s):
-            # Step 1: Quote
-            unit_price = expected_price
+            # Step 1: Quote to obtain live unit_price, price_version, and verify can_purchase
+            unit_price = None
             price_version = None
             try:
+                q_payload: Dict[str, Any] = {"product_id": pid, "quantity": int(quantity)}
+                if var_id:
+                    q_payload["variant_id"] = var_id
                 async with s.post(
                     f"{self.base_url}/api/v1/quotes",
                     headers=headers,
-                    json={"product_id": prov_pid, "quantity": int(quantity), "qty": int(quantity)},
+                    json=q_payload,
                     timeout=aiohttp.ClientTimeout(total=10, connect=5)
                 ) as q_resp:
                     if q_resp.status in [200, 201]:
                         q_data = await q_resp.json()
                         if isinstance(q_data, dict):
-                            unit_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
+                            if q_data.get("can_purchase") is False:
+                                avail_stk = q_data.get("available_stock", 0)
+                                raise Exception(f"Product is unavailable or out of stock at provider (stock: {avail_stk})")
+                            unit_price = q_data.get("unit_price")
                             price_version = q_data.get("price_version")
+                    elif q_resp.status == 409:
+                        last_err = await self._parse_error_response(q_resp)
+                        raise Exception(f"Provider product unavailable: {last_err}")
+                    elif q_resp.status == 404:
+                        raise Exception("Provider product not found or not API-enabled")
             except Exception as q_err:
-                logger.warning(f"Pandora quote error: {q_err}")
+                if "Provider product unavailable:" in str(q_err) or "Product is unavailable" in str(q_err) or "Provider product not found" in str(q_err):
+                    raise q_err
+                logger.warning(f"Pandora quote check failed: {q_err}")
 
-            if not unit_price:
+            # Step 2: Fallback price from product info if quote didn't provide unit_price
+            if not unit_price or float(unit_price or 0.0) <= 0:
                 try:
-                    async with s.get(f"{self.base_url}/api/v1/products/{prov_pid}", headers=headers, timeout=aiohttp.ClientTimeout(total=8, connect=5)) as p_resp:
+                    async with s.get(
+                        f"{self.base_url}/api/v1/products/{pid}",
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=8, connect=5)
+                    ) as p_resp:
                         if p_resp.status == 200:
                             p_data = await p_resp.json()
                             if isinstance(p_data, dict):
-                                unit_price = extract_price_from_dict(p_data, custom_field=custom_price_field)
+                                unit_price = p_data.get("unit_price")
                 except Exception:
                     pass
 
-            buy_payload = {
-                "product_id": prov_pid,
+            # Step 3: Fallback to expected_price if valid positive number
+            if not unit_price or float(unit_price or 0.0) <= 0:
+                if expected_price is not None and float(expected_price) > 0:
+                    unit_price = f"{float(expected_price):.4f}".rstrip('0').rstrip('.')
+
+            if not unit_price or float(unit_price or 0.0) <= 0:
+                raise Exception("Provider error: Could not determine valid unit price for product")
+
+            # Step 4: Construct STRICT ApiOrderCreate payload (additionalProperties: false)
+            buy_payload: Dict[str, Any] = {
+                "product_id": pid,
                 "quantity": int(quantity),
-                "qty": int(quantity),
-                "expected_unit_price": str(unit_price) if unit_price is not None else "1.00"
+                "expected_unit_price": str(unit_price)
             }
-            self._apply_order_mapping(buy_payload, prov_pid, prov_pid, quantity)
+            if var_id:
+                buy_payload["variant_id"] = var_id
             if price_version:
                 buy_payload["price_version"] = str(price_version)
             if order_ref:
-                buy_payload["client_order_reference"] = order_ref[:100]
-            if customer_email:
-                email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
-                if email_list:
-                    if int(quantity) == 1:
-                        buy_payload["email"] = email_list[0]
-                    else:
-                        if len(email_list) < int(quantity):
-                            email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
-                        buy_payload["emails"] = email_list[:int(quantity)]
+                buy_payload["client_order_reference"] = order_ref[:160]
 
-            ep_list = self._get_custom_buy_endpoints([f"{self.base_url}/api/v1/orders"])
-            ep = ep_list[0]
+            ep = f"{self.base_url}/api/v1/orders"
             logger.info(f"Executing Pandora order on {ep} with payload: {buy_payload}")
+
             async with s.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
+                buy_data = None
                 if resp.status in [200, 201]:
                     buy_data = await resp.json()
-                    # Handle async processing
-                    if buy_data.get('status') in ['processing', 'pending']:
-                        ord_id = buy_data.get('order_id') or buy_data.get('id')
-                        if ord_id:
-                            for _ in range(4):
-                                await asyncio.sleep(2)
-                                try:
-                                    async with s.get(f"{self.base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as o_resp:
-                                        if o_resp.status == 200:
-                                            o_data = await o_resp.json()
-                                            if o_data.get('delivery') or o_data.get('deliveredKeys'):
-                                                buy_data = o_data
-                                                break
-                                except Exception:
-                                    pass
-                    return self._parse_delivery_data(buy_data, order_ref)
+                elif resp.status == 409:
+                    # Check if PRICE_CHANGED, retry once with updated price and version
+                    try:
+                        err_json = await resp.json()
+                        err_obj = err_json.get("error", {}) if isinstance(err_json, dict) else {}
+                        if isinstance(err_obj, dict) and err_obj.get("code") == "PRICE_CHANGED":
+                            details = err_obj.get("details", {})
+                            new_price = details.get("current_unit_price") if isinstance(details, dict) else None
+                            new_ver = details.get("price_version") if isinstance(details, dict) else None
+                            if new_price and float(new_price) > 0:
+                                logger.info(f"Pandora price changed to {new_price} (version: {new_ver}), retrying order...")
+                                buy_payload["expected_unit_price"] = str(new_price)
+                                if new_ver:
+                                    buy_payload["price_version"] = str(new_ver)
+                                async with s.post(ep, headers=headers, json=buy_payload, timeout=aiohttp.ClientTimeout(total=45, connect=10)) as retry_resp:
+                                    if retry_resp.status in [200, 201]:
+                                        buy_data = await retry_resp.json()
+                                    else:
+                                        last_err = await self._parse_error_response(retry_resp)
+                                        raise Exception(f"Provider error: {last_err}")
+                    except Exception as retry_e:
+                        if "Provider error:" in str(retry_e):
+                            raise retry_e
+                    if not buy_data:
+                        last_err = await self._parse_error_response(resp)
+                        raise Exception(f"Provider error: {last_err}")
                 else:
                     last_err = await self._parse_error_response(resp)
                     raise Exception(f"Provider error: {last_err}")
+
+                if not isinstance(buy_data, dict):
+                    raise Exception("Provider returned empty or invalid response")
+
+                # Check if order failed
+                if buy_data.get("status") == "failed":
+                    fail_msg = buy_data.get("failure_message") or buy_data.get("failure_code") or "Order failed at provider"
+                    raise Exception(f"Provider error: {fail_msg}")
+
+                # Handle pending/processing
+                if buy_data.get("status") in ["processing", "pending"]:
+                    ord_id = buy_data.get("id") or buy_data.get("order_id")
+                    if ord_id:
+                        for _ in range(6):
+                            await asyncio.sleep(2)
+                            try:
+                                async with s.get(f"{self.base_url}/api/v1/orders/{ord_id}", headers=headers, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as o_resp:
+                                    if o_resp.status == 200:
+                                        o_data = await o_resp.json()
+                                        if isinstance(o_data, dict):
+                                            if o_data.get("status") == "failed":
+                                                fail_msg = o_data.get("failure_message") or o_data.get("failure_code") or "Order failed at provider"
+                                                raise Exception(f"Provider error: {fail_msg}")
+                                            if (o_data.get("delivery") and o_data["delivery"].get("items")) or o_data.get("status") == "delivered":
+                                                buy_data = o_data
+                                                break
+                            except Exception as pe:
+                                if "Provider error:" in str(pe):
+                                    raise pe
+
+                return self._parse_delivery_data(buy_data, order_ref)
 
         if session:
             return await _req(session)
