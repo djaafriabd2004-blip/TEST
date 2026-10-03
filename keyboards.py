@@ -1,6 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
-from localization import get_text, strip_leading_emoji
+from localization import get_text, strip_leading_emoji, SUPPORTED_LANGUAGES
 try:
     import bot_config as config
 except ImportError:
@@ -56,12 +56,16 @@ def get_language_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🇺🇸 English", callback_data="set_lang_en")
     builder.button(text="🇸🇦 العربية", callback_data="set_lang_ar")
+    builder.button(text="🇫🇷 Français", callback_data="set_lang_fr")
+    builder.button(text="🇨🇳 中文", callback_data="set_lang_zh")
+    builder.button(text="🇮🇳 हिन्दी", callback_data="set_lang_hi")
+    builder.button(text="🇰🇷 한국어", callback_data="set_lang_ko")
     builder.button(text="🇷🇺 Русский", callback_data="set_lang_ru")
-    builder.adjust(1)
+    builder.adjust(2, 2, 2, 1)
     return builder.as_markup()
 
 def get_products_keyboard(products, stock_counts=None, lang='en', category_id=None) -> InlineKeyboardMarkup:
-    if not lang or lang not in ['en', 'ar', 'ru']:
+    if not lang or lang not in SUPPORTED_LANGUAGES:
         lang = 'en'
     builder = InlineKeyboardBuilder()
     if stock_counts is None:
@@ -93,7 +97,7 @@ def get_products_keyboard(products, stock_counts=None, lang='en', category_id=No
     return builder.as_markup()
 
 def get_shop_home_keyboard(categories, standalone_products, stock_counts=None, lang='en') -> InlineKeyboardMarkup:
-    if not lang or lang not in ['en', 'ar', 'ru']:
+    if not lang or lang not in SUPPORTED_LANGUAGES:
         lang = 'en'
     builder = InlineKeyboardBuilder()
     if stock_counts is None:

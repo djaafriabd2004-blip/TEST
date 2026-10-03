@@ -616,8 +616,10 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
         
     elif menu == "admin_emoji_settings":
+        custom_enabled = await get_setting("custom_emojis_enabled", "1")
         emojis = await get_button_emojis()
-        welcome_eid = await get_setting('welcome_emoji_id', '')
+        from database import DEFAULT_WELCOME_EMOJI_ID
+        welcome_eid = await get_setting('welcome_emoji_id', DEFAULT_WELCOME_EMOJI_ID if custom_enabled == '1' else '')
         btn_names = {
             'shop': get_text('btn_shop', lang),
             'orders': get_text('btn_my_orders', lang),
@@ -629,18 +631,26 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             'reseller_api': get_text('btn_reseller_api', lang),
             'admin': get_text('btn_admin_panel', lang),
         }
+        status_mode = ("🟢 " + get_text('status_enabled', lang)) if custom_enabled == "1" else ("🔴 " + get_text('status_disabled', lang))
         w_status = f"`{welcome_eid[:12]}...`" if welcome_eid else "❌ None"
-        text = get_text('admin_settings_emoji_title', lang) + "\n\n"
+        text = get_text('admin_settings_emoji_title', lang) + f" ({status_mode})\n\n"
         text += f"🔷 *Welcome Emoji:* {w_status}\n"
         text += "──────────────\n"
         for key, name in btn_names.items():
             emoji_id = emojis.get(key)
             status = f"`{emoji_id[:12]}...`" if emoji_id else "❌ None"
-            text += f"▫️ {name}: {status}\n"
+            clean_name = strip_leading_emoji(name)
+            text += f"▫️ {clean_name}: {status}\n"
+        
+        # Toggle and Reset buttons
+        toggle_label = get_text('btn_admin_toggle_custom_emojis', lang, status=status_mode)
+        builder.button(text=toggle_label, callback_data="admin_toggle_custom_emojis")
+        builder.button(text=get_text('btn_admin_reset_emojis', lang), callback_data="admin_reset_btn_emojis")
         
         builder.button(text="🔷 Welcome Emoji", callback_data="admin_set_btn_emoji_welcome")
         for key, name in btn_names.items():
-            builder.button(text=f"🎨 {name}", callback_data=f"admin_set_btn_emoji_{key}")
+            clean_btn_name = strip_leading_emoji(name)
+            builder.button(text=f"🎨 {clean_btn_name}", callback_data=f"admin_set_btn_emoji_{key}")
     
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
     builder.adjust(1)
@@ -2149,6 +2159,29 @@ async def process_btn_emoji(message: Message, state: FSMContext, lang='en'):
             reply_markup=keyboards.get_admin_back_keyboard(lang),
             parse_mode="Markdown"
         )
+
+@router.callback_query(F.data == "admin_toggle_custom_emojis")
+async def cb_admin_toggle_custom_emojis(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    current = await get_setting("custom_emojis_enabled", "1")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("custom_emojis_enabled", new_val)
+    toast = get_text('toast_custom_emojis_enabled', lang) if new_val == "1" else get_text('toast_custom_emojis_disabled', lang)
+    await callback.answer(toast, show_alert=False)
+    text, reply_markup = await get_admin_settings_content("admin_emoji_settings", lang)
+    await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+
+@router.callback_query(F.data == "admin_reset_btn_emojis")
+async def cb_admin_reset_btn_emojis(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    from database import reset_button_emojis_to_default
+    await reset_button_emojis_to_default()
+    toast = get_text('toast_emojis_reset', lang)
+    await callback.answer(toast, show_alert=True)
+    text, reply_markup = await get_admin_settings_content("admin_emoji_settings", lang)
+    await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 @router.callback_query(F.data == "admin_toggle_auto_proofs")
 async def cb_admin_toggle_auto_proofs(callback: CallbackQuery, lang='en'):

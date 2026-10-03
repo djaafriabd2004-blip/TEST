@@ -38,61 +38,153 @@ LOCALIZATION = {
             "</blockquote>\n\n"
             "📌 <i>Выберите опцию из меню ниже</i> 👇"
         ),
+        'fr': (
+            "{welcome_emoji} <b>{store_name}</b>\n"
+            "══════════════════\n\n"
+            "Bonjour <b>{name}</b> ! 👋\n\n"
+            "<blockquote>"
+            "🆔 <b>ID :</b> <code>{user_id}</code>\n"
+            "💎 <b>Solde :</b> <code>${balance:.2f} USD</code>\n"
+            "👥 <b>Parrainages :</b> <code>{ref_count}</code> utilisateurs\n"
+            "🤝 <b>Invité par :</b> <code>{referred_by}</code>"
+            "</blockquote>\n\n"
+            "📌 <i>Choisissez une option dans le menu ci-dessous</i> 👇"
+        ),
+        'zh': (
+            "{welcome_emoji} <b>{store_name}</b>\n"
+            "══════════════════\n\n"
+            "您好 <b>{name}</b>！👋\n\n"
+            "<blockquote>"
+            "🆔 <b>用户ID：</b> <code>{user_id}</code>\n"
+            "💎 <b>余额：</b> <code>${balance:.2f} USD</code>\n"
+            "👥 <b>邀请人数：</b> <code>{ref_count}</code> 人\n"
+            "🤝 <b>邀请人：</b> <code>{referred_by}</code>"
+            "</blockquote>\n\n"
+            "📌 <i>请从下方菜单中选择所需选项</i> 👇"
+        ),
+        'hi': (
+            "{welcome_emoji} <b>{store_name}</b>\n"
+            "══════════════════\n\n"
+            "नमस्ते <b>{name}</b>! 👋\n\n"
+            "<blockquote>"
+            "🆔 <b>आईडी:</b> <code>{user_id}</code>\n"
+            "💎 <b>बैलेंस:</b> <code>${balance:.2f} USD</code>\n"
+            "👥 <b>रेफरल:</b> <code>{ref_count}</code> यूजर्स\n"
+            "🤝 <b>द्वारा आमंत्रित:</b> <code>{referred_by}</code>"
+            "</blockquote>\n\n"
+            "📌 <i>नीचे दिए गए मेनू से एक विकल्प चुनें</i> 👇"
+        ),
+        'ko': (
+            "{welcome_emoji} <b>{store_name}</b>\n"
+            "══════════════════\n\n"
+            "안녕하세요 <b>{name}</b>님! 👋\n\n"
+            "<blockquote>"
+            "🆔 <b>아이디:</b> <code>{user_id}</code>\n"
+            "💎 <b>잔액:</b> <code>${balance:.2f} USD</code>\n"
+            "👥 <b>추천인:</b> <code>{ref_count}</code> 명\n"
+            "🤝 <b>초대자:</b> <code>{referred_by}</code>"
+            "</blockquote>\n\n"
+            "📌 <i>아래 메뉴에서 원하는 옵션을 선택하세요</i> 👇"
+        ),
     },
     'btn_shop': {
         'en': "🛍️ Shop",
         'ar': "🛍️ المتجر",
-        'ru': "🛍️ Магазин"
+        'ru': "🛍️ Магазин",
+        'fr': "🛍️ Boutique",
+        'zh': "🛍️ 商店",
+        'hi': "🛍️ दुकान",
+        'ko': "🛍️ 상점"
     },
     'btn_my_orders': {
         'en': "📦 My Orders",
         'ar': "📦 طلباتي",
-        'ru': "📦 Мои заказы"
+        'ru': "📦 Мои заказы",
+        'fr': "📦 Mes commandes",
+        'zh': "📦 我的订单",
+        'hi': "📦 मेरे ऑर्डर",
+        'ko': "📦 내 주문"
     },
     'btn_support': {
         'en': "🎧 Support",
         'ar': "🎧 الدعم",
-        'ru': "🎧 Поддержка"
+        'ru': "🎧 Поддержка",
+        'fr': "🎧 Support",
+        'zh': "🎧 客服支持",
+        'hi': "🎧 सहायता",
+        'ko': "🎧 고객지원"
     },
     'btn_charge_balance': {
         'en': "💳 Charge Balance",
         'ar': "💳 شحن الرصيد",
-        'ru': "💳 Пополнить баланс"
+        'ru': "💳 Пополнить баланс",
+        'fr': "💳 Recharger le solde",
+        'zh': "💳 余额充值",
+        'hi': "💳 बैलेंस रिचार्ज",
+        'ko': "💳 잔액 충전"
     },
     'btn_other_payment_methods': {
         'en': "💳 Other Payment Methods",
         'ar': "💳 طرق دفع أخرى",
-        'ru': "💳 Другие способы оплаты"
+        'ru': "💳 Другие способы оплаты",
+        'fr': "💳 Autres moyens de paiement",
+        'zh': "💳 其他支付方式",
+        'hi': "💳 अन्य भुगतान विधियां",
+        'ko': "💳 기타 결제 수단"
     },
     'btn_referral': {
         'en': "🔗 Referral Link",
         'ar': "🔗 رابط الإحالة",
-        'ru': "🔗 Реферальная ссылка"
+        'ru': "🔗 Реферальная ссылка",
+        'fr': "🔗 Lien de parrainage",
+        'zh': "🔗 推广邀请",
+        'hi': "🔗 रेफरल लिंक",
+        'ko': "🔗 추천인 링크"
     },
     'btn_language': {
         'en': "🌐 Language / اللغة",
         'ar': "🌐 اللغة / Language",
-        'ru': "🌐 Язык / Language"
+        'ru': "🌐 Язык / Language",
+        'fr': "🌐 Langue / Language",
+        'zh': "🌐 语言 / Language",
+        'hi': "🌐 भाषा / Language",
+        'ko': "🌐 언어 / Language"
     },
     'btn_reseller_api': {
         'en': "🔑 Reseller API",
         'ar': "🔑 بوابة الموزعين",
-        'ru': "🔑 API Реселлера"
+        'ru': "🔑 API Реселлера",
+        'fr': "🔑 API Revendeur",
+        'zh': "🔑 分销商 API",
+        'hi': "🔑 पुनर्विक्रेता API",
+        'ko': "🔑 리셀러 API"
     },
     'btn_admin_panel': {
         'en': "⚙️ Admin Panel",
         'ar': "⚙️ لوحة التحكم",
-        'ru': "⚙️ Админ-панель"
+        'ru': "⚙️ Админ-панель",
+        'fr': "⚙️ Panneau Admin",
+        'zh': "⚙️ 管理面板",
+        'hi': "⚙️ व्यवस्थापक पैनल",
+        'ko': "⚙️ 관리자 패널"
     },
     'btn_my_preorders': {
         'en': "⏳ My Pre-orders",
         'ar': "⏳ حجوزاتي",
-        'ru': "⏳ Мои предзаказы"
+        'ru': "⏳ Мои предзаказы",
+        'fr': "⏳ Mes précommandes",
+        'zh': "⏳ 我的预订",
+        'hi': "⏳ मेरे प्री-ऑर्डर",
+        'ko': "⏳ 내 사전예약"
     },
     'btn_preorder': {
         'en': "⏳ Reserve / Pre-order",
         'ar': "⏳ حجز المنتج مسبقاً",
-        'ru': "⏳ Забронировать"
+        'ru': "⏳ Забронировать",
+        'fr': "⏳ Réserver / Précommander",
+        'zh': "⏳ 预订商品",
+        'hi': "⏳ प्री-ऑर्डर बुक करें",
+        'ko': "⏳ 사전 예약하기"
     },
     'preorder_title': {
         'en': "⏳ *Pre-order Reservation*\n\n🛒 *Product:* {name}\n💵 *Price per item:* `${price:.2f} USD`\n\nThis product is currently out of stock. You can reserve it now, and the bot will automatically buy and deliver it to you as soon as new stock is added!\n\n✍️ Enter quantity you want to reserve:",
@@ -125,29 +217,49 @@ LOCALIZATION = {
         'ru': "❌ Отменить бронь и вернуть"
     },
     'select_lang': {
-        'en': "🌍 Please select your language / الرجاء اختيار اللغة / Пожалуйста, выберите язык:",
-        'ar': "🌍 Please select your language / الرجاء اختيار اللغة / Пожалуйста, выберите язык:",
-        'ru': "🌍 Please select your language / الرجاء اختيار اللغة / Пожалуйста, выберите язык:"
+        'en': "🌍 Please select your language:",
+        'ar': "🌍 الرجاء اختيار اللغة:",
+        'ru': "🌍 Пожалуйста, выберите язык:",
+        'fr': "🌍 Veuillez choisir votre langue :",
+        'zh': "🌍 请选择您的语言：",
+        'hi': "🌍 कृपया अपनी भाषा चुनें:",
+        'ko': "🌍 언어를 선택해 주세요:"
     },
     'lang_updated': {
         'en': "✅ Language updated to English!",
         'ar': "✅ تم تغيير اللغة إلى العربية!",
-        'ru': "✅ Язык изменен на Русский!"
+        'ru': "✅ Язык изменен на Русский!",
+        'fr': "✅ Langue modifiée en Français !",
+        'zh': "✅ 语言已切换为中文！",
+        'hi': "✅ भाषा बदलकर हिन्दी कर दी गई है!",
+        'ko': "✅ 언어가 한국어로 변경되었습니다!"
     },
     'support_info': {
         'en': "💬 To contact support, please contact the admin directly: @{username}",
         'ar': "💬 للتواصل مع الدعم، يرجى التواصل مع المسؤول مباشرة: @{username}",
-        'ru': "💬 Для связи с поддержкой обратитесь к администратору напрямую: @{username}"
+        'ru': "💬 Для связи с поддержкой обратитесь к администратору напрямую: @{username}",
+        'fr': "💬 Pour contacter le support, écrivez directement à l'administrateur : @{username}",
+        'zh': "💬 如需联系客服，请直接联系管理员：@{username}",
+        'hi': "💬 सहायता के लिए, कृपया व्यवस्थापक से संपर्क करें: @{username}",
+        'ko': "💬 고객지원이 필요하시면 관리자에게 직접 문의해주세요: @{username}"
     },
     'btn_contact_support': {
         'en': "🎧 Contact Support",
         'ar': "🎧 تواصل مع الدعم",
-        'ru': "🎧 Связаться с поддержкой"
+        'ru': "🎧 Связаться с поддержкой",
+        'fr': "🎧 Contacter le support",
+        'zh': "🎧 联系客服",
+        'hi': "🎧 सहायता से संपर्क करें",
+        'ko': "🎧 고객센터 문의"
     },
     'support_no_handle': {
         'en': "❌ Support is currently unavailable.",
         'ar': "❌ الدعم غير متوفر حالياً.",
-        'ru': "❌ Поддержка временно недоступна."
+        'ru': "❌ Поддержка временно недоступна.",
+        'fr': "❌ Le support est actuellement indisponible.",
+        'zh': "❌ 客服暂不可用。",
+        'hi': "❌ सहायता वर्तमान में अनुपलब्ध है।",
+        'ko': "❌ 현재 고객지원을 이용할 수 없습니다."
     },
     'support_ticket_sent': {
         'en': "✅ Your message has been sent to support. We will get back to you shortly.",
@@ -192,12 +304,20 @@ LOCALIZATION = {
     'shop_title': {
         'en': "🛍️ *Store Products*\nSelect a product to view details and purchase:",
         'ar': "🛍️ *منتجات المتجر*\nاختر منتجاً لعرض التفاصيل والشراء:",
-        'ru': "🛍️ *Товары магазина*\nВыберите товар для просмотра деталей и покупки:"
+        'ru': "🛍️ *Товары магазина*\nВыберите товар для просмотра деталей и покупки:",
+        'fr': "🛍️ *Produits de la boutique*\nChoisissez un produit pour voir les détails et acheter :",
+        'zh': "🛍️ *商店商品*\n请选择商品以查看详情并购买：",
+        'hi': "🛍️ *स्टोर उत्पाद*\nविवरण देखने और खरीदने के लिए उत्पाद चुनें:",
+        'ko': "🛍️ *상점 상품 목록*\n상세 정보 확인 및 구매를 위해 상품을 선택하세요:"
     },
     'shop_empty': {
         'en': "📭 No products available right now.",
         'ar': "📭 لا توجد منتجات متوفرة حالياً.",
-        'ru': "📭 В данный момент товаров нет."
+        'ru': "📭 В данный момент товаров нет.",
+        'fr': "📭 Aucun produit disponible pour le moment.",
+        'zh': "📭 当前暂无可用商品。",
+        'hi': "📭 इस समय कोई उत्पाद उपलब्ध नहीं है।",
+        'ko': "📭 현재 이용 가능한 상품이 없습니다."
     },
     'product_details': {
         'en': "🛍️ *Product:* {name}\n\n📝 *Description:* {desc}\n\n💵 *Price:* {price}\n📦 *Stock:* `{stock}` available",
@@ -207,12 +327,20 @@ LOCALIZATION = {
     'btn_buy': {
         'en': "🛒 Buy Now",
         'ar': "🛒 شراء الآن",
-        'ru': "🛒 Купить сейчас"
+        'ru': "🛒 Купить сейчас",
+        'fr': "🛒 Acheter",
+        'zh': "🛒 立即购买",
+        'hi': "🛒 अभी खरीदें",
+        'ko': "🛒 지금 구매"
     },
     'btn_back': {
         'en': "🔙 Back",
         'ar': "🔙 عودة",
-        'ru': "🔙 Назад"
+        'ru': "🔙 Назад",
+        'fr': "🔙 Retour",
+        'zh': "🔙 返回",
+        'hi': "🔙 वापस",
+        'ko': "🔙 뒤로가기"
     },
     'out_of_stock': {
         'en': "❌ Sorry, this product is out of stock.",
@@ -1532,8 +1660,73 @@ LOCALIZATION = {
         'en': "📧 Require Email: {status}",
         'ar': "📧 طلب إيميل التفعيل: {status}",
         'ru': "📧 Запрос Email: {status}"
+    },
+    'btn_admin_toggle_custom_emojis': {
+        'en': "🎨 Custom Emojis: {status}",
+        'ar': "🎨 الإيموجيات المميزة: {status}",
+        'ru': "🎨 Премиум эмодзи: {status}",
+        'fr': "🎨 Émojis personnalisés : {status}",
+        'zh': "🎨 自定义表情：{status}",
+        'hi': "🎨 कस्टम इमोजी: {status}",
+        'ko': "🎨 커스텀 이모지: {status}"
+    },
+    'btn_admin_reset_emojis': {
+        'en': "🔄 Restore Default Emojis",
+        'ar': "🔄 استعادة الإيموجيات الافتراضية",
+        'ru': "🔄 Сброс на стандартные эмодзи",
+        'fr': "🔄 Restaurer les émojis par défaut",
+        'zh': "🔄 恢复默认表情",
+        'hi': "🔄 डिफ़ॉल्ट इमोजी रीसेट करें",
+        'ko': "🔄 기본 이모지로 복원"
+    },
+    'toast_custom_emojis_enabled': {
+        'en': "🟢 Custom animated emojis enabled!",
+        'ar': "🟢 تم تفعيل الإيموجيات المميزة!",
+        'ru': "🟢 Премиум эмодзи включены!",
+        'fr': "🟢 Émojis personnalisés activés !",
+        'zh': "🟢 已开启自定义动态表情！",
+        'hi': "🟢 कस्टम एनिमेटेड इमोजी सक्षम!",
+        'ko': "🟢 커스텀 애니메이션 이모지가 활성화되었습니다!"
+    },
+    'toast_custom_emojis_disabled': {
+        'en': "🔴 Standard emojis active (Classic)",
+        'ar': "🔴 تم تفعيل الإيموجيات العادية (الكلاسيكية)",
+        'ru': "🔴 Стандартные эмодзи активны",
+        'fr': "🔴 Émojis classiques activés",
+        'zh': "🔴 经典标准表情已激活",
+        'hi': "🔴 मानक क्लासिक इमोजी सक्रिय",
+        'ko': "🔴 표준 클래식 이모지가 활성화되었습니다"
+    },
+    'toast_emojis_reset': {
+        'en': "✅ Custom emojis restored to default presets!",
+        'ar': "✅ تم استعادة الإيموجيات المميزة الافتراضية بنجاح!",
+        'ru': "✅ Премиум эмодзи сброшены на стандартные!",
+        'fr': "✅ Émojis personnalisés réinitialisés avec succès !",
+        'zh': "✅ 自定义表情已重置为默认预设！",
+        'hi': "✅ कस्टम इमोजी डिफ़ॉल्ट पर रीसेट हो गए!",
+        'ko': "✅ 커스텀 이모지가 기본 설정으로 복원되었습니다!"
+    },
+    'status_enabled': {
+        'en': "Enabled",
+        'ar': "مفعل",
+        'ru': "Включено",
+        'fr': "Activé",
+        'zh': "已开启",
+        'hi': "सक्षम",
+        'ko': "활성화됨"
+    },
+    'status_disabled': {
+        'en': "Disabled",
+        'ar': "معطل",
+        'ru': "Отключено",
+        'fr': "Désactivé",
+        'zh': "已关闭",
+        'hi': "अक्षम",
+        'ko': "비활성화됨"
     }
 }
+
+SUPPORTED_LANGUAGES = ['en', 'ar', 'ru', 'fr', 'zh', 'hi', 'ko']
 
 def get_text(key, lang='en', **kwargs):
     if key not in LOCALIZATION:
@@ -1547,7 +1740,7 @@ def get_text(key, lang='en', **kwargs):
     return text
 
 import re
-_LEADING_EMOJI_PATTERN = re.compile(r'^[^\w\s\u0600-\u06FF\u0400-\u04FF]+[\s\u200b]*')
+_LEADING_EMOJI_PATTERN = re.compile(r'^[^\w\s\u0600-\u06FF\u0400-\u04FF\u4E00-\u9FFF\uAC00-\uD7AF\u0900-\u097F]+[\s\u200b]*')
 
 def strip_leading_emoji(text: str) -> str:
     """Strips leading standard emojis and whitespace from text so custom emoji replaces it cleanly."""
@@ -1558,7 +1751,7 @@ def strip_leading_emoji(text: str) -> str:
 def get_button_variants(key: str) -> list[str]:
     """Return all language variants of a button text, both with and without leading emojis for seamless router matching."""
     variants = set()
-    for l in ['en', 'ar', 'ru']:
+    for l in SUPPORTED_LANGUAGES:
         raw = get_text(key, l)
         if raw and not raw.startswith('['):
             variants.add(raw)

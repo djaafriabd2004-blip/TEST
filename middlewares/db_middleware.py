@@ -43,7 +43,8 @@ class DbUserMiddleware(BaseMiddleware):
             data['db_user'] = user
             data['is_admin'] = user_id in config.ADMIN_IDS
             user_lang = user['language'] if (user and user['language']) else 'en'
-            if user_lang not in ['en', 'ar', 'ru']:
+            from localization import SUPPORTED_LANGUAGES
+            if user_lang not in SUPPORTED_LANGUAGES:
                 user_lang = 'en'
             data['lang'] = user_lang
             
@@ -52,7 +53,11 @@ class DbUserMiddleware(BaseMiddleware):
                 ban_msg = {
                     'ar': "❌ *حسابك محظور من استخدام البوت.*\n💬 للتواصل مع الدعم يرجى التواصل مع المسؤول مباشرة.",
                     'en': "❌ *Your account has been banned from using this bot.*\n💬 For support, please contact the admin.",
-                    'ru': "❌ *Ваش аккаунт заблокирован.*\n💬 Для связи с поддержкой обратитесь к администратору."
+                    'ru': "❌ *Ваш аккаунт заблокирован.*\n💬 Для связи с поддержкой обратитесь к администратору.",
+                    'fr': "❌ *Votre compte a été banni de ce bot.*\n💬 Pour obtenir de l'aide, contactez l'administrateur.",
+                    'zh': "❌ *您的账号已被禁止使用此机器人。*\n💬 如需帮助，请联系管理员。",
+                    'hi': "❌ *आपका खाता इस बॉट का उपयोग करने से प्रतिबंधित कर दिया गया है।*\n💬 सहायता के लिए, कृपया व्यवस्थापक से संपर्क करें।",
+                    'ko': "❌ *봇 이용이 제한된 계정입니다.*\n💬 문의사항은 관리자에게 연락해주세요."
                 }
                 msg_text = ban_msg.get(user_lang, ban_msg['en'])
                 from aiogram.types import Message, CallbackQuery

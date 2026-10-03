@@ -9,8 +9,23 @@ try:
     from bot_config import DB_NAME
 except ImportError:
     from config import DB_NAME
+from localization import SUPPORTED_LANGUAGES
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_WELCOME_EMOJI_ID = "5373265917092316632"
+
+DEFAULT_BUTTON_EMOJIS = {
+    'shop': '5395463407589672312',
+    'orders': '6323328338123293863',
+    'preorders': '5346135240043671045',
+    'charge': '5384321407725358581',
+    'referral': '5303328645329209869',
+    'support': '5452026937172048380',
+    'language': '6000302531416688590',
+    'reseller_api': '5287480366330816274',
+    'admin': '5330399283030013876',
+}
 
 async def db_init():
     if os.path.isdir(DB_NAME):
@@ -278,6 +293,17 @@ async def db_init():
             'binance_api_base_url': 'https://api.binance.com',
             'binance_pay_base_url': 'https://bpay.binanceapi.com',
             'grouping_enabled': '0',
+            'custom_emojis_enabled': '1',
+            'welcome_emoji_id': DEFAULT_WELCOME_EMOJI_ID,
+            'btn_emoji_shop': DEFAULT_BUTTON_EMOJIS['shop'],
+            'btn_emoji_orders': DEFAULT_BUTTON_EMOJIS['orders'],
+            'btn_emoji_preorders': DEFAULT_BUTTON_EMOJIS['preorders'],
+            'btn_emoji_charge': DEFAULT_BUTTON_EMOJIS['charge'],
+            'btn_emoji_referral': DEFAULT_BUTTON_EMOJIS['referral'],
+            'btn_emoji_support': DEFAULT_BUTTON_EMOJIS['support'],
+            'btn_emoji_language': DEFAULT_BUTTON_EMOJIS['language'],
+            'btn_emoji_reseller_api': DEFAULT_BUTTON_EMOJIS['reseller_api'],
+            'btn_emoji_admin': DEFAULT_BUTTON_EMOJIS['admin'],
         }
         for key, val in default_settings.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", (key, val))
@@ -286,7 +312,8 @@ async def db_init():
         await db.execute("UPDATE settings SET value = '' WHERE key = 'api_domain' AND value = 'worker-production-53ca.up.railway.app';")
             
         # Clean up any invalid language codes in users table
-        await db.execute("UPDATE users SET language = 'en' WHERE language NOT IN ('en', 'ar', 'ru');")
+        placeholders = ','.join('?' for _ in SUPPORTED_LANGUAGES)
+        await db.execute(f"UPDATE users SET language = 'en' WHERE language NOT IN ({placeholders});", tuple(SUPPORTED_LANGUAGES))
         
         # Safe migrations for providers, products, and categories
         try:
@@ -337,22 +364,38 @@ async def set_setting(key, value):
         await db.commit()
 
 async def get_button_emojis():
-    """Fetch all button emoji settings as a dict."""
+    """Fetch all button emoji settings as a dict.
+    If custom emojis are disabled by admin, returns empty dict (standard unicode emojis used).
+    Otherwise returns configured or default custom emojis.
+    """
+    is_enabled = await get_setting("custom_emojis_enabled", "1")
+    if is_enabled == "0":
+        return {}
+
+    result = dict(DEFAULT_BUTTON_EMOJIS)
     keys = [
         'btn_emoji_shop', 'btn_emoji_orders', 'btn_emoji_charge',
         'btn_emoji_referral', 'btn_emoji_support', 'btn_emoji_language',
         'btn_emoji_admin', 'btn_emoji_preorders', 'btn_emoji_reseller_api'
     ]
-    result = {}
     async with aiosqlite.connect(DB_NAME) as db:
         for key in keys:
             async with db.execute("SELECT value FROM settings WHERE key = ?;", (key,)) as cursor:
                 row = await cursor.fetchone()
-                if row and row[0]:
-                    # key is like 'btn_emoji_shop' -> extract 'shop'
+                if row is not None:
                     short_key = key.replace('btn_emoji_', '')
-                    result[short_key] = row[0]
+                    # If empty string (explicitly cleared by /skip), respect empty
+                    result[short_key] = row[0] if row[0] else ""
     return result
+
+async def reset_button_emojis_to_default():
+    """Reset all button emojis and welcome emoji to default values."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('welcome_emoji_id', ?);", (DEFAULT_WELCOME_EMOJI_ID,))
+        for k, v in DEFAULT_BUTTON_EMOJIS.items():
+            await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);", (f"btn_emoji_{k}", v))
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('custom_emojis_enabled', '1');")
+        await db.commit()
 
 # User Helpers
 async def get_user(user_id):
@@ -398,7 +441,7 @@ async def get_referral_count(user_id):
             return row[0] if row else 0
 
 async def update_user_lang(user_id, lang):
-    if lang not in ['en', 'ar', 'ru']:
+    if lang not in SUPPORTED_LANGUAGES:
         lang = 'en'
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET language = ? WHERE user_id = ?;", (lang, user_id))
@@ -478,7 +521,7 @@ async def cancel_all_pre_orders_for_product(product_id, bot=None, reason="price_
             po_user_id = po['user_id']
             refund_amount = po['price_paid']
             po_dict = dict(po) if po else {}
-            user_lang = po_dict.get('language') if po_dict.get('language') in ['en', 'ar', 'ru'] else 'en'
+            user_lang = po_dict.get('language') if po_dict.get('language') in SUPPORTED_LANGUAGES else 'en'
             prod_name = po_dict.get(f"name_{user_lang}") or po_dict.get("name_en") or po_dict.get("name_ar") or "Product"
             
             # Refund user balance

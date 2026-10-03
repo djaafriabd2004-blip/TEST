@@ -50,7 +50,12 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
     balance = db_user['balance'] if db_user else 0.0
     
     store_name = await get_setting('store_name', 'Digital Store')
-    welcome_emoji_id = await get_setting('welcome_emoji_id', '')
+    custom_emojis_enabled = await get_setting('custom_emojis_enabled', '1')
+    if custom_emojis_enabled == '1':
+        from database import DEFAULT_WELCOME_EMOJI_ID
+        welcome_emoji_id = await get_setting('welcome_emoji_id', DEFAULT_WELCOME_EMOJI_ID)
+    else:
+        welcome_emoji_id = ''
     if welcome_emoji_id:
         welcome_emoji = f'<tg-emoji emoji-id="{welcome_emoji_id}">🔷</tg-emoji>'
     else:
@@ -100,7 +105,12 @@ async def process_set_lang(callback: CallbackQuery, is_admin=False):
     balance = db_user['balance'] if db_user else 0.0
     
     store_name = await get_setting('store_name', 'Digital Store')
-    welcome_emoji_id = await get_setting('welcome_emoji_id', '')
+    custom_emojis_enabled = await get_setting('custom_emojis_enabled', '1')
+    if custom_emojis_enabled == '1':
+        from database import DEFAULT_WELCOME_EMOJI_ID
+        welcome_emoji_id = await get_setting('welcome_emoji_id', DEFAULT_WELCOME_EMOJI_ID)
+    else:
+        welcome_emoji_id = ''
     if welcome_emoji_id:
         welcome_emoji = f'<tg-emoji emoji-id="{welcome_emoji_id}">🔷</tg-emoji>'
     else:
