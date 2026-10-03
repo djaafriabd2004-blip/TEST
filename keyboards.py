@@ -609,10 +609,12 @@ def get_admin_preorder_actions_keyboard(pre_order_id, product_id, lang='en') -> 
     return builder.as_markup()
 
 # --- Categories & Reordering Admin Keyboards ---
-def get_admin_manage_categories_keyboard(categories, grouping_enabled='0', lang='en') -> InlineKeyboardMarkup:
+def get_admin_manage_categories_keyboard(categories, grouping_enabled='0', hide_oos='0', lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     status_text = "🟢 ON" if grouping_enabled == '1' else "🔴 OFF"
+    oos_text = get_text('status_hide_oos_on', lang) if hide_oos == '1' else get_text('status_hide_oos_off', lang)
     builder.button(text=get_text('btn_toggle_categories', lang, status=status_text), callback_data="admin_toggle_grouping")
+    builder.button(text=get_text('btn_admin_toggle_hide_oos', lang, status=oos_text), callback_data="admin_toggle_hide_oos_cat")
     builder.button(text=get_text('btn_add_category', lang), callback_data="admin_cat_add")
     for cat in categories:
         cat_dict = dict(cat) if hasattr(cat, 'keys') else cat

@@ -391,16 +391,19 @@ async def msg_admin_manage_products(message: Message, lang='en'):
         return
         
     products = await get_products()
+    hide_oos = await get_setting("hide_out_of_stock", "0")
+    oos_status_text = get_text('status_hide_oos_on', lang) if hide_oos == "1" else get_text('status_hide_oos_off', lang)
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
     builder.button(text=get_text('btn_admin_reorder_products', lang), callback_data="admin_reorder_prods")
     builder.button(text=get_text('btn_admin_manage_categories', lang), callback_data="admin_manage_categories")
+    builder.button(text=get_text('btn_admin_toggle_hide_oos', lang, status=oos_status_text), callback_data="admin_toggle_hide_oos")
     for prod in products:
         name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
-    builder.adjust(1, 2, *([1] * (len(products) + 1)))
+    builder.adjust(1, 2, 1, *([1] * (len(products) + 1)))
     
     await message.answer(
         get_text('admin_prod_mgmt_title', lang),
@@ -744,6 +747,8 @@ async def cb_admin_manage_products(callback: CallbackQuery, lang='en'):
         return
         
     products = await get_products()
+    hide_oos = await get_setting("hide_out_of_stock", "0")
+    oos_status_text = get_text('status_hide_oos_on', lang) if hide_oos == "1" else get_text('status_hide_oos_off', lang)
     
     # Inline buttons for managing products
     from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -752,13 +757,14 @@ async def cb_admin_manage_products(callback: CallbackQuery, lang='en'):
     builder.button(text=get_text('btn_admin_add_product', lang), callback_data="admin_prod_add")
     builder.button(text=get_text('btn_admin_reorder_products', lang), callback_data="admin_reorder_prods")
     builder.button(text=get_text('btn_admin_manage_categories', lang), callback_data="admin_manage_categories")
+    builder.button(text=get_text('btn_admin_toggle_hide_oos', lang, status=oos_status_text), callback_data="admin_toggle_hide_oos")
     
     for prod in products:
         name = get_product_name(prod, lang)
         builder.button(text=f"✏️ {name} (${prod['price']:.2f})", callback_data=f"admin_prod_view_{prod['id']}")
         
     builder.button(text=get_text('btn_admin_back_to_panel', lang), callback_data="admin_menu")
-    builder.adjust(1, 2, *([1] * (len(products) + 1)))
+    builder.adjust(1, 2, 1, *([1] * (len(products) + 1)))
     
     await callback.message.edit_text(
         get_text('admin_prod_mgmt_title', lang),
@@ -766,6 +772,17 @@ async def cb_admin_manage_products(callback: CallbackQuery, lang='en'):
         parse_mode="Markdown"
     )
     await callback.answer()
+
+@router.callback_query(F.data == "admin_toggle_hide_oos")
+async def cb_admin_toggle_hide_oos(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    current = await get_setting("hide_out_of_stock", "0")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("hide_out_of_stock", new_val)
+    toast = get_text('toast_hide_oos_enabled', lang) if new_val == "1" else get_text('toast_hide_oos_disabled', lang)
+    await callback.answer(toast, show_alert=False)
+    await cb_admin_manage_products(callback, lang)
 
 @router.callback_query(F.data.startswith("admin_prod_view_"))
 async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
@@ -1586,9 +1603,10 @@ async def cb_admin_manage_categories(callback: CallbackQuery, lang='en'):
         return
     categories = await get_categories()
     grouping_enabled = await get_setting("grouping_enabled", "0")
+    hide_oos = await get_setting("hide_out_of_stock", "0")
     status_str = "🟢 Enabled" if grouping_enabled == "1" else "🔴 Disabled"
     
-    kb = keyboards.get_admin_manage_categories_keyboard(categories, grouping_enabled, lang)
+    kb = keyboards.get_admin_manage_categories_keyboard(categories, grouping_enabled, hide_oos, lang)
     text = get_text('admin_categories_title', lang, status=status_str)
     
     await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
@@ -1602,6 +1620,17 @@ async def cb_admin_toggle_grouping(callback: CallbackQuery, lang='en'):
     new_val = "0" if current == "1" else "1"
     await set_setting("grouping_enabled", new_val)
     await callback.answer(f"Categories {'Enabled' if new_val == '1' else 'Disabled'}")
+    await cb_admin_manage_categories(callback, lang)
+
+@router.callback_query(F.data == "admin_toggle_hide_oos_cat")
+async def cb_admin_toggle_hide_oos_cat(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    current = await get_setting("hide_out_of_stock", "0")
+    new_val = "0" if current == "1" else "1"
+    await set_setting("hide_out_of_stock", new_val)
+    toast = get_text('toast_hide_oos_enabled', lang) if new_val == "1" else get_text('toast_hide_oos_disabled', lang)
+    await callback.answer(toast, show_alert=False)
     await cb_admin_manage_categories(callback, lang)
 
 @router.callback_query(F.data == "admin_cat_add")

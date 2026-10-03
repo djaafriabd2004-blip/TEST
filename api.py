@@ -81,9 +81,12 @@ async def get_me_api(request):
 async def get_products_api(request):
     user = request.get("user")
     user_id = user["user_id"] if user else None
-    from database import get_products, get_all_stock_counts
+    from database import get_products, get_all_stock_counts, get_setting
     from utils import get_product_unit_price
     products = await get_products()
+    hide_oos = (await get_setting("hide_out_of_stock", "0")) == "1"
+    req_in_stock = request.query.get("in_stock")
+    filter_in_stock = (req_in_stock == "1") or (req_in_stock is None and hide_oos)
     try:
         stock_counts = await asyncio.wait_for(get_all_stock_counts(products, use_cache=True), timeout=5.0)
     except Exception as e:
@@ -116,6 +119,8 @@ async def get_products_api(request):
         p_dict = dict(p)
         pid = p_dict["id"]
         s_cnt = stock_counts.get(pid, 0)
+        if filter_in_stock and s_cnt <= 0:
+            continue
         p_dict["stock"] = s_cnt
         p_dict["stock_count"] = s_cnt
         p_dict["quantity"] = s_cnt

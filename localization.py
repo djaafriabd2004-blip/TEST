@@ -1327,6 +1327,31 @@ LOCALIZATION = {
         'ar': "نظام الفئات: {status}",
         'ru': "Режим категорий: {status}"
     },
+    'btn_admin_toggle_hide_oos': {
+        'en': "🚫 Out of Stock: {status}",
+        'ar': "🚫 المنتجات المنتهية: {status}",
+        'ru': "🚫 Нет в наличии: {status}"
+    },
+    'status_hide_oos_on': {
+        'en': "🟢 Hidden",
+        'ar': "🟢 مخفية عن الزبائن",
+        'ru': "🟢 Скрыты"
+    },
+    'status_hide_oos_off': {
+        'en': "🔴 Visible (Default)",
+        'ar': "🔴 ظاهرة للجميع (الافتراضي)",
+        'ru': "🔴 Видимы (по умолч.)"
+    },
+    'toast_hide_oos_enabled': {
+        'en': "🟢 Out-of-stock products are now hidden from users.",
+        'ar': "🟢 تم تفعيل إخفاء المنتجات منتهية الكمية عن الزبائن.",
+        'ru': "🟢 Товары не в наличии теперь скрыты от пользователей."
+    },
+    'toast_hide_oos_disabled': {
+        'en': "🔴 Out-of-stock products are now visible (showing all).",
+        'ar': "🔴 تم إلغاء الإخفاء؛ تظهر الآن جميع المنتجات للزبائن.",
+        'ru': "🔴 Теперь отображаются все товары (включая закончившиеся)."
+    },
     'admin_reorder_title': {
         'en': "🔀 *Reorder Products*\n\nSelect a product to move its position:",
         'ar': "🔀 *إعادة ترتيب المنتجات*\n\nاختر منتجاً لتعديل موضعه في المتجر:",

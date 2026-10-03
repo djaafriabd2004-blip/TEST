@@ -61,6 +61,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
     user_id = message_or_callback.from_user.id if hasattr(message_or_callback, 'from_user') and message_or_callback.from_user else None
     
     grouping_enabled = await get_setting("grouping_enabled", "0")
+    hide_oos = (await get_setting("hide_out_of_stock", "0")) == "1"
     
     if category_id is not None:
         products = await get_products(category_id=category_id)
@@ -70,14 +71,22 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
         else:
             products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
-            text = get_text('shop_title', lang)
-            kb = keyboards.get_products_keyboard(products, stock_counts, lang, category_id=category_id)
+            if hide_oos:
+                products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
+            if not products:
+                text = get_text('shop_empty', lang)
+                kb = keyboards.get_products_keyboard([], {}, lang, category_id=category_id)
+            else:
+                text = get_text('shop_title', lang)
+                kb = keyboards.get_products_keyboard(products, stock_counts, lang, category_id=category_id)
     elif grouping_enabled == "1":
         categories = await get_categories()
         standalone_products = await get_uncategorized_products()
         if categories:
             standalone_products = await _apply_user_effective_prices(standalone_products, user_id)
             stock_counts = await get_all_stock_counts(standalone_products)
+            if hide_oos:
+                standalone_products = [p for p in standalone_products if stock_counts.get(p['id'], 0) > 0]
             text = get_text('shop_title', lang)
             kb = keyboards.get_shop_home_keyboard(categories, standalone_products, stock_counts, lang)
         else:
@@ -88,8 +97,14 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             else:
                 products = await _apply_user_effective_prices(products, user_id)
                 stock_counts = await get_all_stock_counts(products)
-                text = get_text('shop_title', lang)
-                kb = keyboards.get_products_keyboard(products, stock_counts, lang)
+                if hide_oos:
+                    products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
+                if not products:
+                    text = get_text('shop_empty', lang)
+                    kb = keyboards.get_products_keyboard([], {}, lang)
+                else:
+                    text = get_text('shop_title', lang)
+                    kb = keyboards.get_products_keyboard(products, stock_counts, lang)
     else:
         products = await get_products()
         if not products:
@@ -98,8 +113,14 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
         else:
             products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
-            text = get_text('shop_title', lang)
-            kb = keyboards.get_products_keyboard(products, stock_counts, lang)
+            if hide_oos:
+                products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
+            if not products:
+                text = get_text('shop_empty', lang)
+                kb = keyboards.get_products_keyboard([], {}, lang)
+            else:
+                text = get_text('shop_title', lang)
+                kb = keyboards.get_products_keyboard(products, stock_counts, lang)
     
     if isinstance(message_or_callback, CallbackQuery):
         from aiogram.exceptions import TelegramBadRequest
