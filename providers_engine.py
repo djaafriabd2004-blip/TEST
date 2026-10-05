@@ -279,54 +279,64 @@ class BaseProviderAdapter:
             headers = self.get_headers({"Idempotency-Key": str(order_ref)})
             
             for ep in endpoints:
-                try:
-                    logger.info(f"Executing provider order on {ep} with payload: {payload}")
-                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
-                        if resp.status in [200, 201]:
-                            try:
-                                buy_data = await resp.json(content_type=None)
-                            except Exception:
-                                raw_txt = await resp.text()
-                                buy_data = {"credentials": raw_txt}
-                            return self._parse_delivery_data(buy_data, order_ref)
-                        elif resp.status == 422:
-                            # Fallback minimal payload retry in case provider rejects extra fields or expects strict schema
-                            custom_pid_k = (self.field_mapping.get("buy_pid_field") or "product_id").strip()
-                            custom_qty_k = (self.field_mapping.get("buy_qty_field") or "qty").strip()
-                            minimal_payload = {custom_pid_k: item_id, custom_qty_k: int(quantity)}
-                            if "email" in payload:
-                                minimal_payload["email"] = payload["email"]
-                            if "emails" in payload:
-                                minimal_payload["emails"] = payload["emails"]
-                            async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
-                                if resp2.status in [200, 201]:
-                                    try:
-                                        buy_data = await resp2.json(content_type=None)
-                                    except Exception:
-                                        raw_txt = await resp2.text()
-                                        buy_data = {"credentials": raw_txt}
-                                    return self._parse_delivery_data(buy_data, order_ref)
-                                last_err = await self._parse_error_response(resp2)
-                                logger.warning(f"Provider {ep} 422 fallback returned status {resp2.status}: {last_err}")
-                            continue
-                        else:
-                            last_err = await self._parse_error_response(resp)
-                            logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
-                            err_l = str(last_err).lower()
-                            if resp.status == 402 or "balance" in err_l:
-                                raise Exception(f"Provider balance insufficient: {last_err}")
-                            elif resp.status == 409 or "out of stock" in err_l or "stock" in err_l:
-                                raise Exception(f"Out of stock ({last_err})")
-                            elif "email requis" in err_l or "email required" in err_l or "requires email" in err_l:
-                                raise Exception(f"Provider error: {last_err}")
-                            elif resp.status in [401, 403] or "invalid api key" in err_l or "unauthorized" in err_l:
+                for ep_attempt in range(2):
+                    try:
+                        logger.info(f"Executing provider order on {ep} with payload: {payload}")
+                        async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
+                            if resp.status in [200, 201]:
+                                try:
+                                    buy_data = await resp.json(content_type=None)
+                                except Exception:
+                                    raw_txt = await resp.text()
+                                    buy_data = {"credentials": raw_txt}
+                                return self._parse_delivery_data(buy_data, order_ref)
+                            elif resp.status == 422:
+                                # Fallback minimal payload retry in case provider rejects extra fields or expects strict schema
+                                custom_pid_k = (self.field_mapping.get("buy_pid_field") or "product_id").strip()
+                                custom_qty_k = (self.field_mapping.get("buy_qty_field") or "qty").strip()
+                                minimal_payload = {custom_pid_k: item_id, custom_qty_k: int(quantity)}
+                                if "email" in payload:
+                                    minimal_payload["email"] = payload["email"]
+                                if "emails" in payload:
+                                    minimal_payload["emails"] = payload["emails"]
+                                async with s.post(ep, headers=headers, json=minimal_payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp2:
+                                    if resp2.status in [200, 201]:
+                                        try:
+                                            buy_data = await resp2.json(content_type=None)
+                                        except Exception:
+                                            raw_txt = await resp2.text()
+                                            buy_data = {"credentials": raw_txt}
+                                        return self._parse_delivery_data(buy_data, order_ref)
+                                    last_err = await self._parse_error_response(resp2)
+                                    logger.warning(f"Provider {ep} 422 fallback returned status {resp2.status}: {last_err}")
                                 break
+                            else:
+                                last_err = await self._parse_error_response(resp)
+                                logger.warning(f"Provider {ep} returned status {resp.status}: {last_err}")
+                                err_l = str(last_err).lower()
+                                if resp.status == 402 or "balance" in err_l:
+                                    raise Exception(f"Provider balance insufficient: {last_err}")
+                                elif resp.status == 409 or "out of stock" in err_l or "stock" in err_l:
+                                    raise Exception(f"Out of stock ({last_err})")
+                                elif "email requis" in err_l or "email required" in err_l or "requires email" in err_l:
+                                    raise Exception(f"Provider error: {last_err}")
+                                elif resp.status in [401, 403] or "invalid api key" in err_l or "unauthorized" in err_l:
+                                    break
+                                break
+                    except (aiohttp.ClientConnectorError, aiohttp.ServerTimeoutError, asyncio.TimeoutError) as conn_err:
+                        last_err = str(conn_err)
+                        if ep_attempt == 0:
+                            logger.warning(f"Connection error on {ep} (attempt 1/2): {conn_err}. Retrying in 1.5s...")
+                            await asyncio.sleep(1.5)
                             continue
-                except Exception as ep_err:
-                    if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err) or "email" in str(ep_err).lower():
-                        raise ep_err
-                    logger.warning(f"Provider request error on {ep}: {ep_err}")
-                    last_err = str(ep_err)
+                        logger.warning(f"Provider request connection error on {ep}: {conn_err}")
+                        break
+                    except Exception as ep_err:
+                        if "Out of stock" in str(ep_err) or "Provider balance insufficient" in str(ep_err) or "email" in str(ep_err).lower():
+                            raise ep_err
+                        logger.warning(f"Provider request error on {ep}: {ep_err}")
+                        last_err = str(ep_err)
+                        break
             
             if "$slice" in str(last_err) or "must be positive: 0" in str(last_err) or "no items in stock" in str(last_err).lower():
                 last_err = "Out of stock (Product depleted at provider)"
@@ -1047,6 +1057,37 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
             async with aiohttp.ClientSession() as s:
                 return await _req(s)
 
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        url = f"{self.base_url}/v1/products/{prov_pid}"
+        async def _req(s):
+            for attempt in range(2):
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            if isinstance(data, dict):
+                                price_val = extract_price_from_dict(data)
+                                if price_val is not None:
+                                    return float(price_val)
+                except Exception as e:
+                    logger.debug(f"ProdSeller price fetch {url} attempt {attempt+1} failed: {e}")
+                    if attempt == 0:
+                        await asyncio.sleep(0.5)
+            # Fallback to catalog search
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return float(p.get('price', 0.0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
     async def execute_order(
         self,
         provider_product_id: Any,
@@ -1060,11 +1101,7 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         order_ref = client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         payload = {
             "productId": prov_pid,
-            "product_id": prov_pid,
-            "quantity": int(quantity),
-            "qty": int(quantity),
-            "external_order_id": order_ref,
-            "client_order_reference": order_ref
+            "quantity": int(quantity)
         }
         self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
@@ -1077,21 +1114,44 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
                         email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
                     payload["emails"] = email_list[:int(quantity)]
 
-        headers = self.get_headers({"Idempotency-Key": order_ref})
+        headers = self.get_headers({"Idempotency-Key": str(order_ref)[:100]})
 
         async def _req(s):
             ep_list = self._get_custom_buy_endpoints([f"{self.base_url}/v1/orders"])
             ep = ep_list[0]
             logger.info(f"Executing ProdSeller order on {ep} with payload: {payload}")
-            async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
-                if resp.status in [200, 201]:
-                    buy_data = await resp.json()
-                    return self._parse_delivery_data(buy_data, order_ref)
-                else:
-                    last_err = await self._parse_error_response(resp)
-                    if "$slice" in str(last_err) or "must be positive: 0" in str(last_err) or "no items in stock" in str(last_err).lower():
-                        raise Exception(f"Out of stock (Product depleted at provider)")
-                    raise Exception(f"Provider error: {last_err}")
+            last_err = "No response from ProdSeller"
+            
+            # Auto-retry up to 3 times on transient connection errors with 1.5s delay
+            for attempt in range(3):
+                try:
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=50, connect=10)) as resp:
+                        if resp.status in [200, 201]:
+                            buy_data = await resp.json(content_type=None)
+                            return self._parse_delivery_data(buy_data, order_ref)
+                        else:
+                            last_err = await self._parse_error_response(resp)
+                            err_l = str(last_err).lower()
+                            if resp.status == 402 or "balance" in err_l or "solde" in err_l:
+                                raise Exception(f"Provider balance insufficient: {last_err}")
+                            elif resp.status == 409 or "out of stock" in err_l or "$slice" in err_l or "must be positive: 0" in err_l or "no items in stock" in err_l:
+                                raise Exception(f"Out of stock (Product depleted at provider)")
+                            elif resp.status == 401:
+                                raise Exception(f"Invalid API Key: {last_err}")
+                            elif "email" in err_l:
+                                raise Exception(f"Provider requires email: {last_err}")
+                            raise Exception(f"Provider error ({resp.status}): {last_err}")
+                except (aiohttp.ClientConnectorError, aiohttp.ServerTimeoutError, asyncio.TimeoutError) as conn_err:
+                    last_err = str(conn_err)
+                    if attempt < 2:
+                        logger.warning(f"Connection to ProdSeller ({ep}) failed on attempt {attempt+1}/3: {conn_err}. Retrying in 1.5s...")
+                        await asyncio.sleep(1.5)
+                        continue
+                    raise Exception(f"Cannot connect to ProdSeller ({conn_err})")
+                except Exception as ex:
+                    # Non-transient errors (like balance, stock, email) should be re-raised immediately without wasteful retry
+                    raise ex
+            raise Exception(f"ProdSeller order failed: {last_err}")
 
         if session:
             return await _req(session)
