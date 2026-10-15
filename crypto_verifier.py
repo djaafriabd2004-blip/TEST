@@ -6,9 +6,11 @@ import aiohttp
 from datetime import datetime, timezone
 from database import (
     get_setting, complete_payment, get_pending_blockchain_payments,
-    get_user, update_user_balance, reject_payment, get_pending_cryptobot_payments
+    get_user, update_user_balance, reject_payment, get_pending_cryptobot_payments,
+    get_pending_xrocket_payments
 )
 from cryptobot_client import get_cryptobot_invoice
+from xrocket_client import get_xrocket_invoice
 try:
     import bot_config as config
 except ImportError:
@@ -753,5 +755,85 @@ async def start_auto_verification_loop(bot):
                                 )
                             except Exception as ne:
                                 logger.warning(f"Could not notify user of expired Crypto Bot payment: {ne}")
+
+            # Fetch and process pending xRocket payments
+            xr_payments = await get_pending_xrocket_payments()
+            if xr_payments:
+                for payment in xr_payments:
+                    transaction_id = payment["transaction_id"]
+                    user_id = payment["user_id"]
+                    method = payment["payment_method"]
+                    
+                    # Age check to expire stale pending xRocket payments (24 hours)
+                    created_at_str = payment["created_at"]
+                    try:
+                        created_dt = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+                        created_dt = created_dt.replace(tzinfo=timezone.utc)
+                        age_seconds = (datetime.now(timezone.utc) - created_dt).total_seconds()
+                    except Exception:
+                        try:
+                            created_dt = datetime.fromisoformat(created_at_str)
+                            if created_dt.tzinfo is None:
+                                created_dt = created_dt.replace(tzinfo=timezone.utc)
+                            age_seconds = (datetime.now(timezone.utc) - created_dt).total_seconds()
+                        except Exception:
+                            age_seconds = 0
+                            
+                    if age_seconds > 86400: # 24 hours
+                        logger.info(f"Expiring old pending xRocket payment {transaction_id} (age: {age_seconds:.0f}s)")
+                        await reject_payment(transaction_id)
+                        continue
+                        
+                    invoice_id_str = method.replace("xrocket_", "")
+                    try:
+                        invoice_id = int(invoice_id_str) if invoice_id_str.isdigit() else invoice_id_str
+                    except Exception:
+                        continue
+                        
+                    invoice = await get_xrocket_invoice(invoice_id)
+                    if invoice:
+                        status = str(invoice.get("status", "")).lower()
+                        if status in ["paid", "completed", "finished"]:
+                            res = await complete_payment(transaction_id)
+                            if res:
+                                db_user = await get_user(user_id)
+                                new_balance = db_user['balance'] if db_user else 0.0
+                                lang = db_user['language'] if db_user else 'en'
+                                
+                                from localization import get_text
+                                try:
+                                    await bot.send_message(
+                                        chat_id=user_id,
+                                        text=get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                                        parse_mode="Markdown"
+                                    )
+                                except Exception as ne:
+                                    logger.warning(f"Could not notify user of verified xRocket payment: {ne}")
+                                    
+                                admin_notif = (
+                                    f"✅ *Auto-Verified xRocket Deposit!*\n\n"
+                                    f"👤 *User ID:* `{user_id}`\n"
+                                    f"💵 *Amount Credited:* `${payment['amount']:.2f} USD`\n"
+                                    f"🆔 *Invoice ID:* `{invoice_id}`"
+                                )
+                                for admin_id in config.ADMIN_IDS:
+                                    try:
+                                        await bot.send_message(chat_id=admin_id, text=admin_notif, parse_mode="Markdown")
+                                    except Exception:
+                                        pass
+                        elif status in ["expired", "cancelled"]:
+                            logger.info(f"Expiring xRocket payment {transaction_id} (Invoice status: {status})")
+                            await reject_payment(transaction_id)
+                            db_user = await get_user(user_id)
+                            user_lang = db_user["language"] if db_user else "en"
+                            from localization import get_text
+                            try:
+                                await bot.send_message(
+                                    chat_id=user_id,
+                                    text=get_text("crypto_tx_too_old", user_lang, hours=24),
+                                    parse_mode="Markdown",
+                                )
+                            except Exception as ne:
+                                logger.warning(f"Could not notify user of expired xRocket payment: {ne}")
         except Exception as e:
             logger.error(f"Error in automatic verification loop: {e}")

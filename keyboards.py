@@ -193,12 +193,14 @@ def get_binance_id_checkout_keyboard(product_id, qty, lang='en') -> InlineKeyboa
     builder.adjust(1)
     return builder.as_markup()
 
-def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled=True, cryptotransfer_enabled=True) -> InlineKeyboardMarkup:
+def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled=True, cryptotransfer_enabled=True, xrocket_enabled=False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if stars_enabled:
         builder.button(text=get_text('btn_stars', lang), callback_data="charge_stars", style="primary")
     if cryptobot_enabled:
         builder.button(text=get_text('btn_cryptobot', lang), callback_data="charge_cryptobot", style="primary")
+    if xrocket_enabled:
+        builder.button(text=get_text('btn_xrocket', lang), callback_data="charge_xrocket", style="primary")
     if cryptotransfer_enabled:
         builder.button(text=get_text('btn_cryptotransfer', lang), callback_data="charge_cryptotransfer", style="primary")
     builder.button(text=get_text('btn_back', lang), callback_data="cancel_charge", style="danger")

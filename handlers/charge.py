@@ -29,9 +29,11 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
     stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
     cryptobot_token = await get_setting('cryptobot_token', '')
     cryptobot_enabled = len(cryptobot_token) > 0 and (await get_setting('cryptobot_enabled', '1')) == '1'
+    xrocket_token = await get_setting('xrocket_token', '')
+    xrocket_enabled = len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
     cryptotransfer_enabled = (await get_setting('cryptotransfer_enabled', '1')) == '1'
     
-    kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled)
+    kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled, xrocket_enabled)
     
     if isinstance(message_or_callback, CallbackQuery):
         await message_or_callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
@@ -96,6 +98,13 @@ async def cb_charge_stars_selected(callback: CallbackQuery, state: FSMContext, l
 @router.callback_query(F.data == "charge_cryptobot")
 async def cb_charge_cryptobot_selected(callback: CallbackQuery, state: FSMContext, lang='en'):
     await state.update_data(payment_method="cryptobot")
+    await state.set_state(ChargeStates.waiting_for_amount)
+    await callback.message.edit_text(get_text('enter_amount_usd', lang))
+    await callback.answer()
+
+@router.callback_query(F.data == "charge_xrocket")
+async def cb_charge_xrocket_selected(callback: CallbackQuery, state: FSMContext, lang='en'):
+    await state.update_data(payment_method="xrocket")
     await state.set_state(ChargeStates.waiting_for_amount)
     await callback.message.edit_text(get_text('enter_amount_usd', lang))
     await callback.answer()
@@ -477,6 +486,33 @@ async def process_charge_amount(message: Message, state: FSMContext, bot: Bot, l
         builder.adjust(1)
         
         await message.answer(inst_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+            
+    elif method == "xrocket":
+        from xrocket_client import create_xrocket_invoice
+        transaction_id = f"XR_{uuid.uuid4().hex[:8].upper()}"
+        store_name = await get_setting('store_name', 'Digital Store')
+        description = f"Deposit to {store_name}"
+        
+        invoice = await create_xrocket_invoice(amount, f"xrocket_dep_{transaction_id}", description)
+        if not invoice:
+            await message.answer("❌ Failed to create xRocket invoice. Please verify API settings or contact admin.")
+            return
+            
+        invoice_id = invoice['invoice_id']
+        pay_url = invoice['pay_url']
+        
+        await create_payment(user_id, amount, f"xrocket_{invoice_id}", transaction_id)
+        
+        inst_text = get_text('xrocket_instructions', lang, amount=amount)
+        
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text=get_text('btn_pay_now', lang), url=pay_url)
+        builder.button(text=get_text('btn_check_payment', lang), callback_data=f"check_xrocket_{transaction_id}")
+        builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+        builder.adjust(1)
+        
+        await message.answer(inst_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
 
 # PreCheckout handler (Must reply within 10 seconds)
 @router.pre_checkout_query()
@@ -588,4 +624,74 @@ async def cb_check_cryptobot_payment(callback: CallbackQuery, bot: Bot, lang='en
             get_text('payment_not_found_or_pending', lang),
             parse_mode="Markdown"
         )
+
+
+@router.callback_query(F.data.startswith("check_xrocket_"))
+async def cb_check_xrocket_payment(callback: CallbackQuery, bot: Bot, lang='en'):
+    transaction_id = callback.data.replace("check_xrocket_", "")
+    payment = await get_payment(transaction_id)
+    if not payment:
+        await callback.answer(get_text('crypto_already_processed', lang), show_alert=True)
+        return
+        
+    method_str = payment['payment_method']
+    if not method_str.startswith("xrocket_"):
+        await callback.answer("❌ Invalid transaction method.")
+        return
+        
+    invoice_id_str = method_str.replace("xrocket_", "")
+    try:
+        invoice_id = int(invoice_id_str) if invoice_id_str.isdigit() else invoice_id_str
+    except Exception:
+        await callback.answer("❌ Invalid invoice ID.")
+        return
+        
+    await callback.answer(get_text('payment_pending_check', lang))
+    
+    from xrocket_client import get_xrocket_invoice
+    invoice = await get_xrocket_invoice(invoice_id)
+    if invoice and str(invoice.get("status", "")).lower() in ["paid", "completed", "finished"]:
+        res = await complete_payment(transaction_id)
+        if res:
+            db_user = await get_user(payment['user_id'])
+            new_balance = db_user['balance'] if db_user else 0.0
+            
+            await callback.message.edit_text(
+                get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                parse_mode="Markdown"
+            )
+            
+            ref_notif = res.get('referrer_notif')
+            if ref_notif:
+                ref_id = ref_notif['referrer_id']
+                ref_bonus = ref_notif['bonus']
+                try:
+                    await bot.send_message(
+                        chat_id=ref_id,
+                        text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                        parse_mode="Markdown"
+                    )
+                except Exception as re:
+                    logger.warning(f"Could not notify referrer {ref_id}: {re}")
+                    
+            user_info = f"{callback.from_user.first_name}"
+            if callback.from_user.username:
+                user_info += f" (@{callback.from_user.username})"
+            admin_notif = (
+                f"✅ *Verified xRocket Deposit!*\n\n"
+                f"👤 *User:* {user_info} (`{payment['user_id']}`)\n"
+                f"💵 *Amount Credited:* `${payment['amount']:.2f} USD`\n"
+                f"🆔 *Invoice ID:* `{invoice_id}`"
+            )
+            for admin_id in config.ADMIN_IDS:
+                try:
+                    await bot.send_message(chat_id=admin_id, text=admin_notif, parse_mode="Markdown")
+                except Exception:
+                    pass
+    else:
+        await callback.message.answer(
+            get_text('payment_not_found_or_pending', lang),
+            parse_mode="Markdown"
+        )
+
 

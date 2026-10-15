@@ -549,10 +549,12 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         binance_addr = await get_setting("crypto_addr_binance", "Not Configured")
         cryptotransfer = await get_setting("cryptotransfer_enabled", "1")
         cryptobot = await get_setting("cryptobot_enabled", "1")
+        xrocket = await get_setting("xrocket_enabled", "1")
         
         s_status = "✅ Enabled" if stars == "1" else "❌ Disabled"
         ct_status = "✅ Enabled" if cryptotransfer == "1" else "❌ Disabled"
         cb_status = "✅ Enabled" if cryptobot == "1" else "❌ Disabled"
+        xr_status = "✅ Enabled" if xrocket == "1" else "❌ Disabled"
         
         text = get_text(
             'admin_settings_charge_title',
@@ -560,6 +562,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             stars_status=s_status,
             stars_rate=stars_rate,
             cb_status=cb_status,
+            xr_status=xr_status,
             ct_status=ct_status,
             usdt_addr=usdt_addr,
             ltc_addr=ltc_addr,
@@ -569,6 +572,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         builder.button(text=get_text('btn_admin_toggle_stars', lang), callback_data="admin_toggle_stars")
         builder.button(text=get_text('btn_admin_set_stars_rate', lang), callback_data="admin_set_stars_rate")
         builder.button(text=get_text('btn_admin_toggle_cryptobot', lang), callback_data="admin_toggle_cryptobot")
+        builder.button(text=get_text('btn_admin_toggle_xrocket', lang), callback_data="admin_toggle_xrocket")
         builder.button(text=get_text('btn_admin_toggle_cryptotransfer', lang), callback_data="admin_toggle_cryptotransfer")
         builder.button(text=get_text('btn_admin_set_usdt_addr', lang), callback_data="admin_set_crypto_addr_usdt")
         builder.button(text=get_text('btn_admin_set_ltc_addr', lang), callback_data="admin_set_crypto_addr_ltc")
@@ -588,6 +592,10 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         cryptobot_testnet = await get_setting("cryptobot_use_testnet", "0")
         cb_testnet_status = "🔌 TESTNET" if cryptobot_testnet == "1" else "⚡️ MAINNET"
         
+        xrocket_key = (await get_setting("xrocket_token", "")) or "None"
+        xrocket_testnet = await get_setting("xrocket_use_testnet", "0")
+        xr_testnet_status = "🔌 TESTNET" if xrocket_testnet == "1" else "⚡️ MAINNET"
+        
         binance_proxy = (await get_setting("binance_api_proxy", "")) or "None"
         binance_api_key = (await get_setting("binance_api_key", "")) or "None"
         binance_secret_key = (await get_setting("binance_secret_key", "")) or "None"
@@ -602,6 +610,8 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             toncenter_key=toncenter_key,
             cryptobot_key=cryptobot_key,
             cb_testnet_status=cb_testnet_status,
+            xrocket_key=xrocket_key,
+            xr_testnet_status=xr_testnet_status,
             b_api_display=b_api_display,
             b_secret_display=b_secret_display,
             binance_proxy=binance_proxy
@@ -611,6 +621,8 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         builder.button(text="✍️ Set Toncenter API Key", callback_data="admin_set_toncenter_api_key")
         builder.button(text="✍️ Set Crypto Bot Token", callback_data="admin_set_cryptobot_api_key")
         builder.button(text="Toggle Crypto Bot Env", callback_data="admin_toggle_cryptobot_testnet")
+        builder.button(text="🚀 Set xRocket API Token", callback_data="admin_set_xrocket_api_key")
+        builder.button(text="Toggle xRocket Env", callback_data="admin_toggle_xrocket_testnet")
         builder.button(text="🔶 Set Binance API Key", callback_data="admin_set_binance_api_key")
         builder.button(text="🔶 Set Binance Secret Key", callback_data="admin_set_binance_secret_key")
         builder.button(text="🌐 Set Binance Proxy", callback_data="admin_set_binance_api_proxy")
@@ -2319,6 +2331,11 @@ async def cb_admin_set_setting(callback: CallbackQuery, state: FSMContext, lang=
             'ar': "🤖 أدخل توكن Crypto Bot API:",
             'ru': "🤖 Введите токен Crypto Bot API:"
         },
+        "xrocket_api_key": {
+            'en': "🚀 Enter xRocket Pay API Token (get from @xRocket in Telegram):",
+            'ar': "🚀 أدخل توكن xRocket Pay API (احصل عليه من بوت @xRocket في تيليجرام):",
+            'ru': "🚀 Введите токен xRocket Pay API (получите в Telegram у @xRocket):"
+        },
         "binance_api_proxy": {
             'en': "🌐 Enter Binance API Proxy (e.g. `http://user:pass@ip:port` or `socks5://ip:port`, or leave blank to disable):",
             'ar': "🌐 أدخل بروكسي بينانس (مثال: `http://user:pass@ip:port` أو اتركه فارغاً للتعطيل):",
@@ -2396,6 +2413,7 @@ async def process_setting_value(message: Message, state: FSMContext, lang='en'):
         "blockcypher_api_key": "blockcypher_api_key",
         "toncenter_api_key": "toncenter_api_key",
         "cryptobot_api_key": "cryptobot_token",
+        "xrocket_api_key": "xrocket_token",
         "binance_api_proxy": "binance_api_proxy",
         "binance_api_key": "binance_api_key",
         "binance_secret_key": "binance_secret_key"
@@ -2452,6 +2470,26 @@ async def cb_admin_toggle_cryptobot(callback: CallbackQuery, lang='en'):
 @router.callback_query(F.data == "admin_toggle_cryptobot_testnet")
 async def cb_admin_toggle_cryptobot_testnet(callback: CallbackQuery, lang='en'):
     method = "cryptobot_use_testnet"
+    current = await get_setting(method, "0")
+    new_val = "0" if current == "1" else "1"
+    await set_setting(method, new_val)
+    
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_api_keys_settings", lang=lang)
+
+@router.callback_query(F.data == "admin_toggle_xrocket")
+async def cb_admin_toggle_xrocket(callback: CallbackQuery, lang='en'):
+    method = "xrocket_enabled"
+    current = await get_setting(method, "1")
+    new_val = "0" if current == "1" else "1"
+    await set_setting(method, new_val)
+    
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_charge_settings", lang=lang)
+
+@router.callback_query(F.data == "admin_toggle_xrocket_testnet")
+async def cb_admin_toggle_xrocket_testnet(callback: CallbackQuery, lang='en'):
+    method = "xrocket_use_testnet"
     current = await get_setting(method, "0")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)

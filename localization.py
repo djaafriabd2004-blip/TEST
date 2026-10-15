@@ -504,6 +504,16 @@ LOCALIZATION = {
         'ru': "🤖 Crypto Bot (USDT/TON/BTC)",
         'pt': "🤖 Crypto Bot (USDT/TON/BTC)"
     },
+    'btn_xrocket': {
+        'en': "🚀 xRocket Pay (USDT/TON)",
+        'ar': "🚀 إكس روكيت (xRocket Pay)",
+        'ru': "🚀 xRocket Pay (USDT/TON)",
+        'pt': "🚀 xRocket Pay (USDT/TON)",
+        'fr': "🚀 xRocket Pay (USDT/TON)",
+        'zh': "🚀 xRocket Pay (USDT/TON)",
+        'ko': "🚀 xRocket Pay (USDT/TON)",
+        'hi': "🚀 xRocket Pay (USDT/TON)"
+    },
     'btn_cryptotransfer': {
         'en': "🪙 Crypto Transfer (Manual)",
         'ar': "🪙 تحويل العملات الرقمية (يدوي)",
@@ -576,6 +586,12 @@ LOCALIZATION = {
         'en': "🪙 *Crypto Bot Deposit*\n\n💰 *Amount:* `${amount:.2f} USD`\n\nClick the button below to pay via Crypto Bot (USDT). After paying, click the status button below to check and confirm your payment.",
         'ar': "🪙 *شحن عبر كريبتو بوت*\n\n💰 *المبلغ:* `${amount:.2f} USD`\n\nاضغط على الزر أدناه للدفع عبر كريبتو بوت (USDT). بعد إتمام الدفع، اضغط على زر التحقق أدناه لتأكيد شحنتك.",
         'ru': "🪙 *Пополнение через Crypto Bot*\n\n💰 *Сумма:* `${amount:.2f} USD`\n\nНажмите кнопку ниже для оплаты через Crypto Bot (USDT). После оплаты нажмите кнопку проверки, чтобы подтвердить платеж."
+    },
+    'xrocket_instructions': {
+        'en': "🚀 *xRocket Pay Deposit*\n\n💰 *Amount:* `${amount:.2f} USD`\n\nClick the button below to pay via xRocket Pay (USDT). After paying, click the status button below to check and confirm your payment.",
+        'ar': "🚀 *شحن عبر xRocket Pay*\n\n💰 *المبلغ:* `${amount:.2f} USD`\n\nاضغط على الزر أدناه للدفع عبر xRocket Pay (USDT). بعد إتمام الدفع، اضغط على زر التحقق أدناه لتأكيد شحنتك فورياً.",
+        'ru': "🚀 *Пополнение через xRocket Pay*\n\n💰 *Сумма:* `${amount:.2f} USD`\n\nНажмите кнопку ниже для оплаты через xRocket Pay (USDT). После оплаты нажмите кнопку проверки, чтобы подтвердить платеж.",
+        'pt': "🚀 *Depósito via xRocket Pay*\n\n💰 *Valor:* `${amount:.2f} USD`\n\nClique no botão abaixo para pagar via xRocket Pay (USDT). Após pagar, clique no botão de verificação para confirmar."
     },
     'btn_pay_now': {
         'en': "🔗 Pay Now",
@@ -1391,9 +1407,9 @@ LOCALIZATION = {
         'ru': "🎧 *Настройки поддержки*\n\n👤 *Контакт поддержки:* `{support}`"
     },
     'admin_settings_charge_title': {
-        'en': "💳 *Deposit Settings*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Stars Exchange Rate:* 1 Star = `{stars_rate}` USD\n\n🤖 *Crypto Bot Gateway:* {cb_status}\n\n🪙 *Manual Crypto Transfer:* {ct_status}\n🪙 *USDT BEP20 Address:* `{usdt_addr}`\n🪙 *LTC Address:* `{ltc_addr}`\n🪙 *TON Address:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`",
-        'ar': "💳 *إعدادات شحن الرصيد*\n\n⭐️ *نجوم تيليجرام (Stars):* {stars_status}\n💱 *سعر صرف النجوم:* 1 نجمة = `{stars_rate}` دولار\n\n🤖 *بوابة Crypto Bot:* {cb_status}\n\n🪙 *التحويل اليدوي للعملات المشفرة:* {ct_status}\n🪙 *عنوان USDT BEP20:* `{usdt_addr}`\n🪙 *عنوان LTC:* `{ltc_addr}`\n🪙 *عنوان TON:* `{ton_addr}`\n🪙 *معرف / إيميل Binance Pay:* `{binance_addr}`",
-        'ru': "💳 *Настройки пополнения баланса*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Курс Stars:* 1 Star = `{stars_rate}` USD\n\n🤖 *Шлюз Crypto Bot:* {cb_status}\n\n🪙 *Ручной перевод крипты:* {ct_status}\n🪙 *Адрес USDT BEP20:* `{usdt_addr}`\n🪙 *Адрес LTC:* `{ltc_addr}`\n🪙 *Адрес TON:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`"
+        'en': "💳 *Deposit Settings*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Stars Exchange Rate:* 1 Star = `{stars_rate}` USD\n\n🤖 *Crypto Bot Gateway:* {cb_status}\n🚀 *xRocket Pay Gateway:* {xr_status}\n\n🪙 *Manual Crypto Transfer:* {ct_status}\n🪙 *USDT BEP20 Address:* `{usdt_addr}`\n🪙 *LTC Address:* `{ltc_addr}`\n🪙 *TON Address:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`",
+        'ar': "💳 *إعدادات شحن الرصيد*\n\n⭐️ *نجوم تيليجرام (Stars):* {stars_status}\n💱 *سعر صرف النجوم:* 1 نجمة = `{stars_rate}` دولار\n\n🤖 *بوابة Crypto Bot:* {cb_status}\n🚀 *بوابة xRocket Pay:* {xr_status}\n\n🪙 *التحويل اليدوي للعملات المشفرة:* {ct_status}\n🪙 *عنوان USDT BEP20:* `{usdt_addr}`\n🪙 *عنوان LTC:* `{ltc_addr}`\n🪙 *عنوان TON:* `{ton_addr}`\n🪙 *معرف / إيميل Binance Pay:* `{binance_addr}`",
+        'ru': "💳 *Настройки пополнения баланса*\n\n⭐️ *Telegram Stars:* {stars_status}\n💱 *Курс Stars:* 1 Star = `{stars_rate}` USD\n\n🤖 *Шлюз Crypto Bot:* {cb_status}\n🚀 *Шлюз xRocket Pay:* {xr_status}\n\n🪙 *Ручной перевод крипты:* {ct_status}\n🪙 *Адрес USDT BEP20:* `{usdt_addr}`\n🪙 *Адрес LTC:* `{ltc_addr}`\n🪙 *Адрес TON:* `{ton_addr}`\n🪙 *Binance Pay ID / Email / Phone:* `{binance_addr}`"
     },
     'admin_settings_referral_title': {
         'en': "👥 *Referral System Settings*\n\n💰 *Fixed Bonus Reward:* `${fixed_bonus} USD` immediately upon friend registration",
@@ -1401,9 +1417,9 @@ LOCALIZATION = {
         'ru': "👥 *Настройки реферальной системы*\n\n💰 *Фиксированный бонус:* `${fixed_bonus} USD` сразу после регистрации друга"
     },
     'admin_settings_api_keys_title': {
-        'en': "🔑 *API Keys & Proxy Configuration*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`",
-        'ar': "🔑 *إعدادات مفاتيح API والبروكسي*\n\n🔸 *مفتاح BscScan API:* `{bscscan_key}`\n🪙 *توكن Blockcypher API:* `{blockcypher_key}`\n💎 *مفتاح Toncenter API:* `{toncenter_key}`\n🤖 *توكن Crypto Bot:* `{cryptobot_key}`\n⚙️ *بيئة عمل Crypto Bot:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *مفتاح Binance API:* `{b_api_display}`\n🔶 *مفتاح Binance Secret:* `{b_secret_display}`\n🌐 *بروكسي بينانس:* `{binance_proxy}`",
-        'ru': "🔑 *Настройки API ключей и прокси*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Среда Crypto Bot:* `{cb_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`"
+        'en': "🔑 *API Keys & Proxy Configuration*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Crypto Bot Environment:* `{cb_testnet_status}`\n🚀 *xRocket API Token:* `{xrocket_key}`\n⚙️ *xRocket Environment:* `{xr_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`",
+        'ar': "🔑 *إعدادات مفاتيح API والبروكسي*\n\n🔸 *مفتاح BscScan API:* `{bscscan_key}`\n🪙 *توكن Blockcypher API:* `{blockcypher_key}`\n💎 *مفتاح Toncenter API:* `{toncenter_key}`\n🤖 *توكن Crypto Bot:* `{cryptobot_key}`\n⚙️ *بيئة عمل Crypto Bot:* `{cb_testnet_status}`\n🚀 *توكن xRocket API:* `{xrocket_key}`\n⚙️ *بيئة عمل xRocket:* `{xr_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *مفتاح Binance API:* `{b_api_display}`\n🔶 *مفتاح Binance Secret:* `{b_secret_display}`\n🌐 *بروكسي بينانس:* `{binance_proxy}`",
+        'ru': "🔑 *Настройки API ключей и прокси*\n\n🔸 *BscScan API Key:* `{bscscan_key}`\n🪙 *Blockcypher API Token:* `{blockcypher_key}`\n💎 *Toncenter API Key:* `{toncenter_key}`\n🤖 *Crypto Bot Token:* `{cryptobot_key}`\n⚙️ *Среда Crypto Bot:* `{cb_testnet_status}`\n🚀 *Токен xRocket API:* `{xrocket_key}`\n⚙️ *Среда xRocket:* `{xr_testnet_status}`\n━━━━━━━━━━━━━━━\n🔶 *Binance API Key:* `{b_api_display}`\n🔶 *Binance Secret Key:* `{b_secret_display}`\n🌐 *Binance Proxy:* `{binance_proxy}`"
     },
     'admin_settings_emoji_title': {
         'en': "🎨 *Emoji Settings*\n\nSelect an item to set its animated emoji:",
@@ -1449,6 +1465,12 @@ LOCALIZATION = {
         'en': "🤖 Toggle Crypto Bot",
         'ar': "🤖 تفعيل/تعطيل Crypto Bot",
         'ru': "🤖 Вкл/Выкл Crypto Bot"
+    },
+    'btn_admin_toggle_xrocket': {
+        'en': "🚀 Toggle xRocket Pay",
+        'ar': "🚀 تفعيل/تعطيل xRocket Pay",
+        'ru': "🚀 Вкл/Выкл xRocket Pay",
+        'pt': "🚀 Ativar/Desativar xRocket Pay"
     },
     'btn_admin_toggle_cryptotransfer': {
         'en': "🪙 Toggle Crypto Transfer",

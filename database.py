@@ -299,6 +299,9 @@ async def db_init():
             'cryptobot_use_testnet': '0',
             'cryptotransfer_enabled': '1',
             'cryptobot_enabled': '1',
+            'xrocket_token': '',
+            'xrocket_use_testnet': '0',
+            'xrocket_enabled': '1',
             'api_domain': '',
             'binance_api_proxy': '',
             'binance_api_base_url': 'https://api.binance.com',
@@ -1695,6 +1698,14 @@ async def get_pending_cryptobot_payments():
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT * FROM payments WHERE status = 'pending' AND payment_method LIKE 'cryptobot_%';"
+        ) as cursor:
+            return await cursor.fetchall()
+
+async def get_pending_xrocket_payments():
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM payments WHERE status = 'pending' AND payment_method LIKE 'xrocket_%';"
         ) as cursor:
             return await cursor.fetchall()
 
