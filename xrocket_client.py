@@ -83,6 +83,7 @@ async def create_xrocket_invoice(amount: float, client_invoice_id: str, descript
                     async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=20)) as resp:
                         res_json = await resp.json(content_type=None)
                         if resp.status in [200, 201]:
+                            logger.info(f"xRocket createInvoice endpoint {url} SUCCESS ({resp.status}): {res_json}")
                             data = res_json.get("data") if isinstance(res_json.get("data"), dict) else res_json
                             # Extract invoice id
                             invoice_id = (
@@ -95,9 +96,14 @@ async def create_xrocket_invoice(amount: float, client_invoice_id: str, descript
                                 data.get("link") or 
                                 data.get("url") or 
                                 data.get("payUrl") or 
+                                data.get("paymentUrl") or
                                 data.get("botInvoiceUrl") or
+                                data.get("telegramMiniAppLink") or
+                                data.get("miniAppLink") or
+                                data.get("webLink") or
                                 (f"https://t.me/xrocket?start=inv_{invoice_id}" if invoice_id else None)
                             )
+                            logger.info(f"xRocket extracted invoice_id={invoice_id}, pay_url={pay_url}")
                             
                             if invoice_id and pay_url:
                                 return {
