@@ -87,12 +87,16 @@ async def create_xrocket_invoice(amount: float, client_invoice_id: str, descript
                             data = res_json.get("data") if isinstance(res_json.get("data"), dict) else res_json
                             # Extract invoice id
                             invoice_id = (
-                                data.get("invoiceId") or 
                                 data.get("id") or 
+                                data.get("invoiceId") or 
                                 data.get("invoice_id")
                             )
                             # Extract payment link / telegram URL
+                            links = data.get("links") if isinstance(data.get("links"), dict) else {}
                             pay_url = (
+                                links.get("telegramBotLink") or
+                                links.get("telegramMiniAppLink") or
+                                links.get("webLink") or
                                 data.get("link") or 
                                 data.get("url") or 
                                 data.get("payUrl") or 
@@ -158,9 +162,9 @@ async def get_xrocket_invoice(invoice_id: Any):
                                 status_raw = str(data.get("status", "")).lower()
                                 return {
                                     "status": status_raw,
-                                    "invoice_id": data.get("invoiceId") or data.get("id") or inv_str,
-                                    "amount": data.get("amount") or data.get("priceAmount"),
-                                    "currency": data.get("currency") or data.get("priceCurrency") or data.get("asset"),
+                                    "invoice_id": data.get("id") or data.get("invoiceId") or inv_str,
+                                    "amount": data.get("priceAmount") or data.get("amount"),
+                                    "currency": data.get("priceCurrency") or data.get("currency") or data.get("asset"),
                                     "raw": data
                                 }
                 except Exception as ep_err:
