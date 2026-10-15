@@ -18,11 +18,17 @@ async def get_xrocket_config():
         base_url = "https://pay.api.xrocket.exchange"
     return api_key.strip(), base_url
 
+def _clean_token(api_key: str) -> str:
+    token = api_key.strip().strip('"\'')
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token
+
 def _get_headers(api_key: str):
     """
     Provides headers compatible with both Pay API (Bearer) and Legacy API (Rocket-Pay-Key).
     """
-    clean_token = api_key.replace("Bearer ", "").strip()
+    clean_token = _clean_token(api_key)
     return {
         "Authorization": f"Bearer {clean_token}",
         "Rocket-Pay-Key": clean_token,
@@ -48,15 +54,22 @@ async def create_xrocket_invoice(amount: float, client_invoice_id: str, descript
         "currency": currency.upper(),
         "description": (description[:1024] if description else "Digital Store Deposit"),
         "clientInvoiceId": str(client_invoice_id)[:64],
+        "numPayments": 1,
         "expiredIn": 3600  # 1 hour expiration
     }
 
-    # Primary and fallback endpoints
-    endpoints = [
+    # Primary and fallback endpoints (Mainnet, Testnet, Legacy)
+    candidate_endpoints = [
         f"{base_url}/api/v1/invoices",
-        f"https://pay.xrocket.tg/tg-invoices",
-        f"https://pay.xrocket.tg/invoices"
+        "https://pay.api.xrocket.exchange/api/v1/invoices",
+        "https://pay.api.testnet.xrocket.exchange/api/v1/invoices",
+        "https://pay.xrocket.tg/tg-invoices",
+        "https://pay.xrocket.tg/invoices"
     ]
+    endpoints = []
+    for ep in candidate_endpoints:
+        if ep not in endpoints:
+            endpoints.append(ep)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -109,12 +122,18 @@ async def get_xrocket_invoice(invoice_id: Any):
     headers = _get_headers(api_key)
     inv_str = str(invoice_id).strip()
 
-    endpoints = [
+    candidate_endpoints = [
         f"{base_url}/api/v1/invoice?invoiceId={inv_str}",
+        f"https://pay.api.xrocket.exchange/api/v1/invoice?invoiceId={inv_str}",
+        f"https://pay.api.testnet.xrocket.exchange/api/v1/invoice?invoiceId={inv_str}",
         f"{base_url}/api/v1/invoices/{inv_str}",
         f"https://pay.xrocket.tg/tg-invoices/{inv_str}",
         f"https://pay.xrocket.tg/invoices/{inv_str}"
     ]
+    endpoints = []
+    for ep in candidate_endpoints:
+        if ep not in endpoints:
+            endpoints.append(ep)
 
     try:
         async with aiohttp.ClientSession() as session:
