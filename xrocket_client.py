@@ -1,5 +1,6 @@
 import aiohttp
 import logging
+from typing import Any, Optional, Dict, Tuple
 from database import get_setting
 
 logger = logging.getLogger(__name__)
