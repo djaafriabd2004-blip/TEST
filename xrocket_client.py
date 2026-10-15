@@ -48,10 +48,15 @@ async def create_xrocket_invoice(amount: float, client_invoice_id: str, descript
 
     headers = _get_headers(api_key)
     
-    # Payload for Pay API
+    amount_val = round(float(amount), 2)
+    amount_str = f"{amount_val:.2f}"
+    
+    # Payload compatible with both Pay API (/api/v1/invoices) and Legacy API
     payload = {
-        "amount": round(float(amount), 2),
+        "amount": amount_val,
         "currency": currency.upper(),
+        "priceAmount": amount_str,
+        "priceCurrency": currency.upper(),
         "description": (description[:1024] if description else "Digital Store Deposit"),
         "clientInvoiceId": str(client_invoice_id)[:64],
         "numPayments": 1,
@@ -148,8 +153,8 @@ async def get_xrocket_invoice(invoice_id: Any):
                                 return {
                                     "status": status_raw,
                                     "invoice_id": data.get("invoiceId") or data.get("id") or inv_str,
-                                    "amount": data.get("amount"),
-                                    "currency": data.get("currency") or data.get("asset"),
+                                    "amount": data.get("amount") or data.get("priceAmount"),
+                                    "currency": data.get("currency") or data.get("priceCurrency") or data.get("asset"),
                                     "raw": data
                                 }
                 except Exception as ep_err:
