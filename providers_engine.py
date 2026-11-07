@@ -249,7 +249,8 @@ class BaseProviderAdapter:
         }
         self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
-            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
             if email_list:
                 if int(quantity) == 1:
                     payload["email"] = email_list[0]
@@ -1105,7 +1106,8 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
-            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
             if email_list:
                 if int(quantity) == 1:
                     payload["email"] = email_list[0]
@@ -1286,7 +1288,8 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
-            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
             if email_list:
                 payload["email"] = email_list[0]
                 if int(quantity) > 1:
@@ -1533,7 +1536,8 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
-            email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
             if email_list:
                 payload["email"] = email_list[0]
                 if int(quantity) > 1:
@@ -1610,6 +1614,9 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
 # -------------------------------------------------------------------------
 # 7. Roboticvn Customer API v2 Adapter (https://api.roboticvn.com/api/v2/docs)
 # -------------------------------------------------------------------------
+_ROBOTICVN_CATALOG_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
+_ROBOTICVN_CACHE_TTL = 900.0  # 15 minutes TTL to prevent excessive API usage and rate limits
+
 class RoboticvnProviderAdapter(BaseProviderAdapter):
     """
     Roboticvn Customer API v2 Adapter.
@@ -1657,11 +1664,22 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
             headers.update(extra_headers)
         return headers
 
-    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
-        Fetches master products from /api/v2/products and then fetches variants for each product
-        from /api/v2/products/{id} to build the complete catalog with real prices and stock.
+        Fetches master products from /api/v2/products and variants for each product.
+        Uses in-memory caching (15 min) and polite rate-limiting (max 2 concurrent requests, 0.2s pause)
+        to prevent hitting Roboticvn's rate limits or triggering account suspension.
         """
+        cache_key = f"{self.base_url}:{self.api_key}"
+        now_ts = time.time()
+        
+        # 1. Check in-memory cache to prevent excessive requests
+        if not force_refresh and cache_key in _ROBOTICVN_CATALOG_CACHE:
+            cached_list, cached_time = _ROBOTICVN_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < _ROBOTICVN_CACHE_TTL and cached_list:
+                logger.info(f"Serving Roboticvn catalog from memory cache ({len(cached_list)} products)")
+                return cached_list
+
         async def _fetch_master_products(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
             all_masters = []
             limit = 100
@@ -1683,6 +1701,15 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                             if len(items) < limit:
                                 break
                             offset += limit
+                        elif resp.status == 429:
+                            logger.warning(f"Roboticvn rate limit (429) on products list. Sleeping 2.5s...")
+                            await asyncio.sleep(2.5)
+                            async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as retry_resp:
+                                if retry_resp.status == 200:
+                                    data = await retry_resp.json(content_type=None)
+                                    items = data.get("data", []) if isinstance(data, dict) else []
+                                    all_masters.extend(items)
+                            break
                         else:
                             logger.warning(f"Roboticvn products list returned status {resp.status}")
                             break
@@ -1698,9 +1725,16 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
             m_title = (master_p.get("title") or master_p.get("name") or "Product").strip()
             
             async with sem:
+                await asyncio.sleep(0.2)  # Polite pause between requests to prevent rate limit
                 url = f"{self.api_v2_url}/products/{m_id}?locale=en-US"
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
+                        if resp.status == 429:
+                            logger.warning(f"Roboticvn rate limit (429) on product {m_id}. Pausing 2.5s...")
+                            await asyncio.sleep(2.5)
+                            async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as retry_resp:
+                                resp = retry_resp
+
                         if resp.status == 200:
                             p_json = await resp.json(content_type=None)
                             p_data = p_json.get("data", {}) if isinstance(p_json, dict) else {}
@@ -1764,7 +1798,7 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                                 
                                 v_desc = str(v.get("description") or p_desc or "")
                                 if v.get("delivery_instructions"):
-                                    v_desc = f"{v_desc}\n\nInstructions: {v['delivery_instructions']}".strip()
+                                    v_desc = (v_desc + "\n\nInstructions: " + str(v["delivery_instructions"])).strip()
                                 
                                 req_email = bool(v.get("manual_upgrade", False))
                                 composite_id = f"{m_id}:{v_id}"
@@ -1798,9 +1832,13 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
         async def _run(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
             masters = await _fetch_master_products(s)
             if not masters:
+                if cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
+                    logger.warning("Serving Roboticvn catalog from previous cache due to empty response")
+                    return _ROBOTICVN_CATALOG_CACHE[cache_key][0]
                 return []
             
-            sem = asyncio.Semaphore(8)
+            # Use Semaphore(2) to prevent triggering Roboticvn rate limit
+            sem = asyncio.Semaphore(2)
             tasks = [_fetch_single_product_variants(s, sem, m) for m in masters]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
@@ -1808,6 +1846,13 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
             for r in results:
                 if isinstance(r, list):
                     final_catalog.extend(r)
+            
+            # Save to memory cache
+            if final_catalog:
+                _ROBOTICVN_CATALOG_CACHE[cache_key] = (final_catalog, time.time())
+            elif cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
+                return _ROBOTICVN_CATALOG_CACHE[cache_key][0]
+
             return final_catalog
 
         if session:
@@ -1818,10 +1863,18 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
 
     async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
         """
-        Fetches live stock using Quote endpoint or Product detail endpoint.
+        Fetches live stock using memory cache first, then Quote/Product detail endpoint.
         """
         pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        cache_key = f"{self.base_url}:{self.api_key}"
         
+        # 1. Check in-memory catalog cache first (zero requests!)
+        if cache_key in _ROBOTICVN_CATALOG_CACHE:
+            cached_list, _ = _ROBOTICVN_CATALOG_CACHE[cache_key]
+            for p in cached_list:
+                if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                    return int(p.get("stock", 0))
+
         async def _req(s: aiohttp.ClientSession):
             if pid and var_id:
                 try:
@@ -1873,10 +1926,18 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
 
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         """
-        Fetches live wholesale price in USD from Roboticvn quote or product detail.
+        Fetches live wholesale price in USD using memory cache first, then Roboticvn quote.
         """
         pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        cache_key = f"{self.base_url}:{self.api_key}"
         
+        # 1. Check in-memory catalog cache first (zero requests!)
+        if cache_key in _ROBOTICVN_CATALOG_CACHE:
+            cached_list, _ = _ROBOTICVN_CATALOG_CACHE[cache_key]
+            for p in cached_list:
+                if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                    return float(p.get("price", 0.0))
+
         async def _req(s: aiohttp.ClientSession):
             if pid and var_id:
                 try:
@@ -1968,7 +2029,8 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                 "quantity": int(quantity)
             }
             if customer_email:
-                email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+                email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+                email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
                 if email_list:
                     if len(email_list) < int(quantity):
                         email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
