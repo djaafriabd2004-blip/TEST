@@ -1608,6 +1608,471 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
 
 
 # -------------------------------------------------------------------------
+# 7. Roboticvn Customer API v2 Adapter (https://api.roboticvn.com/api/v2/docs)
+# -------------------------------------------------------------------------
+class RoboticvnProviderAdapter(BaseProviderAdapter):
+    """
+    Roboticvn Customer API v2 Adapter.
+    Official Docs: https://api.roboticvn.com/api/v2/docs
+    
+    Structure:
+    - Master Products (Categories): GET /api/v2/products (returns {data: [{id, title}, ...]})
+    - Purchasable Sub-products (Variants): GET /api/v2/products/{master_id} (returns variants with prices & stock)
+    - Realtime Quote: POST /api/v2/products/{master_id}/quote
+    - Wallet Orders: POST /api/v2/orders
+    - Delivered Credentials: GET /api/v2/orders/{id}/delivery
+    """
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
+        self.provider_type = "roboticvn"
+        clean = self.base_url.rstrip("/")
+        if clean.endswith("/api/v2"):
+            self.api_v2_url = clean
+        elif "/api/v2" in clean:
+            self.api_v2_url = clean.split("/api/v2")[0] + "/api/v2"
+        else:
+            self.api_v2_url = f"{clean}/api/v2"
+
+    @staticmethod
+    def _parse_pid_and_variant(provider_product_id: Any) -> Tuple[str, Optional[str]]:
+        prov_pid_str = str(provider_product_id).strip()
+        for sep in [":", "#", "__variant__", "__"]:
+            if sep in prov_pid_str:
+                parts = prov_pid_str.split(sep, 1)
+                p_id = parts[0].strip()
+                v_id = parts[1].strip() or None
+                return p_id, v_id
+        return prov_pid_str, None
+
+    def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = {
+            "x-api-key": self.api_key,
+            "X-API-Key": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches master products from /api/v2/products and then fetches variants for each product
+        from /api/v2/products/{id} to build the complete catalog with real prices and stock.
+        """
+        async def _fetch_master_products(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+            all_masters = []
+            limit = 100
+            offset = 0
+            while True:
+                url = f"{self.api_v2_url}/products?limit={limit}&offset={offset}&locale=en-US"
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            items = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                            if not items:
+                                break
+                            all_masters.extend(items)
+                            meta = data.get("meta", {}) if isinstance(data, dict) else {}
+                            total = meta.get("count") or meta.get("total")
+                            if total and len(all_masters) >= total:
+                                break
+                            if len(items) < limit:
+                                break
+                            offset += limit
+                        else:
+                            logger.warning(f"Roboticvn products list returned status {resp.status}")
+                            break
+                except Exception as e:
+                    logger.warning(f"Roboticvn master products fetch error on offset {offset}: {e}")
+                    break
+            return all_masters
+
+        async def _fetch_single_product_variants(s: aiohttp.ClientSession, sem: asyncio.Semaphore, master_p: Dict[str, Any]) -> List[Dict[str, Any]]:
+            m_id = str(master_p.get("id") or "").strip()
+            if not m_id:
+                return []
+            m_title = (master_p.get("title") or master_p.get("name") or "Product").strip()
+            
+            async with sem:
+                url = f"{self.api_v2_url}/products/{m_id}?locale=en-US"
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
+                        if resp.status == 200:
+                            p_json = await resp.json(content_type=None)
+                            p_data = p_json.get("data", {}) if isinstance(p_json, dict) else {}
+                            if not isinstance(p_data, dict):
+                                return []
+                            
+                            p_title = (p_data.get("title") or m_title).strip()
+                            p_desc = str(p_data.get("description") or "")
+                            variants = p_data.get("variants") or []
+                            
+                            if not variants or not isinstance(variants, list):
+                                return [{
+                                    "id": str(m_id),
+                                    "name": p_title,
+                                    "name_ar": p_title,
+                                    "name_en": p_title,
+                                    "name_ru": p_title,
+                                    "description": p_desc,
+                                    "description_ar": p_desc,
+                                    "description_en": p_desc,
+                                    "description_ru": p_desc,
+                                    "price": 0.0,
+                                    "original_price": 0.0,
+                                    "stock": 0,
+                                    "custom_emoji_id": None,
+                                    "requires_email": False,
+                                    "requiresEmailActivation": False
+                                }]
+                                
+                            var_products = []
+                            for v in variants:
+                                if not isinstance(v, dict):
+                                    continue
+                                v_id = str(v.get("id") or "").strip()
+                                if not v_id:
+                                    continue
+                                v_title = (v.get("title") or "").strip()
+                                
+                                if not v_title or v_title.lower() == p_title.lower():
+                                    display_name = p_title
+                                elif p_title.lower() in v_title.lower():
+                                    display_name = v_title
+                                else:
+                                    display_name = f"{p_title} - {v_title}"
+                                    
+                                prices = v.get("prices") or {}
+                                price_val = 0.0
+                                if isinstance(prices, dict):
+                                    price_val = float(prices.get("usd") or prices.get("USD") or 0.0)
+                                    if price_val <= 0 and "vnd" in prices:
+                                        try:
+                                            price_val = round(float(prices["vnd"]) / 25400.0, 2)
+                                        except Exception:
+                                            pass
+                                elif isinstance(prices, (int, float)):
+                                    price_val = float(prices)
+                                    
+                                in_stock = bool(v.get("in_stock", True))
+                                avail_qty = v.get("available_quantity")
+                                stock_val = int(avail_qty) if in_stock and avail_qty is not None else (100 if in_stock else 0)
+                                
+                                v_desc = str(v.get("description") or p_desc or "")
+                                if v.get("delivery_instructions"):
+                                    v_desc = f"{v_desc}\n\nInstructions: {v['delivery_instructions']}".strip()
+                                
+                                req_email = bool(v.get("manual_upgrade", False))
+                                composite_id = f"{m_id}:{v_id}"
+                                
+                                var_products.append({
+                                    "id": composite_id,
+                                    "variant_id": v_id,
+                                    "master_id": m_id,
+                                    "name": display_name,
+                                    "name_ar": display_name,
+                                    "name_en": display_name,
+                                    "name_ru": display_name,
+                                    "description": v_desc,
+                                    "description_ar": v_desc,
+                                    "description_en": v_desc,
+                                    "description_ru": v_desc,
+                                    "price": price_val,
+                                    "original_price": price_val,
+                                    "stock": stock_val,
+                                    "custom_emoji_id": None,
+                                    "requires_email": req_email,
+                                    "requiresEmailActivation": req_email
+                                })
+                            return var_products
+                        else:
+                            logger.warning(f"Failed to fetch Roboticvn product {m_id}: HTTP {resp.status}")
+                except Exception as e:
+                    logger.warning(f"Error fetching Roboticvn detail for {m_id}: {e}")
+                return []
+
+        async def _run(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+            masters = await _fetch_master_products(s)
+            if not masters:
+                return []
+            
+            sem = asyncio.Semaphore(8)
+            tasks = [_fetch_single_product_variants(s, sem, m) for m in masters]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            final_catalog = []
+            for r in results:
+                if isinstance(r, list):
+                    final_catalog.extend(r)
+            return final_catalog
+
+        if session:
+            return await _run(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _run(s)
+
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        """
+        Fetches live stock using Quote endpoint or Product detail endpoint.
+        """
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        
+        async def _req(s: aiohttp.ClientSession):
+            if pid and var_id:
+                try:
+                    q_url = f"{self.api_v2_url}/products/{pid}/quote"
+                    q_payload = {
+                        "variant_id": var_id,
+                        "quantity": 1,
+                        "currency_code": "usd"
+                    }
+                    async with s.post(q_url, headers=self.get_headers(), json=q_payload, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
+                        if q_resp.status == 200:
+                            q_json = await q_resp.json(content_type=None)
+                            q_data = q_json.get("data", {}) if isinstance(q_json, dict) else {}
+                            if q_data.get("can_purchase") is False:
+                                return 0
+                            avail = q_data.get("available_quantity")
+                            if avail is not None:
+                                return int(avail)
+                except Exception as e:
+                    logger.debug(f"Roboticvn quote for stock failed: {e}")
+                    
+                try:
+                    d_url = f"{self.api_v2_url}/products/{pid}?locale=en-US"
+                    async with s.get(d_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as d_resp:
+                        if d_resp.status == 200:
+                            d_json = await d_resp.json(content_type=None)
+                            p_data = d_json.get("data", {}) if isinstance(d_json, dict) else {}
+                            variants = p_data.get("variants") or []
+                            for v in variants:
+                                if str(v.get("id")) == str(var_id):
+                                    in_stock = bool(v.get("in_stock", True))
+                                    avail = v.get("available_quantity")
+                                    return int(avail) if in_stock and avail is not None else (0 if not in_stock else 100)
+                except Exception as e:
+                    logger.debug(f"Roboticvn product detail for stock failed: {e}")
+
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                        return int(p.get("stock", 0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        """
+        Fetches live wholesale price in USD from Roboticvn quote or product detail.
+        """
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        
+        async def _req(s: aiohttp.ClientSession):
+            if pid and var_id:
+                try:
+                    q_url = f"{self.api_v2_url}/products/{pid}/quote"
+                    q_payload = {
+                        "variant_id": var_id,
+                        "quantity": int(quantity),
+                        "currency_code": "usd"
+                    }
+                    async with s.post(q_url, headers=self.get_headers(), json=q_payload, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
+                        if q_resp.status == 200:
+                            q_json = await q_resp.json(content_type=None)
+                            q_data = q_json.get("data", {}) if isinstance(q_json, dict) else {}
+                            u_price = q_data.get("unit_price")
+                            if u_price is not None and float(u_price) > 0:
+                                return float(u_price)
+                except Exception as e:
+                    logger.debug(f"Roboticvn quote for price failed: {e}")
+                    
+                try:
+                    d_url = f"{self.api_v2_url}/products/{pid}?locale=en-US"
+                    async with s.get(d_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as d_resp:
+                        if d_resp.status == 200:
+                            d_json = await d_resp.json(content_type=None)
+                            p_data = d_json.get("data", {}) if isinstance(d_json, dict) else {}
+                            variants = p_data.get("variants") or []
+                            for v in variants:
+                                if str(v.get("id")) == str(var_id):
+                                    prices = v.get("prices") or {}
+                                    if isinstance(prices, dict):
+                                        p_usd = float(prices.get("usd") or prices.get("USD") or 0.0)
+                                        if p_usd > 0:
+                                            return p_usd
+                                        if "vnd" in prices:
+                                            return round(float(prices["vnd"]) / 25400.0, 2)
+                except Exception as e:
+                    logger.debug(f"Roboticvn detail for price failed: {e}")
+
+            catalog = await self.fetch_catalog(s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                        return float(p.get("price", 0.0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def execute_order(
+        self,
+        provider_product_id: Any,
+        quantity: int,
+        expected_price: Optional[float] = None,
+        client_order_ref: Optional[str] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
+    ) -> List[str]:
+        """
+        Creates an order on Roboticvn paid from wallet balance and polls for delivery.
+        POST /api/v2/orders
+        GET /api/v2/orders/{id}/delivery
+        """
+        pid, var_id = self._parse_pid_and_variant(provider_product_id)
+        
+        async def _req(s: aiohttp.ClientSession):
+            target_var_id = var_id
+            
+            if not target_var_id:
+                try:
+                    d_url = f"{self.api_v2_url}/products/{pid}?locale=en-US"
+                    async with s.get(d_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as d_resp:
+                        if d_resp.status == 200:
+                            d_json = await d_resp.json(content_type=None)
+                            p_data = d_json.get("data", {}) if isinstance(d_json, dict) else {}
+                            vars_list = p_data.get("variants") or []
+                            if vars_list:
+                                target_var_id = str(vars_list[0].get("id"))
+                except Exception as e:
+                    logger.warning(f"Failed to resolve variant for {pid}: {e}")
+                    
+            if not target_var_id:
+                target_var_id = str(pid)
+
+            item_payload: Dict[str, Any] = {
+                "variant_id": target_var_id,
+                "quantity": int(quantity)
+            }
+            if customer_email:
+                email_list = [e.strip() for e in (customer_email if isinstance(customer_email, list) else str(customer_email).replace(',', '\n').split('\n')) if e.strip()]
+                if email_list:
+                    if len(email_list) < int(quantity):
+                        email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                    item_payload["accounts"] = email_list[:int(quantity)]
+
+            order_payload = {
+                "items": [item_payload],
+                "currency_code": "usd",
+                "payment_method": "wallet"
+            }
+
+            order_url = f"{self.api_v2_url}/orders?locale=en-US"
+            logger.info(f"Executing Roboticvn order on {order_url} with payload: {order_payload}")
+            
+            order_id = None
+            async with s.post(order_url, headers=self.get_headers(), json=order_payload, timeout=aiohttp.ClientTimeout(total=30, connect=10)) as resp:
+                if resp.status in [200, 201]:
+                    res_json = await resp.json(content_type=None)
+                    c_data = res_json.get("data", {}) if isinstance(res_json, dict) else {}
+                    order_id = c_data.get("order_id") or c_data.get("checkout_id") or c_data.get("id")
+                    logger.info(f"Roboticvn order created successfully: order_id={order_id}")
+                else:
+                    err_text = ""
+                    try:
+                        err_json = await resp.json(content_type=None)
+                        if isinstance(err_json, dict):
+                            err_text = err_json.get("error", {}).get("message") or err_json.get("message") or str(err_json)
+                    except Exception:
+                        err_text = await resp.text()
+                    
+                    err_l = str(err_text).lower()
+                    if resp.status == 400 and ("wallet" in err_l or "balance" in err_l or "insufficient" in err_l):
+                        raise Exception(f"Provider balance insufficient: {err_text}")
+                    elif resp.status in [400, 409] and ("out of stock" in err_l or "stock" in err_l or "available" in err_l):
+                        raise Exception(f"Out of stock ({err_text})")
+                    else:
+                        raise Exception(f"Provider error: {err_text or f'HTTP {resp.status}'}")
+
+            if not order_id:
+                raise Exception("Provider returned empty order ID")
+
+            # Poll for delivery credentials
+            delivery_url = f"{self.api_v2_url}/orders/{order_id}/delivery?locale=en-US"
+            delivered_lines = []
+            
+            for attempt in range(8):
+                await asyncio.sleep(2.5)
+                try:
+                    async with s.get(delivery_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as d_resp:
+                        if d_resp.status == 200:
+                            d_json = await d_resp.json(content_type=None)
+                            accounts = d_json.get("deliveredAccount") or d_json.get("delivered_accounts") or []
+                            if accounts and isinstance(accounts, list):
+                                for acc_item in accounts:
+                                    if isinstance(acc_item, dict):
+                                        acc = (acc_item.get("account") or "").strip()
+                                        pwd = (acc_item.get("password") or "").strip()
+                                        info = (acc_item.get("additional_info") or "").strip()
+                                        if acc and pwd:
+                                            line = f"{acc}:{pwd}"
+                                            if info:
+                                                line += f" | {info}"
+                                            delivered_lines.append(line)
+                                        elif acc:
+                                            line = acc
+                                            if info:
+                                                line += f" | {info}"
+                                            delivered_lines.append(line)
+                                        elif info:
+                                            delivered_lines.append(info)
+                                        else:
+                                            delivered_lines.append(json.dumps(acc_item))
+                                    elif isinstance(acc_item, str) and acc_item.strip():
+                                        delivered_lines.append(acc_item.strip())
+                                if delivered_lines:
+                                    break
+                except Exception as de:
+                    logger.debug(f"Polling delivery for order {order_id} failed on attempt {attempt+1}: {de}")
+
+            if delivered_lines:
+                return delivered_lines
+
+            try:
+                stat_url = f"{self.api_v2_url}/orders/{order_id}?locale=en-US"
+                async with s.get(stat_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as s_resp:
+                    if s_resp.status == 200:
+                        s_json = await s_resp.json(content_type=None)
+                        s_data = s_json.get("data", {}) if isinstance(s_json, dict) else {}
+                        upg_stat = s_data.get("upgrade_status")
+                        if upg_stat in ["pending", "processing"]:
+                            return [f"Roboticvn Order #{order_id} (Manual Upgrade in progress)"]
+            except Exception:
+                pass
+
+            return [f"Roboticvn Order #{order_id} Completed Successfully"]
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+
+# -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
 def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[Any] = None) -> BaseProviderAdapter:
@@ -1628,6 +2093,8 @@ def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[An
         return SupabaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "/api/reseller" in clean_url or "/reseller" in clean_url:
         return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
+    elif "roboticvn" in clean_url:
+        return RoboticvnProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     else:
         return BaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
 

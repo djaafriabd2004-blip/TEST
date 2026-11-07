@@ -3652,6 +3652,7 @@ async def fetch_provider_store_name(base_url, api_key):
     is_supabase = "supabase.co" in base_url
     
     headers = {
+        "x-api-key": api_key,
         "X-Reseller-Key": api_key,
         "X-API-Key": api_key,
         "Authorization": f"Bearer {api_key}",
@@ -3659,6 +3660,8 @@ async def fetch_provider_store_name(base_url, api_key):
     }
     endpoints = [
         f"{base_url}?action=balance" if is_supabase else f"{base_url}/api/reseller/me",
+        f"{base_url}/api/v2/me",
+        f"{base_url}/v2/me",
         f"{base_url}/reseller/me",
         f"{base_url}/api/me",
         f"{base_url}/api/v1/me",
@@ -3676,6 +3679,13 @@ async def fetch_provider_store_name(base_url, api_key):
                             if is_supabase:
                                 return "Supabase Reseller API"
                             if isinstance(data, dict):
+                                if "roboticvn" in base_url or "/api/v2" in url:
+                                    cust = data.get('data') or data
+                                    if isinstance(cust, dict):
+                                        fn = cust.get('first_name') or ''
+                                        ln = cust.get('last_name') or ''
+                                        full_n = f"{fn} {ln}".strip()
+                                        return f"Roboticvn ({full_n})" if full_n else "Roboticvn API"
                                 if data.get('key_name'):
                                     return f"VenteBot ({data['key_name']})"
                                 elif data.get('store_name'):
