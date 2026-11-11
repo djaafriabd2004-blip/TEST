@@ -88,10 +88,13 @@ async def get_products_api(request):
     req_in_stock = request.query.get("in_stock")
     filter_in_stock = (req_in_stock == "1") or (req_in_stock is None and hide_oos)
     try:
-        stock_counts = await asyncio.wait_for(get_all_stock_counts(products, use_cache=True), timeout=5.0)
+        stock_counts = await asyncio.wait_for(get_all_stock_counts(products, use_cache=True), timeout=12.0)
+        # Re-read products after get_all_stock_counts so any live-synced prices are returned immediately!
+        products = await get_products()
     except Exception as e:
         logger.warning(f"get_all_stock_counts timed out or failed in get_products_api, using cached/local counts: {e}")
         stock_counts = await get_all_stock_counts(products, use_cache=True, local_only=True)
+        products = await get_products()
 
     custom_prices_map = {}
     user_discount = 0.0
@@ -107,7 +110,7 @@ async def get_products_api(request):
                 async with db.execute("SELECT product_id, custom_price FROM user_product_prices WHERE user_id = ?;", (user_id,)) as cur:
                     for r in await cur.fetchall():
                         custom_prices_map[r["product_id"]] = float(r["custom_price"])
-                async with db.execute("SELECT discount_percent FROM users WHERE user_id = ?;", (user_id,)) as u_cur:
+                async with db.execute("SELECT discount_percent FROM user_discounts WHERE user_id = ?;", (user_id,)) as u_cur:
                     u_row = await u_cur.fetchone()
                     if u_row and u_row["discount_percent"]:
                         user_discount = float(u_row["discount_percent"])
@@ -154,21 +157,25 @@ async def get_products_api(request):
 async def get_product_detail_api(request):
     user = request.get("user")
     user_id = user["user_id"] if user else None
-    from database import get_product, get_stock_count, get_effective_product_price
+    from database import get_product, get_stock_count, get_effective_product_price, sync_single_provider_product
     try:
         product_id = int(request.match_info["id"])
     except ValueError:
         return web.json_response({"ok": False, "error": "Invalid product ID format"}, status=400)
         
-    product = await get_product(product_id)
+    try:
+        product, s_cnt = await asyncio.wait_for(sync_single_provider_product(product_id), timeout=7.0)
+    except Exception:
+        product = await get_product(product_id)
+        try:
+            s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=4.0)
+        except Exception:
+            s_cnt = 0
+
     if not product:
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
         
     p_dict = dict(product)
-    try:
-        s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=5.0)
-    except Exception:
-        s_cnt = 0
     p_dict["stock"] = s_cnt
     p_dict["stock_count"] = s_cnt
     p_dict["quantity"] = s_cnt
@@ -210,18 +217,21 @@ async def quote_api(request):
         qty = max(1, int(raw_qty))
     except (ValueError, TypeError):
         qty = 1
-    from database import get_product, get_stock_count, get_effective_product_price
-    product = await get_product(product_id)
+    from database import get_product, get_stock_count, get_effective_product_price, sync_single_provider_product
+    try:
+        product, s_cnt = await asyncio.wait_for(sync_single_provider_product(product_id, quantity=qty), timeout=7.0)
+    except Exception:
+        product = await get_product(product_id)
+        try:
+            s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=4.0)
+        except Exception:
+            s_cnt = 0
     if not product:
         return web.json_response({"ok": False, "error": "Product not found"}, status=404)
     p_dict = dict(product)
     if float(p_dict.get("price", 0.0) or 0.0) <= 0 and float(p_dict.get("last_provider_cost") or 0.0) > 0:
         p_dict["price"] = float(p_dict.get("last_provider_cost"))
     unit_price = await get_effective_product_price(p_dict, user_id, qty) if user_id else float(p_dict.get("price", 0.0))
-    try:
-        s_cnt = await asyncio.wait_for(get_stock_count(product_id), timeout=4.0)
-    except Exception:
-        s_cnt = 0
     return web.json_response({
         "ok": True,
         "success": True,
@@ -420,7 +430,25 @@ async def buy_api(request):
             "deliveredKeys": stock_data_list
         })
     except Exception as e:
-        return web.json_response({"ok": False, "error": str(e)}, status=400)
+        err_str = str(e)
+        if err_str.startswith("PRICE_CHANGED:"):
+            pc_parts = err_str.split(":")
+            prev_p = pc_parts[1] if len(pc_parts) > 1 else None
+            curr_p = pc_parts[2] if len(pc_parts) > 2 else None
+            return web.json_response({
+                "ok": False,
+                "error": {
+                    "code": "PRICE_CHANGED",
+                    "message": f"Product price updated by provider from ${prev_p} to ${curr_p}. Please refresh quote/products and retry.",
+                    "details": {
+                        "previous_unit_price": prev_p,
+                        "current_unit_price": curr_p
+                    }
+                },
+                "current_unit_price": curr_p,
+                "previous_unit_price": prev_p
+            }, status=409)
+        return web.json_response({"ok": False, "error": err_str}, status=400)
 
 def create_api_app(bot) -> web.Application:
     app = web.Application(middlewares=[api_key_auth_middleware])

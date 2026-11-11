@@ -34,7 +34,7 @@ async def _apply_user_effective_prices(products, user_id):
             async with db.execute("SELECT product_id, custom_price FROM user_product_prices WHERE user_id = ?;", (user_id,)) as cur:
                 for r in await cur.fetchall():
                     custom_prices_map[r["product_id"]] = float(r["custom_price"])
-            async with db.execute("SELECT discount_percent FROM users WHERE user_id = ?;", (user_id,)) as u_cur:
+            async with db.execute("SELECT discount_percent FROM user_discounts WHERE user_id = ?;", (user_id,)) as u_cur:
                 u_row = await u_cur.fetchone()
                 if u_row and u_row["discount_percent"]:
                     user_discount = float(u_row["discount_percent"])
@@ -69,8 +69,9 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang, category_id=category_id)
         else:
-            products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
+            products = await get_products(category_id=category_id)
+            products = await _apply_user_effective_prices(products, user_id)
             if hide_oos:
                 products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
             if not products:
@@ -83,8 +84,9 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
         categories = await get_categories()
         standalone_products = await get_uncategorized_products()
         if categories:
-            standalone_products = await _apply_user_effective_prices(standalone_products, user_id)
             stock_counts = await get_all_stock_counts(standalone_products)
+            standalone_products = await get_uncategorized_products()
+            standalone_products = await _apply_user_effective_prices(standalone_products, user_id)
             if hide_oos:
                 standalone_products = [p for p in standalone_products if stock_counts.get(p['id'], 0) > 0]
             text = get_text('shop_title', lang)
@@ -95,8 +97,9 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
                 text = get_text('shop_empty', lang)
                 kb = keyboards.get_products_keyboard([], {}, lang)
             else:
-                products = await _apply_user_effective_prices(products, user_id)
                 stock_counts = await get_all_stock_counts(products)
+                products = await get_products()
+                products = await _apply_user_effective_prices(products, user_id)
                 if hide_oos:
                     products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
                 if not products:
@@ -111,8 +114,9 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang)
         else:
-            products = await _apply_user_effective_prices(products, user_id)
             stock_counts = await get_all_stock_counts(products)
+            products = await get_products()
+            products = await _apply_user_effective_prices(products, user_id)
             if hide_oos:
                 products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
             if not products:
@@ -165,13 +169,13 @@ async def cb_shop_categories(callback: CallbackQuery, lang='en'):
 async def cb_product_view(callback: CallbackQuery, lang='en'):
     try:
         product_id = int(callback.data.replace("prod_view_", ""))
-        product = await get_product(product_id)
+        from database import sync_single_provider_product
+        product, stock_count = await sync_single_provider_product(product_id, bot=callback.bot)
         
         if not product:
             await callback.answer("Product not found.")
             return
             
-        stock_count = await get_stock_count(product_id)
         has_stock = stock_count > 0
         
         user_id = callback.from_user.id
@@ -287,7 +291,8 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         
     await state.clear()
         
-    from database import get_effective_product_price
+    from database import get_effective_product_price, sync_single_provider_product
+    product, _ = await sync_single_provider_product(product_id, quantity=qty, bot=bot)
     unit_price = await get_effective_product_price(product, user_id, qty)
     price_to_pay = round(unit_price * qty, 2)
     
@@ -337,7 +342,8 @@ async def process_activation_email(message: Message, state: FSMContext, bot: Bot
         await message.answer("Product not found.")
         return
         
-    from database import get_effective_product_price
+    from database import get_effective_product_price, sync_single_provider_product
+    product, _ = await sync_single_provider_product(product_id, quantity=qty, bot=bot)
     unit_price = await get_effective_product_price(product, user_id, qty)
     price_to_pay = round(unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
@@ -356,12 +362,12 @@ async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: B
     product_id = int(parts[0])
     qty = int(parts[1])
     
-    product = await get_product(product_id)
+    from database import get_effective_product_price, sync_single_provider_product
+    product, _ = await sync_single_provider_product(product_id, quantity=qty, bot=bot)
     if not product:
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    from database import get_effective_product_price
     unit_price = await get_effective_product_price(product, user_id, qty)
     price_to_pay = round(unit_price * qty, 2)
     
@@ -382,17 +388,16 @@ async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: B
     product_id = int(parts[0])
     qty = int(parts[1])
     
-    product = await get_product(product_id)
+    from database import get_effective_product_price, sync_single_provider_product
+    product, stock_count = await sync_single_provider_product(product_id, quantity=qty, bot=bot)
     if not product:
         await callback.answer("Product not found.", show_alert=True)
         return
         
-    from database import get_effective_product_price
     unit_price = await get_effective_product_price(product, user_id, qty)
     price_to_pay = round(unit_price * qty, 2)
     
     # Verify stock availability again
-    stock_count = await get_stock_count(product_id)
     if stock_count < qty:
         await callback.answer(get_text('out_of_stock', lang), show_alert=True)
         return
@@ -611,6 +616,47 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             except Exception as ae:
                 logger.warning(f"Could not send delivery error alert to admin {admin_id}: {ae}")
                 
+        if err_msg.startswith("PRICE_CHANGED:"):
+            parts_pc = err_msg.split(":")
+            old_p_s = parts_pc[1] if len(parts_pc) > 1 else "?"
+            new_p_s = parts_pc[2] if len(parts_pc) > 2 else "?"
+            if skip_balance_check:
+                import aiosqlite
+                try:
+                    from bot_config import DB_NAME
+                except ImportError:
+                    from config import DB_NAME
+                async with aiosqlite.connect(DB_NAME) as db:
+                    await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (price_to_pay, user_id))
+                    await db.commit()
+                msg_pc = {
+                    "ar": f"⚠️ *تم تحديث سعر المنتج من قِبل المزود!*\n\nالسعر السابق: `${old_p_s}` ➡️ السعر الجديد: `${new_p_s}`\n\n💰 وحفاظاً على أموالك، تم إيداع مبلغ **`${price_to_pay:.2f} USD`** في محفظتك بالبوت. يمكنك الآن عرض المنتج والشراء بالسعر الجديد.",
+                    "en": f"⚠️ *Product Price Updated by Provider!*\n\nOld Price: `${old_p_s}` ➡️ New Price: `${new_p_s}`\n\n💰 To protect your funds, **`${price_to_pay:.2f} USD`** has been credited to your wallet. You can now view the product and order at the updated price.",
+                    "ru": f"⚠️ *Поставщик обновил цену товара!*\n\nСтарая цена: `${old_p_s}` ➡️ Новая цена: `${new_p_s}`\n\n💰 Сумма **`${price_to_pay:.2f} USD`** зачислена на ваш баланс в боте."
+                }
+            else:
+                msg_pc = {
+                    "ar": f"⚠️ *تم تحديث سعر المنتج من قِبل المزود!*\n\nالسعر السابق: `${old_p_s}` ➡️ السعر الجديد: `${new_p_s}`\n\nتم تحديث السعر في البوت تلقائياً، يرجى إعادة فتح المنتج والموافقة على السعر الجديد.",
+                    "en": f"⚠️ *Product Price Updated by Provider!*\n\nPrevious: `${old_p_s}` ➡️ Updated Price: `${new_p_s}`\n\nThe bot price has been refreshed automatically. Please open the product again to purchase at the new price.",
+                    "ru": f"⚠️ *Цена товара обновлена поставщиком!*\n\nПрежняя цена: `${old_p_s}` ➡️ Новая цена: `${new_p_s}`\n\nЦена в боте обновлена. Пожалуйста, откройте товар снова."
+                }
+            await message.answer(
+                msg_pc.get(lang, msg_pc['en']),
+                reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang),
+                parse_mode="Markdown"
+            )
+            return
+
+        if err_msg.strip().lower() == "insufficient balance":
+            db_u = await get_user(user_id)
+            cur_b = float(db_u['balance'] or 0.0) if db_u else 0.0
+            await message.answer(
+                get_text('insufficient_balance', lang, balance=cur_b, price=price_to_pay),
+                reply_markup=keyboards.get_product_view_keyboard(product_id, True, lang),
+                parse_mode="Markdown"
+            )
+            return
+
         if "out of stock" in err_msg.lower():
             from database import set_cached_provider_stock
             set_cached_provider_stock(product_id, 0)

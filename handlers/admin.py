@@ -840,12 +840,12 @@ async def cb_admin_prod_view(callback: CallbackQuery, lang='en'):
         
     try:
         prod_id = int(callback.data.replace("admin_prod_view_", ""))
-        product = await get_product(prod_id)
+        from database import sync_single_provider_product
+        product, stock = await sync_single_provider_product(prod_id, bot=callback.bot)
         if not product:
             await callback.answer("Product not found.")
             return
             
-        stock = await get_stock_count(prod_id)
         from utils import format_product_message
         text, entities, parse_mode = format_product_message(product, lang, stock, discount_pct=0.0)
         
@@ -3707,11 +3707,16 @@ async def fetch_provider_store_name(base_url, api_key):
     except Exception:
         return base_url
 
-async def fetch_provider_products(base_url, api_key, field_mapping=None):
+async def fetch_provider_products(base_url, api_key, field_mapping=None, force_refresh=False):
     from providers_engine import get_provider_adapter
+    import inspect
     try:
         adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
-        catalog = await adapter.fetch_catalog()
+        sig = inspect.signature(adapter.fetch_catalog)
+        if force_refresh and "force_refresh" in sig.parameters:
+            catalog = await adapter.fetch_catalog(force_refresh=True)
+        else:
+            catalog = await adapter.fetch_catalog()
         if catalog is not None:
             return catalog
     except Exception as e:
@@ -3969,6 +3974,51 @@ async def process_provider_edit_key(message: Message, state: FSMContext, lang='e
         await save_provider(base_url, new_key, store_name=store_name)
         await message.answer("✅ API Key updated successfully for provider!")
 
+@router.callback_query(F.data.startswith("admin_prov_sync_"))
+async def cb_admin_prov_sync(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("❌ Unauthorized", show_alert=True)
+        return
+
+    provider_id = int(callback.data.replace("admin_prov_sync_", ""))
+    from database import get_provider, sync_provider_catalog_now
+    prov = await get_provider(provider_id)
+    if not prov:
+        await callback.answer("❌ Provider not found", show_alert=True)
+        return
+
+    await callback.answer("⏳ Syncing...")
+    await callback.message.edit_text("⏳ *Syncing live prices and stock from provider...*\n_(جاري تحديث الأسعار والمخزون مباشرة من المزود)_", parse_mode="Markdown")
+
+    res = await sync_provider_catalog_now(provider_id=provider_id, force_refresh=True, bot=callback.bot)
+    checked = res.get("checked", 0)
+    changes = res.get("changes") or []
+
+    prov_dict = dict(prov)
+    display_name = prov_dict.get('store_name') or prov_dict.get('base_url')
+    if changes:
+        lines = [
+            f"✅ *تم تحديث أسعار ومخزون المزود ({display_name})!*\n"
+            f"📦 تم فحص: `{checked}` منتج | 🔄 تغيرت أسعار: `{len(changes)}` منتج\n"
+        ]
+        for ch in changes[:15]:
+            pname = (ch.get('name_ar') or ch.get('name_en') or f"#{ch['id']}").replace("`", "'")
+            lines.append(
+                f"• `{pname}`\n"
+                f"  💵 التكلفة: `${ch['old_cost']:.2f}` ➡️ `${ch['new_cost']:.2f}` | البيع: `${ch['old_price']:.2f}` ➡️ `${ch['new_price']:.2f}`"
+            )
+        if len(changes) > 15:
+            lines.append(f"\n_... +{len(changes) - 15} more items_")
+        report = "\n".join(lines)
+    else:
+        report = (
+            f"✅ *المزود ({display_name}) محدث بالكامل!*\n\n"
+            f"📦 تم فحص `{checked}` منتج مرتبط بهذا المزود.\n"
+            f"💵 جميع الأسعار والمخزون مطابقة لآخر تحديثات المزود."
+        )
+
+    await callback.message.edit_text(report, reply_markup=keyboards.get_provider_manage_keyboard(provider_id, lang), parse_mode="Markdown")
+
 @router.callback_query(F.data.startswith("admin_prov_pull_"))
 async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
@@ -3984,7 +4034,7 @@ async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='e
         
     prov_dict = dict(prov)
     await callback.message.edit_text("⏳ Fetching products from provider bot...")
-    products = await fetch_provider_products(prov_dict['base_url'], prov_dict['api_key'], field_mapping=prov_dict.get('field_mapping'))
+    products = await fetch_provider_products(prov_dict['base_url'], prov_dict['api_key'], field_mapping=prov_dict.get('field_mapping'), force_refresh=True)
     
     if products is None:
         await callback.message.edit_text("❌ Failed to fetch products from provider bot. Please make sure the URL and API key are correct.", reply_markup=keyboards.get_admin_back_keyboard())

@@ -1,4 +1,5 @@
 import aiosqlite
+import asyncio
 import logging
 import os
 import time
@@ -825,16 +826,20 @@ async def get_product(product_id):
         async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as cursor:
             return await cursor.fetchone()
 
-# Provider Stock Cache Storage & TTL
-_PROVIDER_STOCK_CACHE = {}  # {product_id: (count, timestamp)}
-PROVIDER_STOCK_CACHE_TTL = 90  # 90 seconds cache
+# Provider Stock & Price Sync Cache Storage & TTL
+_PROVIDER_STOCK_CACHE = {}       # {product_id: (count, timestamp)}
+_PROVIDER_PRICE_SYNC_CACHE = {}  # {product_id: timestamp}
+PROVIDER_STOCK_CACHE_TTL = 90    # 90 seconds stock cache
+PROVIDER_PRICE_SYNC_TTL = 45     # 45 seconds single-product price/stock check cache
 
 def invalidate_provider_stock_cache(product_id=None, provider_id=None):
-    global _PROVIDER_STOCK_CACHE
+    global _PROVIDER_STOCK_CACHE, _PROVIDER_PRICE_SYNC_CACHE
     if product_id is not None:
         _PROVIDER_STOCK_CACHE.pop(product_id, None)
+        _PROVIDER_PRICE_SYNC_CACHE.pop(product_id, None)
     else:
         _PROVIDER_STOCK_CACHE.clear()
+        _PROVIDER_PRICE_SYNC_CACHE.clear()
 
 def set_cached_provider_stock(product_id, stock_val):
     global _PROVIDER_STOCK_CACHE
@@ -843,6 +848,47 @@ def set_cached_provider_stock(product_id, stock_val):
         _PROVIDER_STOCK_CACHE[product_id] = (int(stock_val) if stock_val is not None else 0, time.time())
     except Exception:
         pass
+
+def _compute_synced_selling_price(
+    pricing_type: str,
+    margin_value: float,
+    min_price: float,
+    cur_price: float,
+    last_cost: float,
+    new_cost: float,
+    sync_fixed_deltas: bool = False,
+):
+    """
+    Computes the up-to-date selling price from a provider's live wholesale cost.
+    - margin_fixed / margin_percent: dynamically recalculates price (with floor protection).
+    - fixed: auto-heals $0.00 products AND auto-raises price if provider cost exceeds
+      current selling price (loss protection) or if sync_fixed_deltas is enabled and cost rose.
+    Returns (new_selling_price, price_changed).
+    """
+    from utils import calculate_dynamic_selling_price
+    p_type = str(pricing_type or 'fixed').strip().lower()
+    m_val = float(margin_value or 0.0)
+    min_p = float(min_price or 0.0)
+    cur_p = float(cur_price or 0.0)
+    old_c = float(last_cost or 0.0)
+    p_c = float(new_cost or 0.0)
+
+    if p_c <= 0:
+        return round(cur_p, 2), False
+
+    if p_type in ['margin_fixed', 'margin_percent']:
+        new_selling = calculate_dynamic_selling_price(p_type, m_val, min_p, p_c, cur_p)
+    elif cur_p <= 0:
+        new_selling = round(max(p_c, min_p), 2)
+    elif p_c > cur_p + 0.001 or (sync_fixed_deltas and old_c > 0 and p_c > old_c + 0.001):
+        # Protect fixed-priced products from selling at a loss or shrinking margin when provider raises prices
+        prev_margin = max(0.0, round(cur_p - old_c, 2)) if (old_c > 0 and cur_p > old_c) else 0.0
+        new_selling = calculate_dynamic_selling_price('margin_fixed', prev_margin, min_p, p_c, p_c)
+    else:
+        new_selling = round(max(cur_p, min_p) if min_p > 0 else cur_p, 2)
+
+    changed = abs(float(new_selling) - float(cur_p)) > 0.005
+    return round(float(new_selling), 2), changed
 
 # Stock Helpers
 async def add_stock(product_id, data):
@@ -913,15 +959,120 @@ async def get_stock_count(product_id, use_cache=True):
                 
         return local_count
 
-async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
+async def sync_single_provider_product(product_id: int, quantity: int = 1, force_refresh: bool = False, bot=None):
     """
-    Optimized batch function to get stock counts for all products in 1 DB connection
-    with intelligent in-memory TTL caching and single bulk requests per provider.
-    Prevents rate limit errors and speeds up catalog browsing.
+    Synchronizes BOTH live stock AND live wholesale cost/selling price for a single product.
+    Uses a short 45s TTL cache so single-product views and quotes always display live updated prices
+    without hammering provider APIs. Returns (product_row, stock_count).
     """
     import time
+    import asyncio
+    now_ts = time.time()
+    product = await get_product(product_id)
+    if not product:
+        return None, 0
+
+    prod_dict = dict(product)
+    provider_id = prod_dict.get('provider_id')
+    prov_pid = prod_dict.get('provider_product_id')
+
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
+        async with db.execute("SELECT COUNT(*) FROM stocks WHERE product_id = ? AND is_sold = 0;", (product_id,)) as lc:
+            row = await lc.fetchone()
+            local_count = row[0] if row else 0
+
+    if not provider_id or not prov_pid:
+        return product, local_count
+
+    # Fast cache path if BOTH stock and price were recently synced (< 45s)
+    if (
+        not force_refresh
+        and product_id in _PROVIDER_STOCK_CACHE
+        and product_id in _PROVIDER_PRICE_SYNC_CACHE
+        and (now_ts - _PROVIDER_STOCK_CACHE[product_id][1]) < PROVIDER_PRICE_SYNC_TTL
+        and (now_ts - _PROVIDER_PRICE_SYNC_CACHE[product_id]) < PROVIDER_PRICE_SYNC_TTL
+    ):
+        return product, local_count + _PROVIDER_STOCK_CACHE[product_id][0]
+
+    prov = await get_provider(provider_id)
+    if not prov:
+        return product, local_count
+
+    prov_dict = dict(prov)
+    from providers_engine import get_provider_adapter
+    adapter = get_provider_adapter(
+        prov_dict['base_url'],
+        prov_dict['api_key'],
+        field_mapping=prov_dict.get('field_mapping')
+    )
+    prov_pid_str = str(prov_pid).strip()
+
+    sync_fixed_deltas = (await get_setting("auto_sync_fixed_prices", "1")) == "1"
+
+    stock_res, cost_res = await asyncio.gather(
+        asyncio.wait_for(adapter.fetch_stock(prov_pid_str), timeout=7.0),
+        asyncio.wait_for(adapter.fetch_live_product_price(prov_pid_str, max(1, int(quantity))), timeout=7.0),
+        return_exceptions=True
+    )
+
+    prov_stock = None
+    if not isinstance(stock_res, Exception) and stock_res is not None:
+        prov_stock = int(stock_res)
+        set_cached_provider_stock(product_id, prov_stock)
+    elif product_id in _PROVIDER_STOCK_CACHE:
+        prov_stock = _PROVIDER_STOCK_CACHE[product_id][0]
+    else:
+        prov_stock = 0
+
+    live_cost = None
+    if not isinstance(cost_res, Exception) and cost_res is not None:
+        try:
+            live_cost = float(cost_res)
+        except (ValueError, TypeError):
+            live_cost = None
+
+    price_changed = False
+    if live_cost is not None and live_cost > 0:
+        cur_price = float(prod_dict.get('price') or 0.0)
+        last_cost = float(prod_dict.get('last_provider_cost') or 0.0)
+        p_type = prod_dict.get('pricing_type') or 'fixed'
+        m_val = float(prod_dict.get('margin_value') or 0.0)
+        min_p = float(prod_dict.get('min_price') or 0.0)
+
+        new_selling_price, price_changed = _compute_synced_selling_price(
+            p_type, m_val, min_p, cur_price, last_cost, live_cost, sync_fixed_deltas=sync_fixed_deltas
+        )
+        if price_changed or abs(live_cost - last_cost) > 0.005:
+            try:
+                async with aiosqlite.connect(DB_NAME, timeout=15.0) as update_db:
+                    await update_db.execute("PRAGMA busy_timeout = 15000;")
+                    await update_db.execute(
+                        "UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;",
+                        (live_cost, new_selling_price, product_id)
+                    )
+                    await update_db.commit()
+                if price_changed:
+                    logger.info(f"Synced live price for product {product_id}: ${cur_price:.2f} -> ${new_selling_price:.2f} (provider cost: ${live_cost:.2f})")
+                    await cancel_all_pre_orders_for_product(product_id, bot=bot, reason="price_changed")
+                product = await get_product(product_id)
+            except Exception as upd_err:
+                logger.warning(f"Failed updating synced product price for {product_id}: {upd_err}")
+
+    _PROVIDER_PRICE_SYNC_CACHE[product_id] = time.time()
+    return product, local_count + int(prov_stock)
+
+async def get_all_stock_counts(products=None, use_cache=True, local_only=False, force_refresh=False, bot=None, provider_id=None):
+    """
+    Optimized batch function to get stock counts & sync prices for all provider products in 1 DB connection
+    with intelligent in-memory TTL caching and single bulk requests per provider.
+    """
+    import time
+    import inspect
     now_ts = time.time()
     stock_counts = {}
+    if force_refresh:
+        use_cache = False
     
     async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
         await db.execute("PRAGMA busy_timeout = 30000;")
@@ -933,16 +1084,27 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
             for r in rows:
                 stock_counts[r['product_id']] = r['cnt']
 
-        # 2. Get all provider-linked products
-        async with db.execute("""
+        # 2. Get all provider-linked products (including last_provider_cost)
+        query_prov = """
             SELECT p.id as product_id, p.provider_id, p.provider_product_id,
-                   p.pricing_type, p.margin_value, p.min_price, p.price, p.requires_email,
+                   p.pricing_type, p.margin_value, p.min_price, p.price, p.last_provider_cost, p.requires_email,
                    pr.base_url, pr.api_key, pr.field_mapping
             FROM products p
             JOIN providers pr ON p.provider_id = pr.id
-            WHERE p.provider_id IS NOT NULL;
-        """) as cursor:
+            WHERE p.provider_id IS NOT NULL
+        """
+        params_prov = ()
+        if provider_id is not None:
+            query_prov += " AND p.provider_id = ?;"
+            params_prov = (int(provider_id),)
+        else:
+            query_prov += ";"
+        async with db.execute(query_prov, params_prov) as cursor:
             prov_prods = await cursor.fetchall()
+
+        async with db.execute("SELECT value FROM settings WHERE key = 'auto_sync_fixed_prices';") as sc:
+            s_row = await sc.fetchone()
+            sync_fixed_deltas = (s_row[0] == "1") if s_row else True
 
     if prov_prods and local_only:
         for item in prov_prods:
@@ -951,7 +1113,7 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
                 stock_counts[it_pid] = stock_counts.get(it_pid, 0) + _PROVIDER_STOCK_CACHE[it_pid][0]
     elif prov_prods:
         import asyncio
-        from utils import matches_product_id, extract_price_from_dict, calculate_dynamic_selling_price
+        from utils import matches_product_id, extract_price_from_dict
         from providers_engine import get_provider_adapter
 
         # Group items by provider to do 1 single bulk fetch per provider
@@ -968,6 +1130,7 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
             providers_group[pr_id]["items"].append(item)
 
         pending_db_updates = []
+        price_changed_pids = []
 
         async def process_provider_products(pr_id, pr_data):
             base_url = pr_data["base_url"]
@@ -994,9 +1157,14 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
                 return
 
             adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
+            custom_price_field = (adapter.field_mapping.get("price_field") or "").strip() or None
             catalog_products = None
             try:
-                catalog_products = await asyncio.wait_for(adapter.fetch_catalog(), timeout=12.0)
+                sig = inspect.signature(adapter.fetch_catalog)
+                if force_refresh and "force_refresh" in sig.parameters:
+                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(force_refresh=True), timeout=25.0)
+                else:
+                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(), timeout=15.0)
             except Exception as e:
                 logger.warning(f"Error fetching bulk catalog for provider {pr_id}: {e}")
 
@@ -1013,29 +1181,29 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
                         if matches_product_id(p, prov_pid):
                             num_s = int(p.get('stock', 0))
                             set_cached_provider_stock(it_pid, num_s)
+                            _PROVIDER_PRICE_SYNC_CACHE[it_pid] = time.time()
                             stock_counts[it_pid] = local_c + num_s
                             matched = True
                             
                             # Collect DB updates in memory to execute in a single batch transaction
                             try:
-                                p_cost = float(extract_price_from_dict(p) or 0.0)
+                                p_cost = float(extract_price_from_dict(p, custom_field=custom_price_field) or 0.0)
                                 p_req_email = 1 if (p.get('requires_email') or p.get('requiresEmailActivation')) else 0
                                 cur_req = int(it['requires_email'] or 0) if 'requires_email' in it.keys() else 0
                                 new_req = 1 if (p_req_email or cur_req) else 0
                                 cur_price = float(it['price'] or 0.0)
+                                last_cost = float(it['last_provider_cost'] or 0.0) if 'last_provider_cost' in it.keys() else 0.0
                                 if p_cost > 0:
                                     p_type = it['pricing_type'] or 'fixed'
                                     m_val = float(it['margin_value'] or 0.0)
                                     min_p = float(it['min_price'] or 0.0)
-                                    if p_type in ['margin_fixed', 'margin_percent']:
-                                        new_selling_price = calculate_dynamic_selling_price(p_type, m_val, min_p, p_cost, cur_price)
+                                    new_selling_price, p_changed = _compute_synced_selling_price(
+                                        p_type, m_val, min_p, cur_price, last_cost, p_cost, sync_fixed_deltas=sync_fixed_deltas
+                                    )
+                                    if p_changed:
+                                        price_changed_pids.append(it_pid)
+                                    if p_changed or abs(p_cost - last_cost) > 0.005 or new_req != cur_req:
                                         pending_db_updates.append((p_cost, new_selling_price, new_req, it_pid))
-                                    elif cur_price <= 0:
-                                        # Auto-heal previously imported $0.00 products
-                                        healed_price = max(p_cost, min_p)
-                                        pending_db_updates.append((p_cost, healed_price, new_req, it_pid))
-                                    else:
-                                        pending_db_updates.append((p_cost, cur_price, new_req, it_pid))
                                 elif new_req != cur_req:
                                     pending_db_updates.append((None, None, new_req, it_pid))
                             except Exception as sync_p_err:
@@ -1045,21 +1213,43 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
                 if not matched:
                     unmatched_items.append(it)
 
-            # For any item not found in bulk list (or if bulk list failed), fetch individually concurrently with short timeout
+            # For any item not found in bulk list (or if bulk list failed), fetch stock AND live price individually
             if unmatched_items:
                 async def _fetch_single_item(it):
                     it_pid = it['product_id']
                     prov_pid = it['provider_product_id']
                     local_c = stock_counts.get(it_pid, 0)
                     try:
-                        found_stock = await asyncio.wait_for(adapter.fetch_stock(prov_pid), timeout=6.0)
+                        stk_res, cost_res = await asyncio.gather(
+                            asyncio.wait_for(adapter.fetch_stock(prov_pid), timeout=6.0),
+                            asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, 1), timeout=6.0),
+                            return_exceptions=True
+                        )
+                        found_stock = None if isinstance(stk_res, Exception) else stk_res
                         if found_stock is not None:
                             set_cached_provider_stock(it_pid, found_stock)
-                            stock_counts[it_pid] = local_c + found_stock
+                            stock_counts[it_pid] = local_c + int(found_stock)
                         elif it_pid in _PROVIDER_STOCK_CACHE:
                             stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
                         else:
                             stock_counts[it_pid] = local_c
+
+                        if not isinstance(cost_res, Exception) and cost_res is not None and float(cost_res) > 0:
+                            p_cost = float(cost_res)
+                            cur_price = float(it['price'] or 0.0)
+                            last_cost = float(it['last_provider_cost'] or 0.0) if 'last_provider_cost' in it.keys() else 0.0
+                            p_type = it['pricing_type'] or 'fixed'
+                            m_val = float(it['margin_value'] or 0.0)
+                            min_p = float(it['min_price'] or 0.0)
+                            cur_req = int(it['requires_email'] or 0) if 'requires_email' in it.keys() else 0
+                            new_selling_price, p_changed = _compute_synced_selling_price(
+                                p_type, m_val, min_p, cur_price, last_cost, p_cost, sync_fixed_deltas=sync_fixed_deltas
+                            )
+                            _PROVIDER_PRICE_SYNC_CACHE[it_pid] = time.time()
+                            if p_changed:
+                                price_changed_pids.append(it_pid)
+                            if p_changed or abs(p_cost - last_cost) > 0.005:
+                                pending_db_updates.append((p_cost, new_selling_price, cur_req, it_pid))
                     except Exception:
                         if it_pid in _PROVIDER_STOCK_CACHE:
                             stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
@@ -1090,6 +1280,12 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False):
                     await update_db.commit()
             except Exception as batch_upd_err:
                 logger.debug(f"Batch product sync error: {batch_upd_err}")
+
+        for changed_pid in set(price_changed_pids):
+            try:
+                await cancel_all_pre_orders_for_product(changed_pid, bot=bot, reason="price_changed")
+            except Exception as po_err:
+                logger.debug(f"Pre-order cancel check failed for {changed_pid}: {po_err}")
 
     # Fill default 0 for products with no stock
     if products:
@@ -1159,33 +1355,47 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
             raw_pid = product['provider_product_id']
             prov_pid = str(raw_pid).strip() if raw_pid is not None else ""
 
-            # PRE-PURCHASE LIVE COST SYNC (Auto-updates cost & dynamic price without falsely halting discounted/custom-priced orders)
+            # PRE-PURCHASE LIVE COST SYNC & LOSS/HIKE PROTECTION
             prod_dict = dict(product)
             pricing_type = prod_dict.get('pricing_type') or 'fixed'
             margin_value = float(prod_dict.get('margin_value') or 0.0)
             min_price = float(prod_dict.get('min_price') or 0.0)
+            cur_base_price = float(prod_dict.get('price') or 0.0)
+            last_cost = float(prod_dict.get('last_provider_cost') or 0.0)
+            sync_fixed_deltas = (await get_setting("auto_sync_fixed_prices", "1")) == "1"
             
             try:
-                live_cost = await asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, remaining_qty), timeout=6.0)
+                live_cost = await asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, remaining_qty), timeout=7.0)
             except Exception as e:
                 logger.warning(f"Failed to fetch live product price for {product_id}: {e}")
                 live_cost = None
 
             if live_cost is not None and live_cost > 0:
-                from utils import calculate_dynamic_selling_price
-                cur_base_price = float(prod_dict.get('price') or 0.0)
-                required_selling_price = calculate_dynamic_selling_price(
-                    pricing_type=pricing_type,
-                    margin_value=margin_value,
-                    min_price=min_price,
-                    provider_cost=live_cost,
-                    fallback_fixed_price=cur_base_price if cur_base_price > 0 else live_cost
+                required_selling_price, p_changed = _compute_synced_selling_price(
+                    pricing_type, margin_value, min_price, cur_base_price, last_cost, live_cost, sync_fixed_deltas=sync_fixed_deltas
                 )
-                if pricing_type in ['margin_fixed', 'margin_percent'] or cur_base_price <= 0:
+                if p_changed or abs(live_cost - last_cost) > 0.005 or cur_base_price <= 0:
                     await db.execute("UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;", (live_cost, required_selling_price, product_id))
-                else:
-                    await db.execute("UPDATE products SET last_provider_cost = ? WHERE id = ?;", (live_cost, product_id))
-                await db.commit()
+                    await db.commit()
+                    _PROVIDER_PRICE_SYNC_CACHE[product_id] = __import__('time').time()
+
+                # 1. Hard loss prevention (runs unconditionally): never pay provider more than what buyer pays
+                if (final_price_per_item + 0.005) < live_cost:
+                    safe_new = round(max(required_selling_price, live_cost), 2)
+                    raise Exception(f"PRICE_CHANGED:{final_price_per_item:.2f}:{safe_new:.2f}")
+
+                if p_changed or cur_base_price <= 0:
+                    async with db.execute("SELECT * FROM products WHERE id = ?;", (product_id,)) as r_cur:
+                        refreshed_prod = await r_cur.fetchone()
+                    new_effective_price = await get_effective_product_price(refreshed_prod or product, user_id, quantity)
+
+                    # 2. If provider raised cost such that buyer's target selling price went up, halt & ask confirmation / return 409
+                    if (new_effective_price - final_price_per_item) > 0.005:
+                        raise Exception(f"PRICE_CHANGED:{final_price_per_item:.2f}:{new_effective_price:.2f}")
+
+                    # 3. If provider cost dropped and buyer is paying live from wallet/API, pass lower price
+                    if not skip_balance_check and new_effective_price < final_price_per_item - 0.005 and (new_effective_price + 0.005) >= live_cost:
+                        final_price_per_item = new_effective_price
 
             cost_to_pass = float(live_cost if (live_cost is not None and live_cost > 0) else (prod_dict.get('last_provider_cost') or prod_dict.get('price') or 1.00))
             try:
@@ -1199,7 +1409,22 @@ async def _buy_product_internal(user_id, product_id, quantity=1, skip_balance_ch
                 if delivered_items:
                     provider_stock_data.extend(delivered_items)
             except Exception as pe:
-                err_lower = str(pe).lower()
+                err_str = str(pe)
+                err_lower = err_str.lower()
+                if "price_changed:" in err_lower:
+                    try:
+                        parts = err_str.split("PRICE_CHANGED:")[1].split(":")
+                        prov_new_cost = float(parts[1].strip()) if len(parts) >= 2 else float(parts[0].strip())
+                        if prov_new_cost > 0:
+                            req_sp, _ = _compute_synced_selling_price(
+                                pricing_type, margin_value, min_price, cur_base_price, last_cost, prov_new_cost, sync_fixed_deltas=sync_fixed_deltas
+                            )
+                            await db.execute("UPDATE products SET last_provider_cost = ?, price = ? WHERE id = ?;", (prov_new_cost, req_sp, product_id))
+                            await db.commit()
+                            raise Exception(f"PRICE_CHANGED:{final_price_per_item:.2f}:{req_sp:.2f}")
+                    except Exception as inner_pc:
+                        if "PRICE_CHANGED:" in str(inner_pc):
+                            raise inner_pc
                 if "email requis" in err_lower or "email required" in err_lower or "requires email" in err_lower:
                     await db.execute("UPDATE products SET requires_email = 1 WHERE id = ?;", (product_id,))
                     await db.commit()
@@ -2314,4 +2539,115 @@ async def broadcast_new_product_to_users(bot, product_id):
             
     import asyncio
     asyncio.create_task(_run_broadcast())
+
+async def sync_provider_catalog_now(provider_id: Optional[int] = None, force_refresh: bool = True, bot=None) -> Dict[str, Any]:
+    """
+    Immediately synchronizes prices & stock for all products from one provider (or all providers).
+    Returns a summary dict with total checked count and detailed list of price changes.
+    """
+    before_map = {}
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
+        db.row_factory = aiosqlite.Row
+        q = "SELECT id, name_en, name_ar, price, last_provider_cost, provider_id FROM products WHERE provider_id IS NOT NULL"
+        params = ()
+        if provider_id is not None:
+            q += " AND provider_id = ?;"
+            params = (int(provider_id),)
+        else:
+            q += ";"
+        async with db.execute(q, params) as cur:
+            before_rows = await cur.fetchall()
+            for r in before_rows:
+                before_map[r['id']] = dict(r)
+                if force_refresh:
+                    invalidate_provider_stock_cache(r['id'])
+
+    if not before_map:
+        return {"checked": 0, "changes": [], "stock_counts": {}}
+
+    stock_counts = await get_all_stock_counts(
+        use_cache=not force_refresh,
+        force_refresh=force_refresh,
+        bot=bot,
+        provider_id=provider_id
+    )
+
+    changes = []
+    async with aiosqlite.connect(DB_NAME, timeout=30.0) as db:
+        await db.execute("PRAGMA busy_timeout = 30000;")
+        db.row_factory = aiosqlite.Row
+        q = "SELECT id, name_en, name_ar, price, last_provider_cost FROM products WHERE provider_id IS NOT NULL"
+        params = ()
+        if provider_id is not None:
+            q += " AND provider_id = ?;"
+            params = (int(provider_id),)
+        else:
+            q += ";"
+        async with db.execute(q, params) as cur:
+            after_rows = await cur.fetchall()
+            for r in after_rows:
+                pid = r['id']
+                prev = before_map.get(pid)
+                if not prev:
+                    continue
+                old_p = round(float(prev.get('price') or 0.0), 2)
+                new_p = round(float(r['price'] or 0.0), 2)
+                old_c = round(float(prev.get('last_provider_cost') or 0.0), 2)
+                new_c = round(float(r['last_provider_cost'] or 0.0), 2)
+                if abs(new_p - old_p) > 0.005 or (old_c > 0 and abs(new_c - old_c) > 0.005):
+                    changes.append({
+                        "id": pid,
+                        "name_en": r['name_en'],
+                        "name_ar": r['name_ar'],
+                        "old_price": old_p,
+                        "new_price": new_p,
+                        "old_cost": old_c,
+                        "new_cost": new_c,
+                        "stock": stock_counts.get(pid, 0)
+                    })
+
+    return {
+        "checked": len(before_map),
+        "changes": changes,
+        "stock_counts": stock_counts
+    }
+
+async def start_provider_sync_loop(bot):
+    """
+    Background loop running every 3 minutes to keep provider prices and stock synchronized
+    automatically even when no user is actively browsing the shop.
+    """
+    from utils import send_message_with_retry
+    sync_logger = logging.getLogger("provider_auto_sync")
+    sync_logger.info("Provider auto price/stock sync loop initialized.")
+    await asyncio.sleep(25)
+
+    while True:
+        try:
+            res = await sync_provider_catalog_now(provider_id=None, force_refresh=True, bot=bot)
+            changes = res.get("changes") or []
+            if changes:
+                sync_logger.info(f"Background sync updated prices/costs for {len(changes)} provider product(s).")
+                admin_ids = await get_admin_ids()
+                if admin_ids:
+                    lines = ["🔔 *تحديث تلقائي لأسعار المزودين / Provider Price Auto-Sync*\n"]
+                    for ch in changes[:15]:
+                        pname = (ch.get('name_ar') or ch.get('name_en') or f"#{ch['id']}").replace("`", "'")
+                        lines.append(
+                            f"• `{pname}`\n"
+                            f"  💵 التكلفة: `${ch['old_cost']:.2f}` ➡️ `${ch['new_cost']:.2f}` | البيع: `${ch['old_price']:.2f}` ➡️ `${ch['new_price']:.2f}`"
+                        )
+                    if len(changes) > 15:
+                        lines.append(f"\n_... +{len(changes) - 15} more items updated_")
+                    alert_txt = "\n".join(lines)
+                    for aid in admin_ids:
+                        try:
+                            await send_message_with_retry(bot.send_message, chat_id=aid, text=alert_txt, parse_mode="Markdown")
+                        except Exception:
+                            pass
+        except Exception as e:
+            sync_logger.error(f"Error in provider auto sync loop: {e}")
+        await asyncio.sleep(180)
+
 

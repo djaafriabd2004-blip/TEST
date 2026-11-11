@@ -16,6 +16,9 @@ from utils import (
 
 logger = logging.getLogger(__name__)
 
+_PROVIDER_QUOTE_ENDPOINT_CACHE: Dict[str, Tuple[Optional[str], float]] = {}  # {base_url: (working_quote_url_or_None, ts)}
+_QUOTE_CACHE_TTL = 600.0
+
 
 class BaseProviderAdapter:
     """
@@ -133,7 +136,11 @@ class BaseProviderAdapter:
             f"{self.base_url}/api/v1/products/{prov_pid}",
             f"{self.base_url}/v1/products/{prov_pid}",
             f"{self.base_url}/api/products/{prov_pid}",
-            f"{self.base_url}/products/{prov_pid}"
+            f"{self.base_url}/products/{prov_pid}",
+            f"{self.base_url}/api/reseller/products/{prov_pid}",
+            f"{self.base_url}/reseller/products/{prov_pid}",
+            f"{self.base_url}/api/v1/catalog/{prov_pid}",
+            f"{self.base_url}/v1/catalog/{prov_pid}"
         ]
 
         async def _req(s):
@@ -182,17 +189,83 @@ class BaseProviderAdapter:
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         """
         Fetches the live wholesale cost per unit directly from provider before purchase.
+        Supports quote endpoints (/api/reseller/quote, /api/v1/quotes) and product detail endpoints.
         """
         prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
         custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+        pid_field = (self.field_mapping.get("buy_pid_field") or "").strip() or "product_id"
+        qty_field = (self.field_mapping.get("buy_qty_field") or "").strip() or "quantity"
+
         endpoints = [
+            f"{self.base_url}/api/reseller/products/{prov_pid}",
+            f"{self.base_url}/reseller/products/{prov_pid}",
             f"{self.base_url}/api/v1/products/{prov_pid}",
             f"{self.base_url}/v1/products/{prov_pid}",
             f"{self.base_url}/api/products/{prov_pid}",
-            f"{self.base_url}/products/{prov_pid}"
+            f"{self.base_url}/products/{prov_pid}",
+            f"{self.base_url}/api/v1/catalog/{prov_pid}",
+            f"{self.base_url}/v1/catalog/{prov_pid}"
+        ]
+        quote_endpoints = [
+            f"{self.base_url}/api/reseller/quote",
+            f"{self.base_url}/reseller/quote",
+            f"{self.base_url}/api/v1/quotes",
+            f"{self.base_url}/v1/quotes",
+            f"{self.base_url}/api/quote",
+            f"{self.base_url}/quote"
         ]
 
+        async def _try_quote(s: aiohttp.ClientSession, q_url: str) -> Optional[float]:
+            q_payload: Dict[str, Any] = {
+                "product_id": item_id,
+                "quantity": int(quantity),
+                "qty": int(quantity),
+                pid_field: item_id,
+                qty_field: int(quantity)
+            }
+            try:
+                async with s.post(q_url, headers=self.get_headers(), json=q_payload, timeout=aiohttp.ClientTimeout(total=6, connect=3)) as q_resp:
+                    if q_resp.status in [200, 201]:
+                        q_data = await q_resp.json(content_type=None)
+                        if isinstance(q_data, dict):
+                            inner = q_data.get('data') if isinstance(q_data.get('data'), dict) else q_data
+                            u_price = extract_price_from_dict(inner, custom_field=custom_price_field)
+                            if u_price is not None and float(u_price) > 0:
+                                return float(u_price)
+                            tot_p = inner.get('total_price') or inner.get('total')
+                            if tot_p is not None and int(quantity) > 0:
+                                try:
+                                    t_val = float(tot_p)
+                                    if t_val > 0:
+                                        return round(t_val / int(quantity), 4)
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+            return None
+
         async def _req(s):
+            now_ts = time.time()
+            cached_q = _PROVIDER_QUOTE_ENDPOINT_CACHE.get(self.base_url)
+
+            # 1. If we know this provider supports a quote endpoint, try it FIRST (gives live API/reseller price)
+            if cached_q and cached_q[0] and (now_ts - cached_q[1]) < _QUOTE_CACHE_TTL:
+                q_price = await _try_quote(s, cached_q[0])
+                if q_price is not None and q_price > 0:
+                    return q_price
+
+            # 2. Probe quote endpoints automatically if not yet cached as unsupported
+            if not cached_q or (now_ts - cached_q[1]) >= _QUOTE_CACHE_TTL:
+                found_q_ep = None
+                for q_ep in quote_endpoints:
+                    q_price = await _try_quote(s, q_ep)
+                    if q_price is not None and q_price > 0:
+                        _PROVIDER_QUOTE_ENDPOINT_CACHE[self.base_url] = (q_ep, now_ts)
+                        return q_price
+                _PROVIDER_QUOTE_ENDPOINT_CACHE[self.base_url] = (found_q_ep, now_ts)
+
+            # 3. Try single-product detail endpoints
             for url in endpoints:
                 try:
                     async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=8, connect=4)) as resp:
@@ -201,11 +274,12 @@ class BaseProviderAdapter:
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
                                 price_val = extract_price_from_dict(single_p, custom_field=custom_price_field)
-                                if price_val is not None:
+                                if price_val is not None and float(price_val) > 0:
                                     return float(price_val)
                 except Exception:
                     pass
-            # Fallback to catalog search
+
+            # 4. Fallback to catalog search
             catalog = await self.fetch_catalog(s)
             if catalog:
                 for p in catalog:
@@ -829,6 +903,9 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                             new_price = details.get("current_unit_price") if isinstance(details, dict) else None
                             new_ver = details.get("price_version") if isinstance(details, dict) else None
                             if new_price and float(new_price) > 0:
+                                if expected_price is not None and float(new_price) > float(expected_price) + 0.005:
+                                    logger.warning(f"Pandora cost increased from {expected_price} to {new_price}, halting order to update price first.")
+                                    raise Exception(f"PRICE_CHANGED:{float(expected_price):.2f}:{float(new_price):.2f}")
                                 logger.info(f"Pandora price changed to {new_price} (version: {new_ver}), retrying order...")
                                 buy_payload["expected_unit_price"] = str(new_price)
                                 if new_ver:
@@ -840,7 +917,7 @@ class PandoraProviderAdapter(BaseProviderAdapter):
                                         last_err = await self._parse_error_response(retry_resp)
                                         raise Exception(f"Provider error: {last_err}")
                     except Exception as retry_e:
-                        if "Provider error:" in str(retry_e):
+                        if "PRICE_CHANGED:" in str(retry_e) or "Provider error:" in str(retry_e):
                             raise retry_e
                     if not buy_data:
                         last_err = await self._parse_error_response(resp)
@@ -1060,6 +1137,7 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
 
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         prov_pid = str(provider_product_id).strip()
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
         url = f"{self.base_url}/v1/products/{prov_pid}"
         async def _req(s):
             for attempt in range(2):
@@ -1068,8 +1146,9 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
                         if resp.status == 200:
                             data = await resp.json(content_type=None)
                             if isinstance(data, dict):
-                                price_val = extract_price_from_dict(data)
-                                if price_val is not None:
+                                single_p = data.get('product') or data.get('data') or data
+                                price_val = extract_price_from_dict(single_p, custom_field=custom_price_field)
+                                if price_val is not None and float(price_val) > 0:
                                     return float(price_val)
                 except Exception as e:
                     logger.debug(f"ProdSeller price fetch {url} attempt {attempt+1} failed: {e}")
@@ -1385,6 +1464,8 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         async def _req(s):
             # 1. Try single product detail endpoints first
             for url in [
+                f"{self.base_url}/api/reseller/products/{prov_pid}",
+                f"{self.base_url}/reseller/products/{prov_pid}",
                 f"{self.base_url}/api/v1/products/{prov_pid}",
                 f"{self.base_url}/api/products/{prov_pid}",
                 f"{self.base_url}/products/{prov_pid}"
@@ -1468,8 +1549,24 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
 
         async def _req(s):
-            # 1. Try single product detail endpoints first
+            # 1. Try quote endpoints FIRST (returns real live/tiered API cost charged at checkout)
+            for quote_url in [f"{self.base_url}/api/reseller/quote", f"{self.base_url}/reseller/quote", f"{self.base_url}/api/v1/quotes"]:
+                try:
+                    async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity), "qty": int(quantity)}, timeout=aiohttp.ClientTimeout(total=6, connect=3)) as q_resp:
+                        if q_resp.status in [200, 201]:
+                            q_data = await q_resp.json(content_type=None)
+                            if isinstance(q_data, dict):
+                                inner = q_data.get('data') if isinstance(q_data.get('data'), dict) else q_data
+                                u_price = extract_price_from_dict(inner, custom_field=custom_price_field)
+                                if u_price is not None and float(u_price) > 0:
+                                    return float(u_price)
+                except Exception:
+                    pass
+
+            # 2. Try single product detail endpoints
             for url in [
+                f"{self.base_url}/api/reseller/products/{prov_pid}",
+                f"{self.base_url}/reseller/products/{prov_pid}",
                 f"{self.base_url}/api/v1/products/{prov_pid}",
                 f"{self.base_url}/api/products/{prov_pid}",
                 f"{self.base_url}/products/{prov_pid}"
@@ -1481,23 +1578,11 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
                             if isinstance(data, dict):
                                 single_p = data.get('product') or data.get('data') or data
                                 u_price = extract_price_from_dict(single_p, custom_field=custom_price_field)
-                                if u_price is not None:
+                                if u_price is not None and float(u_price) > 0:
                                     return float(u_price)
                 except Exception:
                     pass
 
-            # 2. Try /api/reseller/quote
-            try:
-                quote_url = f"{self.base_url}/api/reseller/quote"
-                async with s.post(quote_url, headers=self.get_headers(), json={"product_id": item_id, "quantity": int(quantity), "qty": int(quantity)}, timeout=aiohttp.ClientTimeout(total=8, connect=4)) as q_resp:
-                    if q_resp.status == 200:
-                        q_data = await q_resp.json(content_type=None)
-                        if isinstance(q_data, dict):
-                            u_price = extract_price_from_dict(q_data, custom_field=custom_price_field)
-                            if u_price is not None:
-                                return float(u_price)
-            except Exception:
-                pass
             # 3. Fallback to catalog
             catalog = await self.fetch_catalog(s)
             if catalog:
@@ -1615,7 +1700,10 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
 # 7. Roboticvn Customer API v2 Adapter (https://api.roboticvn.com/api/v2/docs)
 # -------------------------------------------------------------------------
 _ROBOTICVN_CATALOG_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
-_ROBOTICVN_CACHE_TTL = 900.0  # 15 minutes TTL to prevent excessive API usage and rate limits
+_ROBOTICVN_CATALOG_LOCKS: Dict[str, asyncio.Lock] = {}
+_ROBOTICVN_QUOTE_CACHE: Dict[Tuple[str, str, Optional[str], int], Tuple[float, float]] = {}
+_ROBOTICVN_CACHE_TTL = 180.0  # 3 minutes catalog TTL with per-key Lock and polite concurrency
+_ROBOTICVN_QUOTE_TTL = 15.0   # 15 seconds live quote TTL per product/variant
 
 class RoboticvnProviderAdapter(BaseProviderAdapter):
     """
@@ -1651,6 +1739,50 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                 return p_id, v_id
         return prov_pid_str, None
 
+    @staticmethod
+    def _extract_variant_usd_price(v: Dict[str, Any]) -> float:
+        prices = v.get("prices") or {}
+        price_val = 0.0
+        if isinstance(prices, dict):
+            for k in ("reseller_usd", "sale_usd", "discounted_usd", "final_usd", "usd", "USD"):
+                raw = prices.get(k)
+                if raw is not None:
+                    try:
+                        val = float(raw)
+                        if val > 0:
+                            price_val = val
+                            break
+                    except Exception:
+                        pass
+            if price_val <= 0 and "vnd" in prices and prices["vnd"] is not None:
+                try:
+                    price_val = round(float(prices["vnd"]) / 25400.0, 2)
+                except Exception:
+                    pass
+        elif isinstance(prices, (int, float, str)):
+            try:
+                price_val = float(prices)
+            except Exception:
+                pass
+        if price_val <= 0:
+            fallback = extract_price_from_dict(v)
+            if fallback is not None and float(fallback) > 0:
+                price_val = float(fallback)
+        return max(0.0, float(price_val))
+
+    def _update_cached_variant(self, cache_key: str, provider_product_id: Any, var_id: Optional[str], price: Optional[float] = None, stock: Optional[int] = None):
+        if cache_key not in _ROBOTICVN_CATALOG_CACHE:
+            return
+        cached_list, _ = _ROBOTICVN_CATALOG_CACHE[cache_key]
+        for p in cached_list:
+            if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                if price is not None and price > 0:
+                    p["price"] = float(price)
+                    p["original_price"] = float(price)
+                if stock is not None:
+                    p["stock"] = int(stock)
+                break
+
     def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers = {
             "x-api-key": self.api_key,
@@ -1667,213 +1799,214 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
     async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
         Fetches master products from /api/v2/products and variants for each product.
-        Uses in-memory caching (15 min) and polite rate-limiting (max 2 concurrent requests, 0.2s pause)
-        to prevent hitting Roboticvn's rate limits or triggering account suspension.
+        Uses in-memory caching (3 min), per-provider asyncio.Lock (prevents duplicate concurrent bursts),
+        and polite rate-limiting (max 2 concurrent requests, 0.25s pause) to prevent rate limits.
         """
         cache_key = f"{self.base_url}:{self.api_key}"
         now_ts = time.time()
-        
-        # 1. Check in-memory cache to prevent excessive requests
+
+        # 1. Fast check before acquiring lock
         if not force_refresh and cache_key in _ROBOTICVN_CATALOG_CACHE:
             cached_list, cached_time = _ROBOTICVN_CATALOG_CACHE[cache_key]
             if (now_ts - cached_time) < _ROBOTICVN_CACHE_TTL and cached_list:
                 logger.info(f"Serving Roboticvn catalog from memory cache ({len(cached_list)} products)")
                 return cached_list
 
-        async def _fetch_master_products(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
-            all_masters = []
-            limit = 100
-            offset = 0
-            while True:
-                url = f"{self.api_v2_url}/products?limit={limit}&offset={offset}&locale=en-US"
-                try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as resp:
-                        if resp.status == 200:
-                            data = await resp.json(content_type=None)
-                            items = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                            if not items:
-                                break
-                            all_masters.extend(items)
-                            meta = data.get("meta", {}) if isinstance(data, dict) else {}
-                            total = meta.get("count") or meta.get("total")
-                            if total and len(all_masters) >= total:
-                                break
-                            if len(items) < limit:
-                                break
-                            offset += limit
-                        elif resp.status == 429:
-                            logger.warning(f"Roboticvn rate limit (429) on products list. Sleeping 2.5s...")
-                            await asyncio.sleep(2.5)
-                            async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as retry_resp:
-                                if retry_resp.status == 200:
-                                    data = await retry_resp.json(content_type=None)
-                                    items = data.get("data", []) if isinstance(data, dict) else []
-                                    all_masters.extend(items)
-                            break
-                        else:
-                            logger.warning(f"Roboticvn products list returned status {resp.status}")
-                            break
-                except Exception as e:
-                    logger.warning(f"Roboticvn master products fetch error on offset {offset}: {e}")
-                    break
-            return all_masters
+        lock = _ROBOTICVN_CATALOG_LOCKS.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            now_ts = time.time()
+            if not force_refresh and cache_key in _ROBOTICVN_CATALOG_CACHE:
+                cached_list, cached_time = _ROBOTICVN_CATALOG_CACHE[cache_key]
+                if (now_ts - cached_time) < _ROBOTICVN_CACHE_TTL and cached_list:
+                    logger.info(f"Serving Roboticvn catalog from memory cache ({len(cached_list)} products)")
+                    return cached_list
 
-        async def _fetch_single_product_variants(s: aiohttp.ClientSession, sem: asyncio.Semaphore, master_p: Dict[str, Any]) -> List[Dict[str, Any]]:
-            m_id = str(master_p.get("id") or "").strip()
-            if not m_id:
-                return []
-            m_title = (master_p.get("title") or master_p.get("name") or "Product").strip()
-            
-            async with sem:
-                await asyncio.sleep(0.2)  # Polite pause between requests to prevent rate limit
-                url = f"{self.api_v2_url}/products/{m_id}?locale=en-US"
-                try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
-                        if resp.status == 429:
-                            logger.warning(f"Roboticvn rate limit (429) on product {m_id}. Pausing 2.5s...")
-                            await asyncio.sleep(2.5)
-                            async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as retry_resp:
-                                resp = retry_resp
+            async def _fetch_master_products(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+                all_masters = []
+                limit = 100
+                offset = 0
+                while True:
+                    url = f"{self.api_v2_url}/products?limit={limit}&offset={offset}&locale=en-US"
+                    try:
+                        async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json(content_type=None)
+                                items = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                                if not items:
+                                    break
+                                all_masters.extend(items)
+                                meta = data.get("meta", {}) if isinstance(data, dict) else {}
+                                total = meta.get("count") or meta.get("total")
+                                if total and len(all_masters) >= total:
+                                    break
+                                if len(items) < limit:
+                                    break
+                                offset += limit
+                            elif resp.status == 429:
+                                logger.warning(f"Roboticvn rate limit (429) on products list. Sleeping 2.5s...")
+                                await asyncio.sleep(2.5)
+                                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as retry_resp:
+                                    if retry_resp.status == 200:
+                                        data = await retry_resp.json(content_type=None)
+                                        items = data.get("data", []) if isinstance(data, dict) else []
+                                        all_masters.extend(items)
+                                break
+                            else:
+                                logger.warning(f"Roboticvn products list returned status {resp.status}")
+                                break
+                    except Exception as e:
+                        logger.warning(f"Roboticvn master products fetch error on offset {offset}: {e}")
+                        break
+                return all_masters
 
-                        if resp.status == 200:
-                            p_json = await resp.json(content_type=None)
-                            p_data = p_json.get("data", {}) if isinstance(p_json, dict) else {}
-                            if not isinstance(p_data, dict):
-                                return []
-                            
-                            p_title = (p_data.get("title") or m_title).strip()
-                            p_desc = str(p_data.get("description") or "")
-                            variants = p_data.get("variants") or []
-                            
-                            if not variants or not isinstance(variants, list):
-                                return [{
-                                    "id": str(m_id),
-                                    "name": p_title,
-                                    "name_ar": p_title,
-                                    "name_en": p_title,
-                                    "name_ru": p_title,
-                                    "description": p_desc,
-                                    "description_ar": p_desc,
-                                    "description_en": p_desc,
-                                    "description_ru": p_desc,
-                                    "price": 0.0,
-                                    "original_price": 0.0,
-                                    "stock": 0,
-                                    "custom_emoji_id": None,
-                                    "requires_email": False,
-                                    "requiresEmailActivation": False
-                                }]
+            async def _fetch_single_product_variants(s: aiohttp.ClientSession, sem: asyncio.Semaphore, master_p: Dict[str, Any]) -> List[Dict[str, Any]]:
+                m_id = str(master_p.get("id") or "").strip()
+                if not m_id:
+                    return []
+                m_title = (master_p.get("title") or master_p.get("name") or "Product").strip()
+                
+                async with sem:
+                    await asyncio.sleep(0.25)  # Polite pause between requests to prevent rate limit
+                    url = f"{self.api_v2_url}/products/{m_id}?locale=en-US"
+                    try:
+                        async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
+                            if resp.status == 429:
+                                logger.warning(f"Roboticvn rate limit (429) on product {m_id}. Pausing 2.5s...")
+                                await asyncio.sleep(2.5)
+                                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as retry_resp:
+                                    resp = retry_resp
+
+                            if resp.status == 200:
+                                p_json = await resp.json(content_type=None)
+                                p_data = p_json.get("data", {}) if isinstance(p_json, dict) else {}
+                                if not isinstance(p_data, dict):
+                                    return []
                                 
-                            var_products = []
-                            for v in variants:
-                                if not isinstance(v, dict):
-                                    continue
-                                v_id = str(v.get("id") or "").strip()
-                                if not v_id:
-                                    continue
-                                v_title = (v.get("title") or "").strip()
+                                p_title = (p_data.get("title") or m_title).strip()
+                                p_desc = str(p_data.get("description") or "")
+                                variants = p_data.get("variants") or []
                                 
-                                if not v_title or v_title.lower() == p_title.lower():
-                                    display_name = p_title
-                                elif p_title.lower() in v_title.lower():
-                                    display_name = v_title
-                                else:
-                                    display_name = f"{p_title} - {v_title}"
+                                if not variants or not isinstance(variants, list):
+                                    return [{
+                                        "id": str(m_id),
+                                        "name": p_title,
+                                        "name_ar": p_title,
+                                        "name_en": p_title,
+                                        "name_ru": p_title,
+                                        "description": p_desc,
+                                        "description_ar": p_desc,
+                                        "description_en": p_desc,
+                                        "description_ru": p_desc,
+                                        "price": self._extract_variant_usd_price(p_data),
+                                        "original_price": self._extract_variant_usd_price(p_data),
+                                        "stock": 0,
+                                        "custom_emoji_id": None,
+                                        "requires_email": False,
+                                        "requiresEmailActivation": False
+                                    }]
                                     
-                                prices = v.get("prices") or {}
-                                price_val = 0.0
-                                if isinstance(prices, dict):
-                                    price_val = float(prices.get("usd") or prices.get("USD") or 0.0)
-                                    if price_val <= 0 and "vnd" in prices:
-                                        try:
-                                            price_val = round(float(prices["vnd"]) / 25400.0, 2)
-                                        except Exception:
-                                            pass
-                                elif isinstance(prices, (int, float)):
-                                    price_val = float(prices)
+                                var_products = []
+                                for v in variants:
+                                    if not isinstance(v, dict):
+                                        continue
+                                    v_id = str(v.get("id") or "").strip()
+                                    if not v_id:
+                                        continue
+                                    v_title = (v.get("title") or "").strip()
                                     
-                                in_stock = bool(v.get("in_stock", True))
-                                avail_qty = v.get("available_quantity")
-                                stock_val = int(avail_qty) if in_stock and avail_qty is not None else (100 if in_stock else 0)
-                                
-                                v_desc = str(v.get("description") or p_desc or "")
-                                if v.get("delivery_instructions"):
-                                    v_desc = (v_desc + "\n\nInstructions: " + str(v["delivery_instructions"])).strip()
-                                
-                                req_email = bool(v.get("manual_upgrade", False))
-                                composite_id = f"{m_id}:{v_id}"
-                                
-                                var_products.append({
-                                    "id": composite_id,
-                                    "variant_id": v_id,
-                                    "master_id": m_id,
-                                    "name": display_name,
-                                    "name_ar": display_name,
-                                    "name_en": display_name,
-                                    "name_ru": display_name,
-                                    "description": v_desc,
-                                    "description_ar": v_desc,
-                                    "description_en": v_desc,
-                                    "description_ru": v_desc,
-                                    "price": price_val,
-                                    "original_price": price_val,
-                                    "stock": stock_val,
-                                    "custom_emoji_id": None,
-                                    "requires_email": req_email,
-                                    "requiresEmailActivation": req_email
-                                })
-                            return var_products
-                        else:
-                            logger.warning(f"Failed to fetch Roboticvn product {m_id}: HTTP {resp.status}")
-                except Exception as e:
-                    logger.warning(f"Error fetching Roboticvn detail for {m_id}: {e}")
-                return []
+                                    if not v_title or v_title.lower() == p_title.lower():
+                                        display_name = p_title
+                                    elif p_title.lower() in v_title.lower():
+                                        display_name = v_title
+                                    else:
+                                        display_name = f"{p_title} - {v_title}"
+                                        
+                                    price_val = self._extract_variant_usd_price(v)
+                                        
+                                    in_stock = bool(v.get("in_stock", True))
+                                    avail_qty = v.get("available_quantity")
+                                    stock_val = int(avail_qty) if in_stock and avail_qty is not None else (100 if in_stock else 0)
+                                    
+                                    v_desc = str(v.get("description") or p_desc or "")
+                                    if v.get("delivery_instructions"):
+                                        v_desc = (v_desc + "\n\nInstructions: " + str(v["delivery_instructions"])).strip()
+                                    
+                                    req_email = bool(v.get("manual_upgrade", False))
+                                    composite_id = f"{m_id}:{v_id}"
+                                    
+                                    var_products.append({
+                                        "id": composite_id,
+                                        "variant_id": v_id,
+                                        "master_id": m_id,
+                                        "name": display_name,
+                                        "name_ar": display_name,
+                                        "name_en": display_name,
+                                        "name_ru": display_name,
+                                        "description": v_desc,
+                                        "description_ar": v_desc,
+                                        "description_en": v_desc,
+                                        "description_ru": v_desc,
+                                        "price": price_val,
+                                        "original_price": price_val,
+                                        "stock": stock_val,
+                                        "custom_emoji_id": None,
+                                        "requires_email": req_email,
+                                        "requiresEmailActivation": req_email
+                                    })
+                                return var_products
+                            else:
+                                logger.warning(f"Failed to fetch Roboticvn product {m_id}: HTTP {resp.status}")
+                    except Exception as e:
+                        logger.warning(f"Error fetching Roboticvn detail for {m_id}: {e}")
+                    return []
 
-        async def _run(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
-            masters = await _fetch_master_products(s)
-            if not masters:
-                if cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
-                    logger.warning("Serving Roboticvn catalog from previous cache due to empty response")
+            async def _run(s: aiohttp.ClientSession) -> List[Dict[str, Any]]:
+                masters = await _fetch_master_products(s)
+                if not masters:
+                    if cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
+                        logger.warning("Serving Roboticvn catalog from previous cache due to empty response")
+                        return _ROBOTICVN_CATALOG_CACHE[cache_key][0]
+                    return []
+                
+                # Use Semaphore(2) to prevent triggering Roboticvn rate limit
+                sem = asyncio.Semaphore(2)
+                tasks = [_fetch_single_product_variants(s, sem, m) for m in masters]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                final_catalog = []
+                for r in results:
+                    if isinstance(r, list):
+                        final_catalog.extend(r)
+                
+                # Save to memory cache
+                if final_catalog:
+                    _ROBOTICVN_CATALOG_CACHE[cache_key] = (final_catalog, time.time())
+                elif cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
                     return _ROBOTICVN_CATALOG_CACHE[cache_key][0]
-                return []
-            
-            # Use Semaphore(2) to prevent triggering Roboticvn rate limit
-            sem = asyncio.Semaphore(2)
-            tasks = [_fetch_single_product_variants(s, sem, m) for m in masters]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            final_catalog = []
-            for r in results:
-                if isinstance(r, list):
-                    final_catalog.extend(r)
-            
-            # Save to memory cache
-            if final_catalog:
-                _ROBOTICVN_CATALOG_CACHE[cache_key] = (final_catalog, time.time())
-            elif cache_key in _ROBOTICVN_CATALOG_CACHE and _ROBOTICVN_CATALOG_CACHE[cache_key][0]:
-                return _ROBOTICVN_CATALOG_CACHE[cache_key][0]
 
-            return final_catalog
+                return final_catalog
 
-        if session:
-            return await _run(session)
-        else:
-            async with aiohttp.ClientSession() as s:
-                return await _run(s)
+            if session:
+                return await _run(session)
+            else:
+                async with aiohttp.ClientSession() as s:
+                    return await _run(s)
 
     async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
         """
-        Fetches live stock using memory cache first, then Quote/Product detail endpoint.
+        Fetches live stock using unexpired catalog cache (<= 60s), or live Quote / Product detail endpoint.
         """
         pid, var_id = self._parse_pid_and_variant(provider_product_id)
         cache_key = f"{self.base_url}:{self.api_key}"
+        now_ts = time.time()
         
-        # 1. Check in-memory catalog cache first (zero requests!)
+        # 1. Check in-memory catalog cache ONLY if fresh (<= 60s)
         if cache_key in _ROBOTICVN_CATALOG_CACHE:
-            cached_list, _ = _ROBOTICVN_CATALOG_CACHE[cache_key]
-            for p in cached_list:
-                if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
-                    return int(p.get("stock", 0))
+            cached_list, cached_time = _ROBOTICVN_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < min(_ROBOTICVN_CACHE_TTL, 60.0):
+                for p in cached_list:
+                    if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
+                        return int(p.get("stock", 0))
 
         async def _req(s: aiohttp.ClientSession):
             if pid and var_id:
@@ -1888,10 +2021,14 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                         if q_resp.status == 200:
                             q_json = await q_resp.json(content_type=None)
                             q_data = q_json.get("data", {}) if isinstance(q_json, dict) else {}
+                            u_price = q_data.get("unit_price")
+                            live_p = float(u_price) if u_price is not None and float(u_price) > 0 else None
                             if q_data.get("can_purchase") is False:
+                                self._update_cached_variant(cache_key, provider_product_id, var_id, price=live_p, stock=0)
                                 return 0
                             avail = q_data.get("available_quantity")
                             if avail is not None:
+                                self._update_cached_variant(cache_key, provider_product_id, var_id, price=live_p, stock=int(avail))
                                 return int(avail)
                 except Exception as e:
                     logger.debug(f"Roboticvn quote for stock failed: {e}")
@@ -1907,7 +2044,10 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                                 if str(v.get("id")) == str(var_id):
                                     in_stock = bool(v.get("in_stock", True))
                                     avail = v.get("available_quantity")
-                                    return int(avail) if in_stock and avail is not None else (0 if not in_stock else 100)
+                                    stk = int(avail) if in_stock and avail is not None else (0 if not in_stock else 100)
+                                    live_p = self._extract_variant_usd_price(v)
+                                    self._update_cached_variant(cache_key, provider_product_id, var_id, price=(live_p if live_p > 0 else None), stock=stk)
+                                    return stk
                 except Exception as e:
                     logger.debug(f"Roboticvn product detail for stock failed: {e}")
 
@@ -1926,17 +2066,19 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
 
     async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
         """
-        Fetches live wholesale price in USD using memory cache first, then Roboticvn quote.
+        Fetches LIVE wholesale price in USD directly from Roboticvn Quote / Product Detail endpoint
+        with a short 15-second per-item quote cache so price updates reflect immediately.
         """
         pid, var_id = self._parse_pid_and_variant(provider_product_id)
         cache_key = f"{self.base_url}:{self.api_key}"
-        
-        # 1. Check in-memory catalog cache first (zero requests!)
-        if cache_key in _ROBOTICVN_CATALOG_CACHE:
-            cached_list, _ = _ROBOTICVN_CATALOG_CACHE[cache_key]
-            for p in cached_list:
-                if matches_product_id(p, provider_product_id) or (var_id and p.get("variant_id") == var_id):
-                    return float(p.get("price", 0.0))
+        quote_key = (cache_key, pid, var_id, int(quantity))
+        now_ts = time.time()
+
+        # 1. Check short 15-second live quote cache (never return stale 15-min catalog price!)
+        if quote_key in _ROBOTICVN_QUOTE_CACHE:
+            q_price, q_ts = _ROBOTICVN_QUOTE_CACHE[quote_key]
+            if (now_ts - q_ts) < _ROBOTICVN_QUOTE_TTL and q_price > 0:
+                return q_price
 
         async def _req(s: aiohttp.ClientSession):
             if pid and var_id:
@@ -1953,7 +2095,18 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                             q_data = q_json.get("data", {}) if isinstance(q_json, dict) else {}
                             u_price = q_data.get("unit_price")
                             if u_price is not None and float(u_price) > 0:
-                                return float(u_price)
+                                val = float(u_price)
+                                _ROBOTICVN_QUOTE_CACHE[quote_key] = (val, time.time())
+                                self._update_cached_variant(cache_key, provider_product_id, var_id, price=val)
+                                return val
+                            tot_p = q_data.get("total_price") or q_data.get("total")
+                            if tot_p is not None and int(quantity) > 0:
+                                t_val = float(tot_p)
+                                if t_val > 0:
+                                    val = round(t_val / int(quantity), 4)
+                                    _ROBOTICVN_QUOTE_CACHE[quote_key] = (val, time.time())
+                                    self._update_cached_variant(cache_key, provider_product_id, var_id, price=val)
+                                    return val
                 except Exception as e:
                     logger.debug(f"Roboticvn quote for price failed: {e}")
                     
@@ -1966,13 +2119,11 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                             variants = p_data.get("variants") or []
                             for v in variants:
                                 if str(v.get("id")) == str(var_id):
-                                    prices = v.get("prices") or {}
-                                    if isinstance(prices, dict):
-                                        p_usd = float(prices.get("usd") or prices.get("USD") or 0.0)
-                                        if p_usd > 0:
-                                            return p_usd
-                                        if "vnd" in prices:
-                                            return round(float(prices["vnd"]) / 25400.0, 2)
+                                    p_usd = self._extract_variant_usd_price(v)
+                                    if p_usd > 0:
+                                        _ROBOTICVN_QUOTE_CACHE[quote_key] = (p_usd, time.time())
+                                        self._update_cached_variant(cache_key, provider_product_id, var_id, price=p_usd)
+                                        return p_usd
                 except Exception as e:
                     logger.debug(f"Roboticvn detail for price failed: {e}")
 

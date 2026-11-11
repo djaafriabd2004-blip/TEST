@@ -58,47 +58,75 @@ def _parse_float_price(val):
 def extract_price_from_dict(p, custom_field: str = None):
     """
     Universally extracts unit price/cost from any provider's JSON product dictionary.
-    Supports price, unit_price, price_usd, price_usdt, cost, cost_usd, cost_usdt,
+    Supports reseller/API price overrides, price, unit_price, price_usd, price_usdt, cost, cost_usd, cost_usdt,
     rate, selling_price, amount, and custom user-mapped field names.
+    Skips 0/empty fields while another valid positive price field exists.
     """
     if not isinstance(p, dict):
         return None
 
+    zero_seen = False
+
+    def _extract_from_val(val):
+        nonlocal zero_seen
+        if isinstance(val, dict):
+            for sub_k in ['reseller', 'wholesale', 'effective', 'final', 'sale', 'usd', 'USD', 'usdt', 'USDT', 'amount', 'value', 'price', 'cost']:
+                parsed = _parse_float_price(val.get(sub_k))
+                if parsed is not None:
+                    if parsed > 0:
+                        return parsed
+                    zero_seen = True
+        else:
+            parsed = _parse_float_price(val)
+            if parsed is not None:
+                if parsed > 0:
+                    return parsed
+                zero_seen = True
+        return None
+
     if custom_field and str(custom_field).strip().lower() not in ['', 'auto', 'none']:
         cf = str(custom_field).strip()
-        val = p.get(cf)
-        parsed = _parse_float_price(val)
-        if parsed is not None:
-            return max(0.0, parsed)
+        if cf in p:
+            found = _extract_from_val(p.get(cf))
+            if found is not None:
+                return found
 
-    price_keys = [
-        'price', 'unit_price', 'price_usd', 'price_usdt',
-        'cost', 'cost_usd', 'cost_usdt', 'unit_cost',
-        'rate', 'selling_price', 'amount_usd', 'amount_usdt',
-        'priceUsd', 'priceUsdt', 'unitPrice', 'value'
+    # Prioritize reseller/API/effective wholesale price fields if provider returns both display price and API price
+    reseller_price_keys = [
+        'reseller_price', 'resellerPrice', 'api_price', 'apiPrice',
+        'your_price', 'yourPrice', 'partner_price', 'partnerPrice',
+        'member_price', 'memberPrice', 'wholesale_price', 'wholesalePrice',
+        'effective_price', 'effectivePrice', 'net_price', 'netPrice',
+        'final_price', 'finalPrice', 'discounted_price', 'discountedPrice',
+        'discount_price', 'sale_price', 'salePrice'
     ]
-    for key in price_keys:
+    standard_price_keys = [
+        'unit_price', 'unitPrice', 'price_usd', 'priceUsd',
+        'price_usdt', 'priceUsdt', 'price', 'cost', 'cost_usd', 'cost_usdt',
+        'unit_cost', 'rate', 'selling_price', 'amount_usd', 'amount_usdt', 'value'
+    ]
+    all_keys = reseller_price_keys + standard_price_keys
+
+    for key in all_keys:
         if key in p:
-            val = p.get(key)
-            if isinstance(val, dict):
-                for sub_k in ['amount', 'value', 'usd', 'usdt', 'price', 'cost']:
-                    parsed = _parse_float_price(val.get(sub_k))
-                    if parsed is not None:
-                        return max(0.0, parsed)
-            else:
-                parsed = _parse_float_price(val)
-                if parsed is not None:
-                    return max(0.0, parsed)
+            found = _extract_from_val(p.get(key))
+            if found is not None:
+                return found
 
-    # Check nested pricing object if present
-    pricing_obj = p.get('pricing')
-    if isinstance(pricing_obj, dict):
-        for sub_k in price_keys:
-            parsed = _parse_float_price(pricing_obj.get(sub_k))
-            if parsed is not None:
-                return max(0.0, parsed)
+    # Check nested pricing / prices objects if present
+    for nested_key in ['pricing', 'prices']:
+        pricing_obj = p.get(nested_key)
+        if isinstance(pricing_obj, dict):
+            found = _extract_from_val(pricing_obj)
+            if found is not None:
+                return found
+            for sub_k in all_keys:
+                if sub_k in pricing_obj:
+                    found = _extract_from_val(pricing_obj.get(sub_k))
+                    if found is not None:
+                        return found
 
-    return None
+    return 0.0 if zero_seen else None
 
 def extract_stock_from_dict(p, allow_boolean=True, custom_field: str = None):
     """
@@ -399,7 +427,7 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
     desc_entities = deserialize_entities(entities_json)
 
     # Format price string
-    prod_price = float(prod_dict.get('price', 0.0))
+    prod_price = get_product_unit_price(prod_dict, 1) or float(prod_dict.get('price', 0.0) or 0.0)
     if custom_price is not None and custom_price > 0:
         if lang == 'ar':
             price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (سعر خاص بك 🎯)"

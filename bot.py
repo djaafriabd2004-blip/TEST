@@ -51,8 +51,9 @@ async def main():
     asyncio.create_task(start_auto_verification_loop(bot))
     
     # Start background reseller API pre-order verification loop
-    from database import start_api_preorder_auto_verification_loop
+    from database import start_api_preorder_auto_verification_loop, start_provider_sync_loop
     asyncio.create_task(start_api_preorder_auto_verification_loop(bot))
+    asyncio.create_task(start_provider_sync_loop(bot))
     
     # Start background auto sales proof loop
     from utils import start_auto_sales_proof_loop
