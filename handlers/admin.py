@@ -3416,10 +3416,27 @@ async def process_new_balance(message: Message, state: FSMContext, lang='en'):
         return
         
     from database import set_user_balance, get_user
+    db_user_before = await get_user(user_id)
+    prev_balance = float(db_user_before.get('balance', 0.0)) if db_user_before else 0.0
     await set_user_balance(user_id, new_balance)
     
     db_user = await get_user(user_id)
     name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    
+    # Notify user in bot if balance was added
+    try:
+        user_lang = db_user.get('language', 'ar') if db_user else 'ar'
+        diff = new_balance - prev_balance
+        if diff > 0:
+            notif_msgs = {
+                'ar': f"✅ *تمت إضافة رصيد لحسابك بواسطة الإدارة!*\n\n💰 *المبلغ المضاف:* `${diff:.2f} USD`\n💎 *رصيدك الجديد:* `${new_balance:.2f} USD`",
+                'en': f"✅ *Balance Added by Admin!*\n\n💰 *Amount Added:* `${diff:.2f} USD`\n💎 *New Balance:* `${new_balance:.2f} USD`",
+                'ru': f"✅ *Баланс пополнен администратором!*\n\n💰 *Зачислено:* `${diff:.2f} USD`\n💎 *Новый баланс:* `${new_balance:.2f} USD`",
+                'fr': f"✅ *Solde crédité par l'administration !*\n\n💰 *Montant ajouté :* `${diff:.2f} USD`\n💎 *Nouveau solde :* `${new_balance:.2f} USD`"
+            }
+            await message.bot.send_message(chat_id=user_id, text=notif_msgs.get(user_lang, notif_msgs['en']), parse_mode="Markdown")
+    except Exception as notify_err:
+        logger.warning(f"Failed to notify user {user_id} of manual balance addition: {notify_err}")
     
     await message.answer(get_text('admin_user_bal_updated', lang, name=name, balance=new_balance), reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
 

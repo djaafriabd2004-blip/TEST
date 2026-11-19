@@ -27,33 +27,37 @@ SVG_CHECK = """<svg width="12" height="12" viewBox="0 0 24 24" fill="none" strok
 
 # Official Payment Method Logos
 SVG_USDT = """
-<svg width="44" height="44" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="16" cy="16" r="16" fill="#009393"/>
-  <path d="M17.922 17.383v-.002c-.11.008-.677.042-1.942.042-1.01 0-1.721-.03-1.971-.042v.002C10.638 17.228 8 16.518 8 15.66c0-.859 2.638-1.569 6.009-1.723V10.5h-4.3V8.5h12.582v2h-4.3v3.435c3.364.155 5.996.864 5.996 1.724 0 .859-2.632 1.568-5.996 1.723v.001zm0-3.053V12.5h-3.864v1.83c-2.887.13-5.066.67-5.066 1.33 0 .66 2.179 1.2 5.066 1.33v-1.33h3.864v1.33c2.88-.13 5.053-.67 5.053-1.33 0-.66-2.173-1.2-5.053-1.33z" fill="#fff"/>
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M22 2L40 12.4V31.6L22 42L4 31.6V12.4L22 2Z" fill="#009393"/>
+  <path d="M24.2 18.5V16.2H30.5V13.8H13.5V16.2H19.8V18.5C15.8 18.7 12.8 19.6 12.8 20.7C12.8 21.8 15.8 22.7 19.8 22.9V29.5H24.2V22.9C28.2 22.7 31.2 21.8 31.2 20.7C31.2 19.6 28.2 18.7 24.2 18.5ZM22 21.7C18.4 21.7 15.4 21 15.4 20.6C15.4 20.2 18.4 19.5 22 19.5C25.6 19.5 28.6 20.2 28.6 20.6C28.6 21 25.6 21.7 22 21.7Z" fill="white"/>
 </svg>
 """
 
 SVG_GRAM_TON = """
-<svg width="44" height="44" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="16" cy="16" r="16" fill="#0088CC"/>
-  <path d="M16 6.5L8 12.5L16 26.5L24 12.5L16 6.5Z" fill="#fff"/>
-  <path d="M16 6.5L24 12.5L16 26.5V6.5Z" fill="#B3E5FC"/>
-  <path d="M16 6.5L12 12.5L16 26.5V6.5Z" fill="#E1F5FE"/>
-  <path d="M8 12.5H24L16 16.5L8 12.5Z" fill="rgba(0,0,0,0.1)"/>
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="22" cy="22" r="22" fill="#0088CC"/>
+  <path d="M22 9L11 17L22 35L33 17L22 9Z" fill="white"/>
+  <path d="M22 9L33 17L22 35V9Z" fill="#B3E5FC"/>
+  <path d="M22 9L16 17L22 35V9Z" fill="#E1F5FE"/>
+  <path d="M11 17H33L22 22L11 17Z" fill="rgba(0,0,0,0.12)"/>
 </svg>
 """
 
 SVG_BINANCE = """
-<svg width="44" height="44" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="16" cy="16" r="16" fill="#181A20"/>
-  <path d="M16 8l3.2 3.2-3.2 3.2-3.2-3.2L16 8zm-6.4 6.4l3.2 3.2-3.2 3.2-3.2-3.2 3.2-3.2zm12.8 0l3.2 3.2-3.2 3.2-3.2-3.2 3.2-3.2zM16 20.8l3.2 3.2-3.2 3.2-3.2-3.2 3.2-3.2zm0-5.12l1.6 1.6-1.6 1.6-1.6-1.6 1.6-1.6z" fill="#F3BA2F"/>
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="22" cy="22" r="22" fill="#181A20"/>
+  <path d="M22 11L26.2 15.2L22 19.4L17.8 15.2L22 11Z" fill="#F3BA2F"/>
+  <path d="M13.6 19.4L17.8 23.6L13.6 27.8L9.4 23.6L13.6 19.4Z" fill="#F3BA2F"/>
+  <path d="M30.4 19.4L34.6 23.6L30.4 27.8L26.2 23.6L30.4 19.4Z" fill="#F3BA2F"/>
+  <path d="M22 27.8L26.2 32L22 36.2L17.8 32L22 27.8Z" fill="#F3BA2F"/>
+  <path d="M22 21.6L24 23.6L22 25.6L20 23.6L22 21.6Z" fill="#F3BA2F"/>
 </svg>
 """
 
 SVG_LTC = """
-<svg width="44" height="44" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="16" cy="16" r="16" fill="#345D9D"/>
-  <path d="M14.5 21.5h6v2h-8.5l2-9h3.2l-.7 3.2h2.5l-.5 2h-2.5l-.5 1.8z" fill="#fff"/>
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="22" cy="22" r="22" fill="#345D9D"/>
+  <path d="M20 29H28V32H16L19 15H24L23 20H27L26 23H22L20 29Z" fill="white"/>
 </svg>
 """
 
@@ -267,6 +271,26 @@ COMMON_HEAD = """
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
     }
+    
+    .badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+    .dot-red { background: #EF4444; }
+    .dot-yellow { background: #F59E0B; }
+    .dot-blue { background: #38BDF8; }
+    .dot-gold { background: #F3BA2F; }
+    .dot-silver { background: #CBD5E1; }
+    .grid-methods {
+        direction: ltr;
+    }
+    .method-card {
+        direction: ltr;
+    }
+
     .badge {
         display: inline-flex;
         align-items: center;
@@ -887,7 +911,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     <div class="check-badge">{SVG_CHECK}</div>
                     <div class="coin-icon">{SVG_USDT}</div>
                     <div class="coin-name">USDT</div>
-                    <span class="badge badge-trc20">{SVG_BADGE_TRON} TRC20</span>
+                    <span class="badge badge-trc20"><span class="badge-dot dot-red"></span> TRC20</span>
                 </div>
 
                 <!-- 2. USDT BEP20 -->
@@ -895,7 +919,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     <div class="check-badge">{SVG_CHECK}</div>
                     <div class="coin-icon">{SVG_USDT}</div>
                     <div class="coin-name">USDT</div>
-                    <span class="badge badge-bep20">{SVG_BADGE_BNB} BEP20</span>
+                    <span class="badge badge-bep20"><span class="badge-dot dot-yellow"></span> BEP20</span>
                 </div>
 
                 <!-- 3. GRAM / TON -->
@@ -903,7 +927,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     <div class="check-badge">{SVG_CHECK}</div>
                     <div class="coin-icon">{SVG_GRAM_TON}</div>
                     <div class="coin-name">GRAM</div>
-                    <span class="badge badge-ton">{SVG_BADGE_TON} TON Net</span>
+                    <span class="badge badge-ton"><span class="badge-dot dot-blue"></span> TON Net</span>
                 </div>
 
                 <!-- 4. BINANCE PAY -->
@@ -911,7 +935,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     <div class="check-badge">{SVG_CHECK}</div>
                     <div class="coin-icon">{SVG_BINANCE}</div>
                     <div class="coin-name">Binance</div>
-                    <span class="badge badge-binance">{SVG_BADGE_BINANCE} Pay ID • $0.5</span>
+                    <span class="badge badge-binance"><span class="badge-dot dot-gold"></span> Pay ID &bull; $0.5</span>
                 </div>
 
                 <!-- 5. LITECOIN -->
@@ -919,7 +943,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     <div class="check-badge">{SVG_CHECK}</div>
                     <div class="coin-icon">{SVG_LTC}</div>
                     <div class="coin-name">Litecoin</div>
-                    <span class="badge badge-ltc">{SVG_BADGE_LTC} LTC Net</span>
+                    <span class="badge badge-ltc"><span class="badge-dot dot-silver"></span> LTC Net</span>
                 </div>
 
                 <!-- 6. CRYPTOBOT (In Local Payments tab, only if enabled) -->
@@ -1822,13 +1846,26 @@ async def api_verify_payment(request: web.Request) -> web.Response:
         comp_res = await complete_payment(trans_id)
         await mark_payment_session_completed(token)
 
-        if bot and comp_res:
+        if comp_res:
             try:
+                bot_inst = bot
+                if not bot_inst:
+                    from aiogram import Bot
+                    import config
+                    bot_inst = Bot(token=config.BOT_TOKEN)
+
                 db_user = await get_user(user_id)
-                u_lang = db_user.get("language", "en") if db_user else "en"
-                from localization import get_text
-                msg_txt = get_text('payment_success', u_lang, amount=amount, new_balance=db_user.get('balance', 0.0) if db_user else amount)
-                await bot.send_message(chat_id=user_id, text=f"🌐 Global Web Checkout\n\n{msg_txt}", parse_mode="Markdown")
+                u_lang = db_user.get("language", "ar") if db_user else "ar"
+                new_bal = float(db_user.get("balance") or amount) if db_user else amount
+                
+                notif_msgs = {
+                    'ar': f"✅ *تم شحن رصيدك بنجاح!*\n\n💰 *المبلغ المضاف:* `${amount:.2f} USD`\n💎 *رصيدك الجديد:* `${new_bal:.2f} USD`\n\n⚡ تمت إضافة الرصيد إلى حسابك في البوت تلقائياً.",
+                    'en': f"✅ *Deposit Confirmed!*\n\n💰 *Amount Credited:* `${amount:.2f} USD`\n💎 *New Balance:* `${new_bal:.2f} USD`\n\n⚡ Your balance has been updated in the bot.",
+                    'ru': f"✅ *Баланс успешно пополнен!*\n\n💰 *Зачислено:* `${amount:.2f} USD`\n💎 *Новый баланс:* `${new_bal:.2f} USD`\n\n⚡ Средства успешно зачислены на ваш баланс.",
+                    'fr': f"✅ *Dépôt Réussi !*\n\n💰 *Montant crédité :* `${amount:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`\n\n⚡ Votre solde a été mis à jour avec succès."
+                }
+                txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
+                await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
             except Exception as notify_err:
                 logger.warning(f"Could not send Telegram notification for user {user_id}: {notify_err}")
 
@@ -1991,13 +2028,27 @@ async def api_admin_action_payment(request: web.Request) -> web.Response:
 
     if action == "approve":
         res = await complete_payment(tx_id)
-        if res and bot and user_id:
+        if res and user_id:
             try:
+                bot_inst = bot
+                if not bot_inst:
+                    from aiogram import Bot
+                    import config
+                    bot_inst = Bot(token=config.BOT_TOKEN)
+
                 db_user = await get_user(user_id)
                 u_lang = db_user.get("language", "ar") if db_user else "ar"
-                from localization import get_text
-                msg_txt = get_text('payment_success', u_lang, amount=payment['amount'], new_balance=db_user.get('balance', 0.0) if db_user else payment['amount'])
-                await bot.send_message(chat_id=user_id, text=f"Global Web Checkout\n\n{msg_txt}", parse_mode="Markdown")
+                p_amt = float(payment.get("amount") or 0.0)
+                new_bal = float(db_user.get("balance") or p_amt) if db_user else p_amt
+                
+                notif_msgs = {
+                    'ar': f"✅ *تم قبول وشحن رصيدك بنجاح!*\n\n💰 *المبلغ المضاف:* `${p_amt:.2f} USD`\n💎 *رصيدك الجديد:* `${new_bal:.2f} USD`",
+                    'en': f"✅ *Deposit Approved & Credited!*\n\n💰 *Amount Added:* `${p_amt:.2f} USD`\n💎 *New Balance:* `${new_bal:.2f} USD`",
+                    'ru': f"✅ *Депозит подтвержден!*\n\n💰 *Зачислено:* `${p_amt:.2f} USD`\n💎 *Новый баланс:* `${new_bal:.2f} USD`",
+                    'fr': f"✅ *Dépôt Approuvé !*\n\n💰 *Montant crédité :* `${p_amt:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`"
+                }
+                txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
+                await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
             except Exception as e:
                 logger.warning(f"Failed to send approval message: {e}")
         return web.json_response({"ok": bool(res)})
