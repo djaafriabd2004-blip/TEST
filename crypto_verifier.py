@@ -498,7 +498,7 @@ async def verify_crypto_transaction(coin, txid, recipient_address, min_timestamp
         return await verify_ton(txid, recipient_address, max_age_seconds, min_timestamp)
     elif coin == "BINANCE":
         from binance_client import verify_binance_payment
-        return await verify_binance_payment(txid, min_timestamp=None)
+        return await verify_binance_payment(txid, min_timestamp=min_timestamp)
     else:
         return False, f"Unsupported coin: {coin}"
 
@@ -564,7 +564,7 @@ async def start_auto_verification_loop(bot):
                     
                     recipient_address = await get_setting(f"crypto_addr_{coin.lower()}", "")
                     
-                    min_timestamp = (int(created_dt.timestamp()) if age_seconds > 0 else None) if coin != "BINANCE" else None
+                    min_timestamp = (int(created_dt.timestamp()) if age_seconds > 0 else None)
                     success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=min_timestamp)
                     if success:
                         requested_amount = payment["amount"]

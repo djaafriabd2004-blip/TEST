@@ -193,7 +193,7 @@ def get_binance_id_checkout_keyboard(product_id, qty, lang='en') -> InlineKeyboa
     builder.adjust(1)
     return builder.as_markup()
 
-def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled=True, cryptotransfer_enabled=True, xrocket_enabled=False, global_web_enabled=True) -> InlineKeyboardMarkup:
+def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled=False, cryptotransfer_enabled=False, xrocket_enabled=False, global_web_enabled=True) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if global_web_enabled:
         builder.button(text="🌐 Global Web", callback_data="charge_global_web", style="primary")

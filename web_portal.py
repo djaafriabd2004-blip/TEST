@@ -352,18 +352,28 @@ COMMON_HEAD = """
     .toast {
         position: fixed;
         bottom: 24px;
-        right: 24px;
-        background: #182030;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 32px);
+        max-width: 440px;
+        background: #151B28;
         color: #fff;
-        padding: 12px 20px;
-        border-radius: 12px;
-        border: 1px solid #2B3A55;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        padding: 14px 18px;
+        border-radius: 14px;
+        border: 1px solid #374151;
+        box-shadow: 0 12px 35px rgba(0,0,0,0.7);
         z-index: 9999;
         display: none;
         font-size: 0.9rem;
-        font-weight: 600;
+        font-weight: 700;
+        line-height: 1.45;
+        text-align: center;
         animation: fadeIn 0.3s;
+    }
+    .toast.toast-error {
+        border-color: #EF4444;
+        background: #1C1318;
+        color: #FCA5A5;
     }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 </style>
@@ -1149,11 +1159,18 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
             }}
         }}
 
-        function showToast(msg) {{
+        let toastTimeout;
+        function showToast(msg, isError = false) {{
             const toast = document.getElementById('toast');
             toast.textContent = msg;
+            if (isError || msg.includes('❌') || msg.includes('خطأ') || msg.includes('Error')) {{
+                toast.classList.add('toast-error');
+            }} else {{
+                toast.classList.remove('toast-error');
+            }}
             toast.style.display = 'block';
-            setTimeout(() => {{ toast.style.display = 'none'; }}, 3000);
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {{ toast.style.display = 'none'; }}, 4500);
         }}
 
         function pickAmt(val) {{
@@ -1296,12 +1313,12 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
                     document.getElementById('succ-txid').textContent = 'TxID: ' + txid;
                     document.getElementById('success-screen').style.display = 'block';
                 }} else if (data.ok && data.status === 'pending') {{
-                    showToast(data.message || "Transaction received, verifying...");
+                    showToast(data.message || "Transaction received, verifying...", false);
                 }} else {{
-                    showToast(data.error || "Verification failed");
+                    showToast(data.error || "Verification failed", true);
                 }}
             }} catch(e) {{
-                showToast("Server connection error");
+                showToast("Server connection error", true);
             }} finally {{
                 btn.disabled = false;
                 btn.innerHTML = origText;
@@ -1796,42 +1813,84 @@ async def api_verify_payment(request: web.Request) -> web.Response:
     if not token or not txid or amount <= 0:
         return web.json_response({"ok": False, "error": "Missing required fields"}, status=400)
 
-    from database import get_payment_session, get_payment_by_method, create_payment, complete_payment, reject_payment, get_setting, mark_payment_session_completed, get_user
+    from database import (
+        get_payment_session, create_payment, complete_payment, 
+        reject_payment, get_setting, mark_payment_session_completed, get_user
+    )
+    import aiosqlite
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
+
     session = await get_payment_session(token)
     if not session:
         return web.json_response({"ok": False, "error": "Payment session expired or invalid"}, status=403)
 
     user_id = session["user_id"]
+    u_lang = session.get("language", "ar")
     payment_method = f"blockchain_{coin}_{txid}"
 
-    existing = await get_payment_by_method(payment_method)
+    # 1. STRICT CHECK: Has this TxID been submitted or used before?
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM payments WHERE payment_method = ? OR payment_method LIKE ? ORDER BY id DESC LIMIT 1;",
+            (payment_method, f"%_{txid}")
+        ) as cursor:
+            existing = await cursor.fetchone()
+
     if existing:
         st = existing["status"]
         if st == "completed":
-            return web.json_response({"ok": True, "status": "completed", "amount": existing["amount"]})
-        elif st == "pending":
-            return web.json_response({"ok": True, "status": "pending", "message": "Transaction is already under verification"})
+            already_msg = {
+                'ar': "❌ معرّف المعاملة هذا (TxID) تم استخدامه وإضافته للرصيد مسبقاً ولا يمكن إعادة استخدامه.",
+                'en': "❌ This Transaction ID (TxID) has already been used and processed.",
+                'ru': "❌ Этот идентификатор транзакции (TxID) уже был использован ранее.",
+                'fr': "❌ Cet identifiant de transaction (TxID) a déjà été utilisé."
+            }
+            return web.json_response({"ok": False, "error": already_msg.get(u_lang, already_msg['en'])}, status=400)
         elif st == "rejected":
-            return web.json_response({"ok": False, "error": "This transaction was previously rejected"}, status=400)
+            rej_msg = {
+                'ar': "❌ تم رفض معرّف المعاملة هذا مسبقاً لأسباب أمنية. يرجى التواصل مع الدعم إذا كنت تعتقد بوجود خطأ.",
+                'en': "❌ This transaction was previously rejected for security reasons.",
+                'ru': "❌ Эта транзакция была отклонена из соображений безопасности.",
+                'fr': "❌ Cette transaction a été précédemment rejetée pour des raisons de sécurité."
+            }
+            return web.json_response({"ok": False, "error": rej_msg.get(u_lang, rej_msg['en'])}, status=400)
+        elif st == "pending":
+            pend_warn = {
+                'ar': "⏳ هذه المعاملة قيد التحقق حالياً في الشبكة، يرجى الانتظار...",
+                'en': "⏳ This transaction is already pending verification, please wait...",
+                'ru': "⏳ Эта транзакция уже проверяется в сети...",
+                'fr': "⏳ Cette transaction est déjà en cours de vérification..."
+            }
+            return web.json_response({"ok": False, "error": pend_warn.get(u_lang, pend_warn['en'])}, status=400)
 
+    # 2. Record new pending payment in database
     trans_id = f"GW_{uuid.uuid4().hex[:8].upper()}"
     start_time_utc = datetime.datetime.fromtimestamp(start_time, datetime.timezone.utc)
     created_at_str = start_time_utc.strftime("%Y-%m-%d %H:%M:%S")
     await create_payment(user_id, amount, payment_method, trans_id, created_at=created_at_str)
 
-    from crypto_verifier import verify_crypto_transaction, is_amount_matching
+    # 3. Verify on-chain with strict timestamp check for ALL methods
+    from crypto_verifier import (
+        verify_crypto_transaction, is_amount_matching, 
+        is_tx_too_old_error, is_invalid_currency_error, get_max_tx_age_seconds
+    )
     
-    ts_to_pass = None if coin == "BINANCE" else start_time
+    # Tolerance of 60 seconds for clock skew between user and server
+    ts_to_pass = max(0, start_time - 60) if start_time > 0 else int(time.time()) - 3600
 
     if coin in ["USDT_TRC20", "TRC20"]:
         recipient_address = await get_setting("crypto_addr_usdt_trc20", "") or await get_setting("crypto_addr_usdt", "")
-        success, result_val = False, "Pending TRC20 verification"
+        success, result_val = False, "TRC20 automatic verification is pending manual review"
     elif coin in ["USDT_BEP20", "USDT"]:
         recipient_address = await get_setting("crypto_addr_usdt_bep20", "") or await get_setting("crypto_addr_usdt", "")
         success, result_val = await verify_crypto_transaction("USDT", txid, recipient_address, min_timestamp=ts_to_pass)
     elif coin == "BINANCE":
         recipient_address = await get_setting("crypto_addr_binance", "")
-        success, result_val = await verify_crypto_transaction("BINANCE", txid, recipient_address, min_timestamp=None)
+        success, result_val = await verify_crypto_transaction("BINANCE", txid, recipient_address, min_timestamp=ts_to_pass)
     else:
         recipient_address = await get_setting(f"crypto_addr_{coin.lower()}", "")
         success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=ts_to_pass)
@@ -1841,7 +1900,13 @@ async def api_verify_payment(request: web.Request) -> web.Response:
     if success:
         if not is_amount_matching(amount, result_val, coin):
             await reject_payment(trans_id)
-            return web.json_response({"ok": False, "error": f"Amount mismatch: received ${result_val:.2f}, expected ${amount:.2f}"}, status=400)
+            mismatch_msg = {
+                'ar': f"❌ عدم تطابق في المبلغ: المبلغ الفعلي المحوّل هو ${result_val:.2f} والمطلوب ${amount:.2f}.",
+                'en': f"❌ Amount mismatch: received ${result_val:.2f}, expected ${amount:.2f}.",
+                'ru': f"❌ Несоответствие суммы: получено ${result_val:.2f}, ожидалось ${amount:.2f}.",
+                'fr': f"❌ Montant non correspondant : reçu ${result_val:.2f}, attendu ${amount:.2f}."
+            }
+            return web.json_response({"ok": False, "error": mismatch_msg.get(u_lang, mismatch_msg['en'])}, status=400)
 
         comp_res = await complete_payment(trans_id)
         await mark_payment_session_completed(token)
@@ -1855,7 +1920,6 @@ async def api_verify_payment(request: web.Request) -> web.Response:
                     bot_inst = Bot(token=config.BOT_TOKEN)
 
                 db_user = await get_user(user_id)
-                u_lang = db_user.get("language", "ar") if db_user else "ar"
                 new_bal = float(db_user.get("balance") or amount) if db_user else amount
                 
                 notif_msgs = {
@@ -1871,18 +1935,51 @@ async def api_verify_payment(request: web.Request) -> web.Response:
 
         return web.json_response({"ok": True, "status": "completed", "amount": amount})
     else:
-        user_lang = session.get("language", "ar")
-        pending_msg = {
-            "ar": "تم استلام المعاملة وجاري التحقق من الشبكة وإضافة الرصيد لحسابك تلقائياً.",
-            "en": "Transaction received! Verifying on-chain and crediting your balance shortly.",
-            "ru": "Транзакция получена! Проверяем в сети и зачисляем средства.",
-            "fr": "Transaction reçue ! Vérification sur la blockchain en cours."
-        }
-        return web.json_response({
-            "ok": True,
-            "status": "pending",
-            "message": pending_msg.get(user_lang, pending_msg["en"])
-        })
+        # Check specific rejection reasons and tell the user clearly
+        if is_tx_too_old_error(result_val):
+            await reject_payment(trans_id)
+            max_hours = max(1, (await get_max_tx_age_seconds()) // 3600)
+            old_msg = {
+                'ar': f"❌ المعاملة قديمة أو تم تنفيذها قبل تحديد المبلغ في الموقع (صلاحية المعاملة {max_hours} ساعة). يرجى إتمام تحويل جديد وإدخال رقم المعاملة الجديد.",
+                'en': f"❌ Transaction is too old or was executed before confirming the deposit amount (validity {max_hours}h). Please send a new transfer and submit the new TxID.",
+                'ru': f"❌ Транзакция устарела или была совершена до подтверждения суммы. Пожалуйста, совершите новый перевод.",
+                'fr': f"❌ La transaction est trop ancienne ou a été effectuée avant la confirmation du montant. Veuillez effectuer un nouveau transfert."
+            }
+            return web.json_response({"ok": False, "error": old_msg.get(u_lang, old_msg['en'])}, status=400)
+
+        elif is_invalid_currency_error(result_val):
+            await reject_payment(trans_id)
+            curr_msg = {
+                'ar': "❌ عملة غير مقبولة! نقبل فقط تحويلات عملة USDT.",
+                'en': "❌ Unsupported currency! We only accept USDT transfers.",
+                'ru': "❌ Неподдерживаемая валюта! Принимаются только переводы в USDT.",
+                'fr': "❌ Devise non prise en charge ! Nous acceptons uniquement les transferts USDT."
+            }
+            return web.json_response({"ok": False, "error": curr_msg.get(u_lang, curr_msg['en'])}, status=400)
+
+        elif "not found" in str(result_val).lower():
+            await reject_payment(trans_id)
+            nf_msg = {
+                'ar': "❌ لم يتم العثور على المعاملة. يرجى التأكد من صحة رقم المعاملة (TxID) وإتمام التحويل بنجاح.",
+                'en': "❌ Transaction not found. Please verify the TxID and ensure payment was sent.",
+                'ru': "❌ Транзакция не найдена. Пожалуйста, проверьте TxID.",
+                'fr': "❌ Transaction introuvable. Veuillez vérifier le TxID."
+            }
+            return web.json_response({"ok": False, "error": nf_msg.get(u_lang, nf_msg['en'])}, status=400)
+
+        else:
+            # Only truly pending blockchain transactions return pending status
+            pending_msg = {
+                "ar": "⏳ تم استلام الطلب والمعاملة قيد التأكيد على الشبكة، سيتم شحن رصيدك تلقائياً فور تأكيدها.",
+                "en": "⏳ Transaction received and waiting for network confirmations. Your balance will be credited automatically.",
+                "ru": "⏳ Транзакция получена и ожидает подтверждений сети.",
+                "fr": "⏳ Transaction reçue et en attente de confirmations du réseau."
+            }
+            return web.json_response({
+                "ok": True,
+                "status": "pending",
+                "message": pending_msg.get(u_lang, pending_msg["en"])
+            })
 
 
 async def api_create_cryptobot(request: web.Request) -> web.Response:

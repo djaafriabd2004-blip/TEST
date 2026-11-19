@@ -463,8 +463,19 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     
     # Check if this TxID is already in database to prevent double spending
     payment_method = f"blockchain_BINANCE_{txid}"
-    from database import get_payment_by_method, create_payment, get_payment
-    existing_payment = await get_payment_by_method(payment_method)
+    import aiosqlite
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM payments WHERE payment_method = ? OR payment_method LIKE ? ORDER BY id DESC LIMIT 1;",
+            (payment_method, f"%_{txid}")
+        ) as cursor:
+            existing_payment = await cursor.fetchone()
     if existing_payment:
         status = existing_payment['status']
         if status == 'completed':
@@ -487,7 +498,9 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     # Verify using Binance API
     from binance_client import verify_binance_payment
     from crypto_verifier import is_amount_matching
-    success, result_val = await verify_binance_payment(txid, min_timestamp=None)
+    order_time = data.get('order_time') if data else None
+    min_ts = (int(order_time) - 60) if order_time else (int(time.time()) - 3600)
+    success, result_val = await verify_binance_payment(txid, min_timestamp=min_ts)
     
     # Verify both API success AND that the actual amount paid matches required price
     if success and is_amount_matching(price_to_pay, result_val, "BINANCE"):

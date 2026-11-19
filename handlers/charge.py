@@ -27,12 +27,15 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
     text = get_text('charge_title', lang, balance=balance)
     
     stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
-    cryptobot_token = await get_setting('cryptobot_token', '')
-    cryptobot_enabled = len(cryptobot_token) > 0 and (await get_setting('cryptobot_enabled', '1')) == '1'
-    xrocket_token = await get_setting('xrocket_token', '')
-    xrocket_enabled = len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
-    cryptotransfer_enabled = (await get_setting('cryptotransfer_enabled', '1')) == '1'
     global_web_enabled = (await get_setting('global_web_enabled', '1')) == '1'
+    
+    # Hide all in-bot crypto methods to comply with Telegram rules and leave only Global Web and Stars
+    inchat_crypto = (await get_setting('inchat_crypto_enabled', '0')) == '1'
+    cryptobot_token = await get_setting('cryptobot_token', '')
+    cryptobot_enabled = inchat_crypto and len(cryptobot_token) > 0 and (await get_setting('cryptobot_enabled', '1')) == '1'
+    xrocket_token = await get_setting('xrocket_token', '')
+    xrocket_enabled = inchat_crypto and len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
+    cryptotransfer_enabled = inchat_crypto and (await get_setting('cryptotransfer_enabled', '1')) == '1'
     
     kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled, xrocket_enabled, global_web_enabled)
     
@@ -244,8 +247,20 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
     
     payment_method = f"blockchain_{coin}_{txid}"
     
-    # Check if this TxID is already in database
-    existing_payment = await get_payment_by_method(payment_method)
+    # Check if this TxID is already in database (under any coin prefix)
+    import aiosqlite
+    try:
+        from bot_config import DB_NAME
+    except ImportError:
+        from config import DB_NAME
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM payments WHERE payment_method = ? OR payment_method LIKE ? ORDER BY id DESC LIMIT 1;",
+            (payment_method, f"%_{txid}")
+        ) as cursor:
+            existing_payment = await cursor.fetchone()
     if existing_payment:
         status = existing_payment['status']
         if status == 'completed':
@@ -291,7 +306,7 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
         
     # Attempt instant verification
     recipient_address = await get_setting(f"crypto_addr_{coin.lower()}", "")
-    ts_to_pass = None if coin == "BINANCE" else start_time
+    ts_to_pass = start_time
     success, result_val = await verify_crypto_transaction(coin, txid, recipient_address, min_timestamp=ts_to_pass)
     
     if success:
