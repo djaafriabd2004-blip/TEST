@@ -188,6 +188,19 @@ async def db_init():
         );
         """)
         
+        # Payment Sessions Table (for Global Web checkout)
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS payment_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL,
+            amount REAL DEFAULT 0.0,
+            status TEXT DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        );
+        """)
+        
         # Settings Table
         await db.execute("""
         CREATE TABLE IF NOT EXISTS settings (
@@ -1903,6 +1916,130 @@ async def reject_payment(transaction_id):
         await db.execute("UPDATE payments SET status = 'rejected' WHERE transaction_id = ?;", (transaction_id,))
         await db.commit()
         return payment
+
+async def create_payment_session(user_id: int, amount: float = 0.0, expires_in_seconds: int = 7200) -> str:
+    """
+    Creates a secure tokenized payment session for the external Global Web checkout.
+    """
+    import secrets
+    from datetime import datetime, timezone, timedelta
+    token = secrets.token_urlsafe(24)
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=expires_in_seconds)
+    expires_str = expires_at.strftime("%Y-%m-%d %H:%M:%S")
+
+    async with aiosqlite.connect(DB_NAME, timeout=15.0) as db:
+        await db.execute("""
+            INSERT INTO payment_sessions (token, user_id, amount, status, expires_at)
+            VALUES (?, ?, ?, 'active', ?);
+        """, (token, user_id, float(amount), expires_str))
+        await db.commit()
+    return token
+
+async def get_payment_session(token: str) -> Optional[dict]:
+    """
+    Retrieves an active, non-expired payment session by token.
+    """
+    from datetime import datetime, timezone
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    async with aiosqlite.connect(DB_NAME, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT s.*, u.username, u.first_name, u.balance as user_current_balance, u.language
+            FROM payment_sessions s
+            LEFT JOIN users u ON s.user_id = u.user_id
+            WHERE s.token = ? AND s.status = 'active' AND s.expires_at > ?;
+        """, (token, now_str)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+async def mark_payment_session_completed(token: str):
+    """
+    Marks a payment session as completed.
+    """
+    async with aiosqlite.connect(DB_NAME, timeout=10.0) as db:
+        await db.execute("UPDATE payment_sessions SET status = 'completed' WHERE token = ?;", (token,))
+        await db.commit()
+
+async def get_payments_paginated(limit: int = 50, offset: int = 0, status: Optional[str] = None, search: Optional[str] = None) -> tuple[List[dict], int]:
+    """
+    Fetches paginated payment records joined with user info for the Admin Web Panel.
+    """
+    async with aiosqlite.connect(DB_NAME, timeout=15.0) as db:
+        db.row_factory = aiosqlite.Row
+        where_clauses = []
+        params = []
+        
+        if status and status.lower() != 'all':
+            where_clauses.append("p.status = ?")
+            params.append(status.lower())
+            
+        if search:
+            s_term = f"%{search.strip()}%"
+            where_clauses.append("(CAST(p.user_id AS TEXT) LIKE ? OR p.transaction_id LIKE ? OR p.payment_method LIKE ? OR u.username LIKE ?)")
+            params.extend([s_term, s_term, s_term, s_term])
+            
+        where_str = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+        
+        count_query = f"""
+            SELECT COUNT(*) FROM payments p
+            LEFT JOIN users u ON p.user_id = u.user_id
+            {where_str};
+        """
+        async with db.execute(count_query, params) as c_cur:
+            total_row = await c_cur.fetchone()
+            total_count = total_row[0] if total_row else 0
+            
+        data_query = f"""
+            SELECT p.id, p.user_id, p.amount, p.payment_method, p.status, p.transaction_id, p.created_at,
+                   u.username, u.first_name, u.balance as user_current_balance
+            FROM payments p
+            LEFT JOIN users u ON p.user_id = u.user_id
+            {where_str}
+            ORDER BY p.id DESC
+            LIMIT ? OFFSET ?;
+        """
+        async with db.execute(data_query, params + [limit, offset]) as d_cur:
+            rows = await d_cur.fetchall()
+            return [dict(r) for r in rows], total_count
+
+async def get_payments_dashboard_stats() -> dict:
+    """
+    Calculates overview stats for the Admin Web Panel.
+    """
+    async with aiosqlite.connect(DB_NAME, timeout=10.0) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT COUNT(*) as total_tx, "
+            "COALESCE(SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END), 0.0) as total_volume, "
+            "COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_tx, "
+            "COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_tx, "
+            "COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected_tx "
+            "FROM payments;"
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else {}
+
+async def get_or_create_admin_web_token() -> str:
+    """
+    Retrieves or generates a secure, persistent admin token for the Admin Web Panel.
+    """
+    import secrets
+    token = await get_setting("admin_web_token", "")
+    if not token or len(token) < 16:
+        token = secrets.token_urlsafe(32)
+        await set_setting("admin_web_token", token)
+    return token
+
+async def verify_admin_web_token(token: str) -> bool:
+    """
+    Verifies whether the provided token matches the admin web token.
+    """
+    if not token:
+        return False
+    expected = await get_or_create_admin_web_token()
+    import hmac
+    return hmac.compare_digest(token.strip(), expected.strip())
 
 async def get_all_users():
     async with aiosqlite.connect(DB_NAME) as db:

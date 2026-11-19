@@ -91,6 +91,7 @@ class BaseProviderAdapter:
             f"{self.base_url}/products",
             f"{self.base_url}/api/reseller/products",
             f"{self.base_url}/reseller/products",
+            f"{self.base_url}/api/reseller/v1/products",
             f"{self.base_url}/api/v1/catalog",
             f"{self.base_url}/v1/catalog",
             f"{self.base_url}/api/catalog",
@@ -328,11 +329,13 @@ class BaseProviderAdapter:
             if email_list:
                 if int(quantity) == 1:
                     payload["email"] = email_list[0]
+                    payload["customer_email"] = email_list[0]
                 else:
                     if len(email_list) < int(quantity):
                         email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
                     payload["emails"] = email_list[:int(quantity)]
                     payload["email"] = email_list[0]
+                    payload["customer_email"] = ",".join(email_list[:int(quantity)])
         
         default_endpoints = [
             f"{self.base_url}/api/v1/orders",
@@ -340,6 +343,7 @@ class BaseProviderAdapter:
             f"{self.base_url}/buy",
             f"{self.base_url}/v1/orders",
             f"{self.base_url}/orders",
+            f"{self.base_url}/api/reseller/v1/order",
             f"{self.base_url}/api/reseller/orders",
             f"{self.base_url}/reseller/orders",
             f"{self.base_url}/api/purchase",
@@ -532,12 +536,14 @@ class BaseProviderAdapter:
         raw_creds = None
         if isinstance(deliv, dict) and deliv.get('items'):
             raw_creds = deliv['items']
-        elif isinstance(deliv, list):
+        elif isinstance(deliv, list) and len(deliv) > 0:
             raw_creds = deliv
         elif isinstance(order, dict) and order.get('items'):
             raw_creds = order['items']
-        elif isinstance(order, list):
+        elif isinstance(order, list) and len(order) > 0:
             raw_creds = order
+        elif buy_data.get('delivered'):
+            raw_creds = buy_data.get('delivered')
         else:
             raw_creds = (
                 buy_data.get('deliveredKeys') if buy_data.get('deliveredKeys') is not None
@@ -547,7 +553,7 @@ class BaseProviderAdapter:
                 else buy_data.get('items'))))
             )
 
-        if raw_creds is not None:
+        if raw_creds is not None and not (isinstance(raw_creds, list) and len(raw_creds) == 0):
             if isinstance(raw_creds, str):
                 if "\n" in raw_creds:
                     return [item.strip() for item in raw_creds.split("\n") if item.strip()]
@@ -566,20 +572,21 @@ class BaseProviderAdapter:
                             res.append(str(it))
                     else:
                         res.append(str(it).strip())
-                return [r for r in res if r]
+                if res:
+                    return [r for r in res if r]
             else:
                 return [str(raw_creds)]
-        elif isinstance(buy_data.get('activation'), dict) or buy_data.get('status') == 'paid':
+        if isinstance(buy_data.get('activation'), dict) or buy_data.get('status') in ['paid', 'pending_invite', 'pending', 'processing']:
             act = buy_data.get('activation') if isinstance(buy_data.get('activation'), dict) else {}
             emails = act.get('emails') or ([act['email']] if act.get('email') else [])
             eta = act.get('eta', 'ASAP')
-            ord_id = buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
+            ord_id = buy_data.get('order_ref') or buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
             status_str = str(buy_data.get('status') or 'paid').upper()
             if emails:
                 return [f"✅ Activation Order #{ord_id} ({status_str}) — Email: {em} | ETA: {eta}" for em in emails]
             return [f"✅ Activation Order #{ord_id} ({status_str}) | ETA: {eta}"]
         elif buy_data.get('success') or buy_data.get('ok') or buy_data.get('status') in ['completed', 'delivered']:
-            ord_id = buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
+            ord_id = buy_data.get('order_ref') or buy_data.get('orderId') or buy_data.get('order_id') or (order.get('id') if isinstance(order, dict) else None) or buy_data.get('id') or ext_order_id
             return [f"Order #{ord_id} Completed Successfully"]
             
         raise Exception("Provider returned empty delivery data")
@@ -2286,6 +2293,354 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
 
 
 # -------------------------------------------------------------------------
+# 8. Aitoolify / Reseller API v1 Adapter (https://noman304044.aitoolifystudio.io/docs)
+# -------------------------------------------------------------------------
+_AITOOLIFY_CATALOG_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
+_AITOOLIFY_CATALOG_LOCKS: Dict[str, asyncio.Lock] = {}
+_AITOOLIFY_CACHE_TTL = 20.0  # 20s TTL (well within 120 req/min limit)
+
+
+class AitoolifyProviderAdapter(BaseProviderAdapter):
+    """
+    Reseller API v1 Adapter (Aitoolify Studio / @netflixslotssellbot compatible).
+    Docs: https://noman304044.aitoolifystudio.io/docs
+    Endpoints:
+    - GET  /api/reseller/v1/balance
+    - GET  /api/reseller/v1/products
+    - POST /api/reseller/v1/order
+    - GET  /api/reseller/v1/orders?limit=50
+    - GET  /api/reseller/v1/order/{order_ref}
+    """
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
+        self.provider_type = "aitoolify"
+        clean = self.base_url.rstrip("/")
+        if clean.endswith("/api/reseller/v1"):
+            self.api_v1_url = clean
+        elif "/api/reseller/v1" in clean:
+            self.api_v1_url = clean.split("/api/reseller/v1")[0] + "/api/reseller/v1"
+        else:
+            self.api_v1_url = f"{clean}/api/reseller/v1"
+
+    def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "X-API-Key": self.api_key,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    def _standardize_aitoolify_catalog(self, raw_list: List[Any]) -> List[Dict[str, Any]]:
+        formatted = []
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
+
+        for p in raw_list:
+            if not isinstance(p, dict):
+                continue
+            p_id = p.get("id")
+            if p_id is None:
+                continue
+
+            p_name = (p.get("name") or p.get("title") or f"Product #{p_id}").strip()
+            p_desc = str(p.get("description") or "")
+            if p.get("duration") and str(p.get("duration")).strip():
+                p_desc = f"{p_desc}\n⏱️ Duration: {p['duration']}".strip()
+
+            # Prefer your_cost (what wallet is actually charged), then cost, price_usdt, price
+            price_val = None
+            if custom_price_field and p.get(custom_price_field) is not None:
+                price_val = extract_price_from_dict(p, custom_field=custom_price_field)
+            if price_val is None or float(price_val) <= 0:
+                for pk in ("your_cost", "cost", "price_usdt", "price"):
+                    raw_pv = p.get(pk)
+                    if raw_pv is not None:
+                        try:
+                            fv = float(raw_pv)
+                            if fv > 0:
+                                price_val = fv
+                                break
+                        except Exception:
+                            pass
+            if price_val is None:
+                price_val = float(extract_price_from_dict(p) or 0.0)
+            price_val = float(price_val or 0.0)
+
+            orig_p = float(p.get("price_usdt") or p.get("price") or price_val or 0.0)
+
+            # Unlimited slot/manual products return is_unlimited=True and stock=None
+            if custom_stock_field and p.get(custom_stock_field) is not None:
+                stock_val = extract_stock_from_dict(p, allow_boolean=True, custom_field=custom_stock_field) or 0
+            elif p.get("is_unlimited") is True:
+                stock_val = 999
+            else:
+                raw_stk = p.get("stock_quantity") if p.get("stock_quantity") is not None else (
+                    p.get("stock") if p.get("stock") is not None else p.get("quantity")
+                )
+                try:
+                    stock_val = max(0, int(raw_stk)) if raw_stk is not None else 0
+                except Exception:
+                    stock_val = 0
+
+            req_email = bool(p.get("requires_email", False))
+
+            formatted.append({
+                "id": str(p_id),
+                "name": p_name,
+                "name_ar": p.get("name_ar") or p_name,
+                "name_en": p.get("name_en") or p_name,
+                "name_ru": p.get("name_ru") or p_name,
+                "description": p_desc,
+                "description_ar": str(p.get("description_ar") or p_desc),
+                "description_en": str(p.get("description_en") or p_desc),
+                "description_ru": str(p.get("description_ru") or p_desc),
+                "price": price_val,
+                "original_price": orig_p if orig_p > 0 else price_val,
+                "stock": stock_val,
+                "is_unlimited": bool(p.get("is_unlimited", False)),
+                "custom_emoji_id": p.get("custom_emoji_id"),
+                "requires_email": req_email,
+                "requiresEmailActivation": req_email
+            })
+        return formatted
+
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None, force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
+        cache_key = f"{self.api_v1_url}:{self.api_key}"
+        now_ts = time.time()
+
+        if not force_refresh and cache_key in _AITOOLIFY_CATALOG_CACHE:
+            cached_list, cached_time = _AITOOLIFY_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < _AITOOLIFY_CACHE_TTL and cached_list is not None:
+                return cached_list
+
+        lock = _AITOOLIFY_CATALOG_LOCKS.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            now_ts = time.time()
+            if not force_refresh and cache_key in _AITOOLIFY_CATALOG_CACHE:
+                cached_list, cached_time = _AITOOLIFY_CATALOG_CACHE[cache_key]
+                if (now_ts - cached_time) < _AITOOLIFY_CACHE_TTL and cached_list is not None:
+                    return cached_list
+
+            url = f"{self.api_v1_url}/products"
+
+            async def _req(s: aiohttp.ClientSession):
+                for attempt in range(2):
+                    try:
+                        async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=20, connect=8)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json(content_type=None)
+                                raw_list = extract_products_list_from_json(data)
+                                standardized = self._standardize_aitoolify_catalog(raw_list or [])
+                                _AITOOLIFY_CATALOG_CACHE[cache_key] = (standardized, time.time())
+                                return standardized
+                            elif resp.status == 429 and attempt == 0:
+                                logger.warning("Aitoolify rate limit (429) on /products. Retrying after 2.5s...")
+                                await asyncio.sleep(2.5)
+                                continue
+                            else:
+                                logger.warning(f"Aitoolify catalog {url} returned HTTP {resp.status}")
+                                break
+                    except Exception as e:
+                        logger.warning(f"Aitoolify catalog fetch error: {e}")
+                        if attempt == 0:
+                            await asyncio.sleep(0.5)
+                if cache_key in _AITOOLIFY_CATALOG_CACHE:
+                    return _AITOOLIFY_CATALOG_CACHE[cache_key][0]
+                return None
+
+            if session:
+                return await _req(session)
+            else:
+                async with aiohttp.ClientSession() as s:
+                    return await _req(s)
+
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        prov_pid = str(provider_product_id).strip()
+        catalog = await self.fetch_catalog(session=session)
+        if catalog:
+            for p in catalog:
+                if matches_product_id(p, prov_pid):
+                    return int(p.get("stock", 0))
+        return None
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        cache_key = f"{self.api_v1_url}:{self.api_key}"
+        now_ts = time.time()
+        # Use fresh catalog (refresh if older than 5s so live your_cost changes reflect immediately)
+        use_force = True
+        if cache_key in _AITOOLIFY_CATALOG_CACHE:
+            _, cached_time = _AITOOLIFY_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < 5.0:
+                use_force = False
+
+        catalog = await self.fetch_catalog(session=session, force_refresh=use_force)
+        if catalog:
+            for p in catalog:
+                if matches_product_id(p, prov_pid):
+                    return float(p.get("price", 0.0))
+        return None
+
+    async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
+        url = f"{self.api_v1_url}/balance"
+
+        async def _req(s: aiohttp.ClientSession):
+            try:
+                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict):
+                            return data
+            except Exception as e:
+                logger.debug(f"Aitoolify balance fetch failed: {e}")
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def execute_order(
+        self,
+        provider_product_id: Any,
+        quantity: int,
+        expected_price: Optional[float] = None,
+        client_order_ref: Optional[str] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
+    ) -> List[str]:
+        """
+        Places an order via POST /api/reseller/v1/order using idempotency_key.
+        Handles comma-separated customer_email strings and pending_invite deliveries cleanly.
+        """
+        prov_pid = str(provider_product_id).strip()
+        item_id = int(prov_pid) if prov_pid.isdigit() else prov_pid
+        order_ref = str(client_order_ref or f"BOT_{int(time.time())}_{uuid.uuid4().hex[:8]}")[:120]
+
+        payload: Dict[str, Any] = {
+            "product_id": item_id,
+            "quantity": int(quantity),
+            "idempotency_key": order_ref
+        }
+        custom_qty = (self.field_mapping.get("buy_qty_field") or "").strip()
+        if custom_qty:
+            payload[custom_qty] = int(quantity)
+        custom_pid = (self.field_mapping.get("buy_pid_field") or "").strip()
+        if custom_pid:
+            payload[custom_pid] = item_id
+
+        if customer_email:
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            if email_list:
+                if len(email_list) < int(quantity):
+                    email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
+                payload["customer_email"] = ",".join(email_list[:int(quantity)])
+
+        ep_list = self._get_custom_buy_endpoints([f"{self.api_v1_url}/order"])
+        ep = ep_list[0]
+        headers = self.get_headers({"Idempotency-Key": order_ref})
+
+        async def _req(s: aiohttp.ClientSession):
+            last_err = "No response from provider"
+            for attempt in range(2):
+                try:
+                    logger.info(f"Executing Aitoolify Reseller v1 order on {ep} with payload: {payload}")
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=60, connect=10)) as resp:
+                        if resp.status in [200, 201]:
+                            data = await resp.json(content_type=None)
+                            if not isinstance(data, dict):
+                                return [str(data)]
+
+                            delivered = data.get("delivered")
+                            if isinstance(delivered, list) and delivered:
+                                items = [str(it).strip() for it in delivered if str(it).strip()]
+                                if items:
+                                    return items
+
+                            status_str = str(data.get("status") or "").lower()
+                            remote_ref = data.get("order_ref") or order_ref
+
+                            # If pending_invite / pending delivery, briefly poll GET /order/{order_ref}
+                            if status_str in ["pending_invite", "pending", "processing"] and remote_ref:
+                                poll_url = f"{self.api_v1_url}/order/{remote_ref}"
+                                for _ in range(2):
+                                    await asyncio.sleep(2.0)
+                                    try:
+                                        async with s.get(poll_url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as p_resp:
+                                            if p_resp.status == 200:
+                                                p_data = await p_resp.json(content_type=None)
+                                                if isinstance(p_data, dict):
+                                                    p_deliv = p_data.get("delivered")
+                                                    if isinstance(p_deliv, list) and p_deliv:
+                                                        items = [str(it).strip() for it in p_deliv if str(it).strip()]
+                                                        if items:
+                                                            return items
+                                                    p_stat = str(p_data.get("status") or "").lower()
+                                                    if p_stat:
+                                                        status_str = p_stat
+                                    except Exception:
+                                        pass
+                                email_note = f" — Email: {payload['customer_email']}" if payload.get("customer_email") else ""
+                                return [f"✅ Order #{remote_ref} Queued ({status_str.upper()}){email_note} | Seller will deliver shortly"]
+
+                            if data.get("success"):
+                                return [f"Order #{remote_ref} Completed Successfully"]
+                            raise Exception("Provider returned empty delivery data")
+
+                        # Parse structured error JSON
+                        err_code = ""
+                        err_msg = ""
+                        try:
+                            err_json = await resp.json(content_type=None)
+                            if isinstance(err_json, dict):
+                                err_code = str(err_json.get("error_code") or "").upper()
+                                err_msg = str(err_json.get("error") or err_json.get("message") or "")
+                        except Exception:
+                            err_msg = (await resp.text())[:200]
+
+                        last_err = f"{err_code}: {err_msg}".strip(": ") or f"HTTP {resp.status}"
+                        err_lower = last_err.lower()
+
+                        if resp.status == 402 or err_code == "INSUFFICIENT_BALANCE":
+                            raise Exception(f"Provider balance insufficient: {err_msg or last_err}")
+                        elif resp.status == 409 or err_code == "OUT_OF_STOCK":
+                            raise Exception(f"Out of stock ({err_msg or last_err})")
+                        elif err_code in ["CUSTOMER_EMAIL_REQUIRED", "INVALID_CUSTOMER_EMAIL"] or "email" in err_lower:
+                            raise Exception(f"Provider requires email: {err_msg or last_err}")
+                        elif resp.status in [401, 403, 404, 503] or err_code in ["AUTH_HEADER_REQUIRED", "INVALID_API_KEY", "KEY_BLOCKED", "ACCOUNT_BLOCKED", "PRODUCT_NOT_FOUND", "API_DISABLED"]:
+                            raise Exception(f"Provider error: {last_err}")
+                        elif (resp.status == 429 or err_code == "RATE_LIMITED" or resp.status >= 500) and attempt == 0:
+                            # Safe retry using the EXACT same idempotency_key
+                            logger.warning(f"Aitoolify order returned {resp.status} ({err_code}), safely retrying with same idempotency_key...")
+                            await asyncio.sleep(2.5)
+                            continue
+                        else:
+                            raise Exception(f"Provider error: {last_err}")
+                except (aiohttp.ClientConnectorError, aiohttp.ServerTimeoutError, asyncio.TimeoutError) as conn_err:
+                    last_err = str(conn_err)
+                    if attempt == 0:
+                        logger.warning(f"Aitoolify connection error on {ep}, retrying safely with same idempotency_key: {conn_err}")
+                        await asyncio.sleep(1.5)
+                        continue
+                    raise Exception(f"Cannot connect to provider: {last_err}")
+                except Exception as ex:
+                    raise ex
+            raise Exception(f"Provider error: {last_err}")
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+
+# -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
 def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[Any] = None) -> BaseProviderAdapter:
@@ -2304,6 +2659,8 @@ def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[An
         return ShopDigitalProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "supabase.co" in clean_url:
         return SupabaseProviderAdapter(base_url, api_key, field_mapping=field_mapping)
+    elif "aitoolifystudio" in clean_url or "/api/reseller/v1" in clean_url:
+        return AitoolifyProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "/api/reseller" in clean_url or "/reseller" in clean_url:
         return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "roboticvn" in clean_url:

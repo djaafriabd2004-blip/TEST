@@ -93,6 +93,7 @@ def extract_price_from_dict(p, custom_field: str = None):
 
     # Prioritize reseller/API/effective wholesale price fields if provider returns both display price and API price
     reseller_price_keys = [
+        'your_cost', 'yourCost', 'reseller_cost', 'resellerCost',
         'reseller_price', 'resellerPrice', 'api_price', 'apiPrice',
         'your_price', 'yourPrice', 'partner_price', 'partnerPrice',
         'member_price', 'memberPrice', 'wholesale_price', 'wholesalePrice',
@@ -147,7 +148,7 @@ def extract_stock_from_dict(p, allow_boolean=True, custom_field: str = None):
                 pass
 
     # 1. Check numeric stock fields FIRST
-    for key in ['stock', 'stock_count', 'quantity', 'qty', 'count', 'amount', 'inventory', 'available', 'available_stock', 'max', 'remains', 'balance']:
+    for key in ['stock', 'stock_quantity', 'stock_count', 'quantity', 'qty', 'count', 'amount', 'inventory', 'available', 'available_stock', 'max', 'remains', 'balance']:
         val = p.get(key)
         if val is not None and not isinstance(val, bool):
             try:
@@ -155,13 +156,13 @@ def extract_stock_from_dict(p, allow_boolean=True, custom_field: str = None):
             except (ValueError, TypeError):
                 pass
     
-    # 2. Check boolean inStock flags if allow_boolean is True
+    # 2. Check boolean inStock / unlimited flags if allow_boolean is True
     if allow_boolean:
-        for key in ['inStock', 'in_stock', 'is_available', 'available', 'active', 'enabled']:
+        for key in ['is_unlimited', 'unlimited', 'inStock', 'in_stock', 'is_available', 'available', 'active', 'enabled']:
             val = p.get(key)
             if val is True:
                 return 999
-            elif val is False:
+            elif val is False and key not in ['is_unlimited', 'unlimited']:
                 return 0
                 
         # 3. Check string representations like "in stock", "out of stock"

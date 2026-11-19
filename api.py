@@ -9,9 +9,15 @@ logger = logging.getLogger(__name__)
 # Authentication Middleware
 @web.middleware
 async def api_key_auth_middleware(request, handler):
-    # Allow public endpoints
+    # Allow public endpoints and web portal (user checkout & admin portal)
     clean_path = request.path.rstrip('/')
-    if clean_path in ["", "/", "/api/health", "/health", "/v1/health", "/api/v1/health"]:
+    if (
+        clean_path in ["", "/", "/api/health", "/health", "/v1/health", "/api/v1/health"]
+        or clean_path.startswith("/pay")
+        or clean_path.startswith("/api/pay")
+        or clean_path.startswith("/admin")
+        or clean_path.startswith("/api/admin")
+    ):
         return await handler(request)
         
     # Extract API Key from multiple standard headers / query params
@@ -528,6 +534,10 @@ def create_api_app(bot) -> web.Application:
     app.router.add_get("/api/v1/orders/{id}", get_order_detail_api)
     app.router.add_get("/api/reseller/orders/{id}", get_order_detail_api)
     app.router.add_get("/reseller/orders/{id}", get_order_detail_api)
+    
+    # 7. Global Web Checkout & Admin Web Portal routes
+    from web_portal import setup_web_portal_routes
+    setup_web_portal_routes(app)
     
     return app
 

@@ -578,6 +578,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         builder.button(text=get_text('btn_admin_set_ltc_addr', lang), callback_data="admin_set_crypto_addr_ltc")
         builder.button(text=get_text('btn_admin_set_ton_addr', lang), callback_data="admin_set_crypto_addr_ton")
         builder.button(text=get_text('btn_admin_set_binance_addr', lang), callback_data="admin_set_crypto_addr_binance")
+        builder.button(text="🖥️ لوحة تحكم الدفع الويب (Admin Panel)", callback_data="admin_open_web_panel")
         
     elif menu == "admin_referral_settings":
         fixed_bonus = await get_setting("referral_bonus_percent", "1.0")
@@ -2496,6 +2497,37 @@ async def cb_admin_toggle_xrocket_testnet(callback: CallbackQuery, lang='en'):
     
     await callback.answer(f"✅")
     await cb_admin_settings_menu(callback, menu="admin_api_keys_settings", lang=lang)
+
+@router.callback_query(F.data == "admin_open_web_panel")
+async def cb_admin_open_web_panel(callback: CallbackQuery, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        await callback.answer("Not authorized.")
+        return
+        
+    from database import get_or_create_admin_web_token
+    from utils import get_bot_api_base_url
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    
+    admin_token = await get_or_create_admin_web_token()
+    base_url = await get_bot_api_base_url()
+    admin_web_url = f"{base_url.rstrip('/')}/admin/web?key={admin_token}"
+    
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🚀 فتح لوحة تحكم الأدمن ↗️", url=admin_web_url)
+    builder.button(text=get_text('btn_back', lang), callback_data="admin_settings_menu")
+    builder.adjust(1)
+    
+    admin_msg = (
+        "🛡️ *لوحة تحكم الدفع والمعاملات (Admin Web Portal)*\n\n"
+        "يمكنك إدارة بوابات الدفع ومراجعة سجل المعاملات وقبول أو رفض الإيداعات من خلال المتصفح عبر الرابط الآمن أدناه:\n\n"
+        f"🔗 `{admin_web_url}`\n\n"
+        "⚠️ *تنبيه:* هذا الرابط خاص بالأدمن فقط ويحتوي على رمز الوصول السري، لا تشاركه مع أي شخص."
+    )
+    try:
+        await callback.message.edit_text(admin_msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(admin_msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await callback.answer()
 
 # --- Admin Broadcast ---
 @router.callback_query(F.data == "admin_broadcast")

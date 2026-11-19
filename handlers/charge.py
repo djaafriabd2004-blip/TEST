@@ -32,8 +32,9 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
     xrocket_token = await get_setting('xrocket_token', '')
     xrocket_enabled = len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
     cryptotransfer_enabled = (await get_setting('cryptotransfer_enabled', '1')) == '1'
+    global_web_enabled = (await get_setting('global_web_enabled', '1')) == '1'
     
-    kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled, xrocket_enabled)
+    kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled, xrocket_enabled, global_web_enabled)
     
     if isinstance(message_or_callback, CallbackQuery):
         await message_or_callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
@@ -47,6 +48,46 @@ async def cmd_charge(message: Message, lang='en'):
 @router.callback_query(F.data == "charge_menu")
 async def cb_charge_menu(callback: CallbackQuery, lang='en'):
     await show_charge_menu(callback, callback.from_user.id, lang)
+    await callback.answer()
+
+@router.callback_query(F.data == "charge_global_web")
+async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
+    user_id = callback.from_user.id
+    from database import create_payment_session
+    from utils import get_bot_api_base_url
+    
+    token = await create_payment_session(user_id)
+    base_url = await get_bot_api_base_url()
+    pay_url = f"{base_url.rstrip('/')}/pay/{token}"
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💳 Global Web Checkout ↗️", url=pay_url)
+    builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+    builder.adjust(1)
+    
+    text_map = {
+        'ar': (
+            "🌐 *بوابة الدفع والشحن الخارجي (Global Web)*\n\n"
+            "لإتمام عملية الشحن عبر وسائل الدفع الإلكترونية (Binance Pay, Crypto, المحافظ الرقمية)، يرجى الضغط على الزر أدناه لفتح صفحة الدفع الآمنة في المتصفح الخارجي.\n\n"
+            "⚡ *سيتم شحن رصيدك تلقائياً فور تأكيد العملية!*"
+        ),
+        'en': (
+            "🌐 *External Payment Portal (Global Web)*\n\n"
+            "To top up your balance using external payment methods (Binance Pay, Crypto, Digital Wallets), click the button below to open the secure checkout page in your browser.\n\n"
+            "⚡ *Your balance will be credited automatically once confirmed!*"
+        ),
+        'ru': (
+            "🌐 *Внешний платежный портал (Global Web)*\n\n"
+            "Для пополнения баланса нажмите кнопку ниже, чтобы открыть безопасную страницу оплаты в браузере.\n\n"
+            "⚡ *Баланс будет зачислен автоматически!*"
+        )
+    }
+    msg_text = text_map.get(lang, text_map['en'])
+    try:
+        await callback.message.edit_text(msg_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(msg_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
 
 @router.callback_query(F.data == "cancel_charge")
