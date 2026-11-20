@@ -787,9 +787,18 @@ async def msg_admin_back_to_user_menu(message: Message):
     )
     
     button_emojis = await get_button_emojis()
+    gw_enabled = (await get_setting('global_web_enabled', '1')) == '1'
+    pay_url = None
+    if gw_enabled:
+        try:
+            from utils import get_bot_api_base_url
+            base_url = await get_bot_api_base_url()
+            pay_url = f"{base_url.rstrip('/')}/pay?uid={user_id}"
+        except Exception:
+            pass
     await message.answer(
         welcome_text,
-        reply_markup=keyboards.get_main_menu(lang, is_admin=True, button_emojis=button_emojis),
+        reply_markup=keyboards.get_main_menu(lang, is_admin=True, button_emojis=button_emojis, global_web_enabled=gw_enabled, web_app_url=pay_url),
         parse_mode="HTML"
     )
 

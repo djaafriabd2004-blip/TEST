@@ -2247,10 +2247,10 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
 
 async def get_checkout_page(request: web.Request) -> web.Response:
     token = request.match_info.get("token") or request.query.get("token")
-    if not token:
-        return web.Response(text="Invalid or missing payment token.", status=400)
+    uid_str = request.query.get("uid") or request.query.get("user_id")
+    amount_str = request.query.get("amount")
 
-    from database import get_payment_session, get_setting
+    from database import get_payment_session, get_setting, create_payment_session, get_user
     gw_enabled = (await get_setting("global_web_enabled", "1")) == "1"
     if not gw_enabled:
         return web.Response(
@@ -2262,12 +2262,31 @@ async def get_checkout_page(request: web.Request) -> web.Response:
             status=403
         )
 
-    session = await get_payment_session(token)
+    session = None
+    if token:
+        session = await get_payment_session(token)
+
+    if not session and uid_str:
+        try:
+            target_uid = int(uid_str)
+            user_data = await get_user(target_uid)
+            if user_data:
+                target_amt = 0.0
+                if amount_str:
+                    try:
+                        target_amt = float(amount_str)
+                    except ValueError:
+                        pass
+                fresh_token = await create_payment_session(target_uid, amount=target_amt)
+                session = await get_payment_session(fresh_token)
+        except Exception as e:
+            logger.warning(f"Failed to auto-create session from uid: {e}")
+
     if not session:
         return web.Response(
             text="""<div style="font-family:sans-serif; text-align:center; padding:50px; background:#0B0E14; color:#fff; min-height:100vh;">
-                <h2>Payment Session Expired</h2>
-                <p style="color:#8E99A8;">Please return to the Telegram bot and request a new deposit link.</p>
+                <h2>Payment Session Expired or Invalid</h2>
+                <p style="color:#8E99A8;">Please return to the Telegram bot and click the payment button.</p>
             </div>""",
             content_type="text/html",
             status=404

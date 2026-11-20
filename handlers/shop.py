@@ -32,7 +32,7 @@ async def get_direct_pay_url(user_id: int, price_to_pay: float) -> str:
             return None
         token = await create_payment_session(user_id, amount=price_to_pay)
         base_url = await get_bot_api_base_url()
-        return f"{base_url.rstrip('/')}/pay/{token}"
+        return f"{base_url.rstrip('/')}/pay/{token}?uid={user_id}&amount={price_to_pay}"
     except Exception as err:
         logger.warning(f"Failed to generate direct pay URL: {err}")
         return None

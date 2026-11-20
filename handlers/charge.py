@@ -70,42 +70,29 @@ async def cmd_web_checkout(message: Message, lang='en'):
         return
 
     user_id = message.from_user.id
-    from database import create_payment_session
     from utils import get_bot_api_base_url
-    
-    token = await create_payment_session(user_id)
     base_url = await get_bot_api_base_url()
-    pay_url = f"{base_url.rstrip('/')}/pay/{token}"
+    pay_url = f"{base_url.rstrip('/')}/pay?uid={user_id}"
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import WebAppInfo
     builder = InlineKeyboardBuilder()
     btn_text = {
-        'ar': "🌐 فتح موقع الدفع والشحن ↗️",
+        'ar': "🌐 الدخول إلى موقع الدفع والشحن ↗️",
         'en': "🌐 Open Web Checkout ↗️",
         'ru': "🌐 Открыть веб-оплату ↗️",
         'fr': "🌐 Ouvrir le paiement Web ↗️"
     }
-    builder.button(text=btn_text.get(lang, btn_text['en']), url=pay_url)
+    builder.button(text=btn_text.get(lang, btn_text['en']), web_app=WebAppInfo(url=pay_url))
     builder.adjust(1)
     
     text_map = {
-        'ar': (
-            "🌐 *بوابة الدفع والشحن المباشر (Global Web)*\n\n"
-            "اضغط على الزر أدناه لفتح صفحة الدفع الآمنة وشحن حسابك بجميع وسائل الدفع المتاحة (Binance Pay, USDT, TON, LTC, CryptoBot):\n\n"
-            "⚡ *تتم إضافة الرصيد لحسابك في البوت تلقائياً وفور تأكيد العملية!*"
-        ),
-        'en': (
-            "🌐 *Direct Payment Portal (Global Web)*\n\n"
-            "Click the button below to open the secure payment page and top up your account with all available payment methods (Binance Pay, USDT, TON, LTC, CryptoBot):\n\n"
-            "⚡ *Balance is credited to your bot account automatically once confirmed!*"
-        ),
-        'ru': (
-            "🌐 *Прямой платежный портал (Global Web)*\n\n"
-            "Нажмите кнопку ниже, чтобы открыть безопасную страницу оплаты и пополнить баланс:\n\n"
-            "⚡ *Средства зачисляются на ваш баланс автоматически!*"
-        )
+        'ar': "🌐 اضغط على الزر أدناه للدخول المباشر إلى موقع الدفع:",
+        'en': "🌐 Click the button below to open the checkout portal directly:",
+        'ru': "🌐 Нажмите кнопку ниже для перехода к оплате:",
+        'fr': "🌐 Cliquez sur le bouton ci-dessous pour ouvrir le paiement direct :"
     }
-    await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
+    await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup())
 
 @router.callback_query(F.data == "charge_menu")
 async def cb_charge_menu(callback: CallbackQuery, lang='en'):
@@ -134,8 +121,9 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
     pay_url = f"{base_url.rstrip('/')}/pay/{token}"
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import WebAppInfo
     builder = InlineKeyboardBuilder()
-    builder.button(text="💳 Global Web Checkout ↗️", url=pay_url)
+    builder.button(text="💳 Global Web Checkout ↗️", web_app=WebAppInfo(url=pay_url))
     builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
     builder.adjust(1)
     
@@ -194,9 +182,18 @@ async def cb_cancel_charge(callback: CallbackQuery, is_admin=False, lang='en'):
         user_id=callback.from_user.id
     )
     button_emojis = await get_button_emojis()
+    gw_enabled = (await get_setting('global_web_enabled', '1')) == '1'
+    pay_url = None
+    if gw_enabled:
+        try:
+            from utils import get_bot_api_base_url
+            base_url = await get_bot_api_base_url()
+            pay_url = f"{base_url.rstrip('/')}/pay?uid={callback.from_user.id}"
+        except Exception:
+            pass
     await callback.message.answer(
         welcome_text,
-        reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis),
+        reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis, global_web_enabled=gw_enabled, web_app_url=pay_url),
         parse_mode="HTML"
     )
     await callback.message.delete()

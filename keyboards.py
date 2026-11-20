@@ -1,4 +1,4 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from localization import get_text, strip_leading_emoji, SUPPORTED_LANGUAGES
 try:
@@ -6,7 +6,7 @@ try:
 except ImportError:
     import config
 
-def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enabled=True) -> ReplyKeyboardMarkup:
+def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enabled=True, web_app_url=None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     if button_emojis is None:
         button_emojis = {}
@@ -39,6 +39,8 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enab
             kwargs["text"] = strip_leading_emoji(raw_text)
         else:
             kwargs["text"] = raw_text
+        if text_key == 'btn_web_checkout' and web_app_url:
+            kwargs["web_app"] = WebAppInfo(url=web_app_url)
         builder.button(**kwargs)
     
     if global_web_enabled:
@@ -185,7 +187,7 @@ def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay
         
     # 2. Pay directly with Web Link (pre-filled amount, instant checkout)
     if pay_url:
-        builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
+        builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), web_app=WebAppInfo(url=pay_url))
         
     # 3. Pay with Binance Pay
     builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
