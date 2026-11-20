@@ -169,6 +169,46 @@ LOCALIZATION = {
         'ko': "🌐 웹 결제 페이지 열기 ↗️",
         'pt': "🌐 Abrir Pagamento Web ↗️"
     },
+    'btn_open_payment_browser': {
+        'en': "🌐 Open Payment Site in Browser ↗️",
+        'ar': "🌐 فتح موقع الدفع في المتصفح ↗️",
+        'ru': "🌐 Открыть страницу оплаты в браузере ↗️",
+        'fr': "🌐 Ouvrir le site de paiement dans le navigateur ↗️",
+        'zh': "🌐 在浏览器中打开支付网站 ↗️",
+        'hi': "🌐 ब्राउज़र में भुगतान साइट खोलें ↗️",
+        'ko': "🌐 브라우저에서 결제 사이트 열기 ↗️",
+        'pt': "🌐 Abrir Site de Pagamento no Navegador ↗️"
+    },
+    'btn_global_web': {
+        'en': "🌐 Global Web",
+        'ar': "🌐 موقع الدفع الخارجي (Global Web)",
+        'ru': "🌐 Веб-оплата (Global Web)",
+        'fr': "🌐 Paiement Web (Global Web)",
+        'zh': "🌐 网页支付 (Global Web)",
+        'hi': "🌐 वेब भुगतान (Global Web)",
+        'ko': "🌐 웹 결제 (Global Web)",
+        'pt': "🌐 Pagamento Web (Global Web)"
+    },
+    'btn_download_txt': {
+        'en': "📥 Download as TXT",
+        'ar': "📥 تحميل كملف TXT",
+        'ru': "📥 Скачать как TXT",
+        'fr': "📥 Télécharger en TXT",
+        'zh': "📥 下载为 TXT",
+        'hi': "📥 TXT के रूप में डाउनलोड करें",
+        'ko': "📥 TXT로 다운로드",
+        'pt': "📥 Baixar como TXT"
+    },
+    'btn_cancel_preorder_item': {
+        'en': "❌ Cancel #{id}",
+        'ar': "❌ إلغاء حجز #{id}",
+        'ru': "❌ Отмена #{id}",
+        'fr': "❌ Annuler #{id}",
+        'zh': "❌ 取消预订 #{id}",
+        'hi': "❌ रद्द करें #{id}",
+        'ko': "❌ 취소 #{id}",
+        'pt': "❌ Cancelar #{id}"
+    },
     'btn_other_payment_methods': {
         'en': "💳 Other Payment Methods",
         'ar': "💳 طرق دفع أخرى",
@@ -273,6 +313,10 @@ LOCALIZATION = {
         'en': "❌ Cancel Reservation & Refund",
         'ar': "❌ إلغاء الحجز واسترداد الرصيد",
         'ru': "❌ Отменить бронь и вернуть",
+        'fr': "❌ Annuler la réservation et rembourser",
+        'zh': "❌ 取消预订并退款",
+        'hi': "❌ बुकिंग रद्द करें और रिफंड पाएं",
+        'ko': "❌ 예약 취소 및 환불",
         'pt': "❌ Cancelar Reserva e Reembolsar"
     },
     'select_lang': {
@@ -462,12 +506,20 @@ LOCALIZATION = {
         'en': "💰 Pay with Wallet Balance (${balance:.2f})",
         'ar': "💰 الدفع من رصيد المحفظة (${balance:.2f})",
         'ru': "💰 Оплатить с баланса кошелька (${balance:.2f})",
+        'fr': "💰 Payer avec le solde du portefeuille (${balance:.2f})",
+        'zh': "💰 使用钱包余额支付 (${balance:.2f})",
+        'hi': "💰 वॉलेट बैलेंस से भुगतान करें (${balance:.2f})",
+        'ko': "💰 지갑 잔액으로 결제 (${balance:.2f})",
         'pt': "💰 Pagar com Saldo da Carteira (${balance:.2f})"
     },
     'btn_pay_binance': {
         'en': "🔶 Pay with Binance Pay (Instant)",
         'ar': "🔶 الدفع عبر Binance Pay (فوري)",
         'ru': "🔶 Оплатить через Binance Pay",
+        'fr': "🔶 Payer avec Binance Pay (Instantané)",
+        'zh': "🔶 使用 Binance Pay 支付 (即时)",
+        'hi': "🔶 Binance Pay से भुगतान करें (तुरंत)",
+        'ko': "🔶 Binance Pay로 결제 (즉시)",
         'pt': "🔶 Pagar com Binance Pay (Instantâneo)"
     },
     'checkout_binance_created': {
@@ -520,25 +572,40 @@ LOCALIZATION = {
         'en': "🔸 Binance Pay (USDT)",
         'ar': "🔸 بايننس باي (USDT)",
         'ru': "🔸 Binance Pay (USDT)",
+        'fr': "🔸 Binance Pay (USDT)",
+        'zh': "🔸 Binance Pay (USDT)",
+        'hi': "🔸 Binance Pay (USDT)",
+        'ko': "🔸 Binance Pay (USDT)",
         'pt': "🔸 Binance Pay (USDT)"
     },
     'btn_stars': {
         'en': "⭐️ Telegram Stars",
         'ar': "⭐️ نجوم تلغرام",
         'ru': "⭐️ Telegram Stars",
+        'fr': "⭐️ Étoiles Telegram",
+        'zh': "⭐️ Telegram 星星",
+        'hi': "⭐️ टेलीग्राम स्टार्स",
+        'ko': "⭐️ 텔레그램 스타",
         'pt': "⭐️ Telegram Stars"
     },
     'btn_pay_stars': {
         'en': "⭐️ Telegram Stars ({stars} ⭐️)",
         'ar': "⭐️ نجوم تلغرام ({stars} ⭐️)",
         'ru': "⭐️ Telegram Stars ({stars} ⭐️)",
-        'fr': "⭐️ Telegram Stars ({stars} ⭐️)",
+        'fr': "⭐️ Étoiles Telegram ({stars} ⭐️)",
+        'zh': "⭐️ Telegram 星星 ({stars} ⭐️)",
+        'hi': "⭐️ टेलीग्राम स्टार्स ({stars} ⭐️)",
+        'ko': "⭐️ 텔레그램 스타 ({stars} ⭐️)",
         'pt': "⭐️ Telegram Stars ({stars} ⭐️)"
     },
     'btn_cryptobot': {
         'en': "🤖 Crypto Bot (USDT/TON/BTC)",
         'ar': "🤖 كريبتو بوت (USDT/TON/BTC)",
         'ru': "🤖 Crypto Bot (USDT/TON/BTC)",
+        'fr': "🤖 Crypto Bot (USDT/TON/BTC)",
+        'zh': "🤖 Crypto Bot (USDT/TON/BTC)",
+        'hi': "🤖 Crypto Bot (USDT/TON/BTC)",
+        'ko': "🤖 Crypto Bot (USDT/TON/BTC)",
         'pt': "🤖 Crypto Bot (USDT/TON/BTC)"
     },
     'btn_xrocket': {
@@ -555,6 +622,10 @@ LOCALIZATION = {
         'en': "🪙 Crypto Transfer (Manual)",
         'ar': "🪙 تحويل العملات الرقمية (يدوي)",
         'ru': "🪙 Крипто-перевод (Вручную)",
+        'fr': "🪙 Transfert Crypto (Manuel)",
+        'zh': "🪙 加密货币转账 (手动)",
+        'hi': "🪙 क्रिप्टो ट्रांसफर (मैनुअल)",
+        'ko': "🪙 암호화폐 송금 (수동)",
         'pt': "🪙 Transferência Crypto (Manual)"
     },
     'crypto_select_coin': {
@@ -633,12 +704,22 @@ LOCALIZATION = {
     'btn_pay_now': {
         'en': "🔗 Pay Now",
         'ar': "🔗 ادفع الآن",
-        'ru': "🔗 Оплатить сейчас"
+        'ru': "🔗 Оплатить сейчас",
+        'fr': "🔗 Payer maintenant",
+        'zh': "🔗 立即支付",
+        'hi': "🔗 अभी भुगतान करें",
+        'ko': "🔗 지금 결제",
+        'pt': "🔗 Pagar Agora"
     },
     'btn_check_payment': {
         'en': "🔄 Check Payment Status",
         'ar': "🔄 تحقق من حالة الدفع",
-        'ru': "🔄 Проверить статус платежа"
+        'ru': "🔄 Проверить статус платежа",
+        'fr': "🔄 Vérifier le statut du paiement",
+        'zh': "🔄 检查支付状态",
+        'hi': "🔄 भुगतान स्थिति जांचें",
+        'ko': "🔄 결제 상태 확인",
+        'pt': "🔄 Verificar Status do Pagamento"
     },
     'payment_pending_check': {
         'en': "⏳ Checking payment status... please wait.",
@@ -684,12 +765,20 @@ LOCALIZATION = {
         'en': "🔔 Notify Me When Available",
         'ar': "🔔 أبلغني عند التوفر",
         'ru': "🔔 Уведомить о наличии",
+        'fr': "🔔 M'avertir dès disponibilité",
+        'zh': "🔔 有货时通知我",
+        'hi': "🔔 उपलब्ध होने पर सूचित करें",
+        'ko': "🔔 재입고 시 알림",
         'pt': "🔔 Notificar-me quando disponível"
     },
     'btn_cancel_notify_stock': {
         'en': "🔕 Cancel Notification",
         'ar': "🔕 إلغاء الإشعار",
         'ru': "🔕 Отменить уведомление",
+        'fr': "🔕 Annuler la notification",
+        'zh': "🔕 取消通知",
+        'hi': "🔕 सूचना रद्द करें",
+        'ko': "🔕 알림 취소",
         'pt': "🔕 Cancelar notificação"
     },
     'notify_stock_subscribed': {
@@ -713,22 +802,42 @@ LOCALIZATION = {
     'btn_generate_api_key': {
         'en': "➕ Generate API Key",
         'ar': "➕ إنشاء مفتاح API",
-        'ru': "➕ Создать API ключ"
+        'ru': "➕ Создать API ключ",
+        'fr': "➕ Générer une clé API",
+        'zh': "➕ 生成 API 密钥",
+        'hi': "➕ API कुंजी बनाएं",
+        'ko': "➕ API 키 생성",
+        'pt': "➕ Gerar Chave API"
     },
     'btn_regenerate_api_key': {
         'en': "🔄 Regenerate API Key",
         'ar': "🔄 تجديد مفتاح API",
-        'ru': "🔄 Обновить API ключ"
+        'ru': "🔄 Обновить API ключ",
+        'fr': "🔄 Régénérer la clé API",
+        'zh': "🔄 重新生成 API 密钥",
+        'hi': "🔄 API कुंजी फिर से बनाएं",
+        'ko': "🔄 API 키 재발급",
+        'pt': "🔄 Regerar Chave API"
     },
     'btn_revoke_api_key': {
         'en': "❌ Delete API Key",
         'ar': "❌ حذف مفتاح API",
-        'ru': "❌ Удалить API ключ"
+        'ru': "❌ Удалить API ключ",
+        'fr': "❌ Supprimer la clé API",
+        'zh': "❌ 删除 API 密钥",
+        'hi': "❌ API कुंजी हटाएं",
+        'ko': "❌ API 키 삭제",
+        'pt': "❌ Excluir Chave API"
     },
     'btn_download_api_doc': {
         'en': "📄 Download API Documentation",
         'ar': "📄 تحميل ملف توثيق API",
-        'ru': "📄 Скачать документацию API"
+        'ru': "📄 Скачать документацию API",
+        'fr': "📄 Télécharger la documentation API",
+        'zh': "📄 下载 API 文档",
+        'hi': "📄 API दस्तावेज़ डाउनलोड करें",
+        'ko': "📄 API 문서 다운로드",
+        'pt': "📄 Baixar Documentação API"
     },
     'reseller_api_info_no_key': {
         'en': "🔑 *Reseller API*\n\nResellers can use our HTTP API to integrate our products into their own bots and sell them automatically.\n\n⚠️ You don't have an API Key generated yet. Click the button below to generate one.",
@@ -1572,7 +1681,12 @@ LOCALIZATION = {
     'btn_back_to_categories': {
         'en': "🔙 Back to Categories",
         'ar': "🔙 العودة للأقسام",
-        'ru': "🔙 Назад к категориям"
+        'ru': "🔙 Назад к категориям",
+        'fr': "🔙 Retour aux catégories",
+        'zh': "🔙 返回分类",
+        'hi': "🔙 श्रेणियों पर वापस जाएं",
+        'ko': "🔙 카테고리로 돌아가기",
+        'pt': "🔙 Voltar às Categorias"
     },
     'btn_toggle_categories': {
         'en': "Categories: {status}",

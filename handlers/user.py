@@ -219,11 +219,19 @@ async def show_orders_menu(message: Message, lang='en'):
     # Show download button
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    btn_text = {"en": "📥 Download as TXT", "ar": "📥 تحميل كملف TXT", "ru": "📥 Скачать как TXT"}
-    builder.button(text=btn_text.get(lang, btn_text['en']), callback_data="download_orders_txt")
+    builder.button(text=get_text('btn_download_txt', lang), callback_data="download_orders_txt")
     builder.adjust(1)
     
-    info_text = {"en": "📥 Want all your products in a file?", "ar": "📥 تريد جميع منتجاتك في ملف؟", "ru": "📥 Хотите все товары в файле?"}
+    info_text = {
+        "en": "📥 Want all your products in a file?",
+        "ar": "📥 تريد جميع منتجاتك في ملف؟",
+        "ru": "📥 Хотите все товары в файле?",
+        "fr": "📥 Vous voulez tous vos produits dans un fichier ?",
+        "zh": "📥 想把所有商品下载到一个文件中吗？",
+        "hi": "📥 क्या आप अपने सभी उत्पाद एक फ़ाइल में चाहते हैं?",
+        "ko": "📥 모든 상품을 파일로 받으시겠습니까?",
+        "pt": "📥 Quer todos os seus produtos num ficheiro?"
+    }
     await message.answer(info_text.get(lang, info_text['en']), reply_markup=builder.as_markup())
 
 @router.message(F.text.in_(get_button_variants('btn_my_preorders')))
@@ -256,12 +264,7 @@ async def show_preorders_menu(message: Message, lang='en'):
         preorder_items_combined.append(po_text)
         
         # Add cancel button for this pre-order to the combined keyboard
-        cancel_text = {
-            "ar": f"❌ إلغاء حجز #{po['id']}",
-            "en": f"❌ Cancel #{po['id']}",
-            "ru": f"❌ Отмена #{po['id']}"
-        }
-        builder.button(text=cancel_text.get(lang, cancel_text['en']), callback_data=f"cancel_preorder_{po['id']}")
+        builder.button(text=get_text('btn_cancel_preorder_item', lang, id=po['id']), callback_data=f"cancel_preorder_{po['id']}")
         
     builder.adjust(1)
     

@@ -64,7 +64,11 @@ async def cmd_web_checkout(message: Message, lang='en'):
             'ar': "❌ صفحة الدفع الخارجية غير مفعلة حالياً. يرجى استخدام وسائل الدفع المتاحة في البوت.",
             'en': "❌ External web checkout is currently disabled. Please use available in-bot payment options.",
             'ru': "❌ Оплата на сайте временно отключена. Пожалуйста, используйте бота.",
-            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot."
+            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot.",
+            'zh': "❌ 外部网页支付目前已禁用。请使用机器人内的支付方式。",
+            'hi': "❌ बाहरी वेब भुगतान वर्तमान में अक्षम है। कृपया बॉट में उपलब्ध भुगतान विकल्पों का उपयोग करें।",
+            'ko': "❌ 외부 웹 결제가 현재 비활성화되어 있습니다. 봇 내 결제 수단을 이용해 주세요.",
+            'pt': "❌ O pagamento web externo está desativado. Use as opções de pagamento no bot."
         }
         await message.answer(not_active_msgs.get(lang, not_active_msgs['en']))
         return
@@ -76,20 +80,18 @@ async def cmd_web_checkout(message: Message, lang='en'):
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    btn_text = {
-        'ar': "🌐 فتح موقع الدفع في المتصفح ↗️",
-        'en': "🌐 Open Payment Site in Browser ↗️",
-        'ru': "🌐 Открыть страницу оплаты ↗️",
-        'fr': "🌐 Ouvrir le site de paiement ↗️"
-    }
-    builder.button(text=btn_text.get(lang, btn_text['en']), url=pay_url)
+    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url)
     builder.adjust(1)
     
     text_map = {
         'ar': "🌐 *موقع الدفع والشحن الإلكتروني:*\n\nاضغط على الزر أدناه لفتح صفحة الدفع في المتصفح 👇",
         'en': "🌐 *Online Payment Portal:*\n\nClick the button below to open the checkout page in your browser 👇",
         'ru': "🌐 *Страница оплаты:*\n\nНажмите кнопку ниже, чтобы открыть страницу в браузере 👇",
-        'fr': "🌐 *Portail de paiement en ligne :*\n\nCliquez sur le bouton ci-dessous pour ouvrir la page dans votre navigateur 👇"
+        'fr': "🌐 *Portail de paiement en ligne :*\n\nCliquez sur le bouton ci-dessous pour ouvrir la page dans votre navigateur 👇",
+        'zh': "🌐 *在线支付门户：*\n\n点击下方按钮在浏览器中打开支付页面 👇",
+        'hi': "🌐 *ऑनलाइन भुगतान पोर्टल:*\n\nअपने ब्राउज़र में भुगतान पृष्ठ खोलने के लिए नीचे दिए गए बटन पर क्लिक करें 👇",
+        'ko': "🌐 *온라인 결제 포털:*\n\n아래 버튼을 클릭하여 브라우저에서 결제 페이지를 여세요 👇",
+        'pt': "🌐 *Portal de Pagamento Online:*\n\nClique no botão abaixo para abrir a página de pagamento no seu navegador 👇"
     }
     await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
 
@@ -106,7 +108,11 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
             'ar': "❌ صفحة الدفع الخارجية غير مفعلة حالياً. يرجى استخدام وسائل الدفع المتاحة في البوت.",
             'en': "❌ External web checkout is currently disabled. Please use available in-bot payment options.",
             'ru': "❌ Оплата на сайте временно отключена. Пожалуйста, используйте бота.",
-            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot."
+            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot.",
+            'zh': "❌ 外部网页支付目前已禁用。请使用机器人内的支付方式。",
+            'hi': "❌ बाहरी वेब भुगतान वर्तमान में अक्षम है। कृपया बॉट में उपलब्ध भुगतान विकल्पों का उपयोग करें।",
+            'ko': "❌ 외부 웹 결제가 현재 비활성화되어 있습니다. 봇 내 결제 수단을 이용해 주세요.",
+            'pt': "❌ O pagamento web externo está desativado. Use as opções de pagamento no bot."
         }
         await callback.answer(not_active_msgs.get(lang, not_active_msgs['en']), show_alert=True)
         return
@@ -121,7 +127,7 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text="🌐 فتح موقع الدفع في المتصفح ↗️", url=pay_url)
+    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url)
     builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
     builder.adjust(1)
     
@@ -140,6 +146,31 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
             "🌐 *Внешний платежный портал (Global Web)*\n\n"
             "Для пополнения баланса нажмите кнопку ниже, чтобы открыть безопасную страницу оплаты в браузере.\n\n"
             "⚡ *Баланс будет зачислен автоматически!*"
+        ),
+        'fr': (
+            "🌐 *Portail de paiement externe (Global Web)*\n\n"
+            "Pour recharger votre solde via nos méthodes externes (Binance Pay, Crypto, Portefeuilles numériques), cliquez sur le bouton ci-dessous pour ouvrir la page sécurisée dans votre navigateur.\n\n"
+            "⚡ *Votre solde sera crédité automatiquement dès confirmation !*"
+        ),
+        'zh': (
+            "🌐 *外部支付门户 (Global Web)*\n\n"
+            "要使用外部支付方式（Binance Pay、加密货币、数字钱包）充值余额，请点击下方按钮在浏览器中打开安全支付页面。\n\n"
+            "⚡ *确认后余额将自动到账！*"
+        ),
+        'hi': (
+            "🌐 *बाहरी भुगतान पोर्टल (Global Web)*\n\n"
+            "बाहरी भुगतान विधियों (Binance Pay, Crypto, डिजिटल वॉलेट) से बैलेंस टॉप-अप करने के लिए, अपने ब्राउज़र में सुरक्षित चेकआउट पृष्ठ खोलने के लिए नीचे दिए गए बटन पर क्लिक करें।\n\n"
+            "⚡ *पुष्टि होते ही आपका बैलेंस अपने आप जुड़ जाएगा!*"
+        ),
+        'ko': (
+            "🌐 *외부 결제 포털 (Global Web)*\n\n"
+            "외부 결제 수단(Binance Pay, 암호화폐, 디지털 지갑)으로 잔액을 충전하려면 아래 버튼을 클릭하여 브라우저에서 안전한 결제 페이지를 여세요.\n\n"
+            "⚡ *확인 즉시 잔액이 자동으로 충전됩니다!*"
+        ),
+        'pt': (
+            "🌐 *Portal de Pagamento Externo (Global Web)*\n\n"
+            "Para recarregar seu saldo usando métodos externos (Binance Pay, Crypto, Carteiras Digitais), clique no botão abaixo para abrir a página segura no seu navegador.\n\n"
+            "⚡ *Seu saldo será creditado automaticamente após a confirmação!*"
         )
     }
     msg_text = text_map.get(lang, text_map['en'])

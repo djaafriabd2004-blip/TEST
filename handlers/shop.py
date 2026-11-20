@@ -882,12 +882,6 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
     if current_chunk:
         chunks.append("\n".join(current_chunk))
 
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    btn_text = {"en": "📥 Download as TXT", "ar": "📥 تحميل كملف TXT", "ru": "📥 Скачать как TXT"}
-    builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
-    builder.adjust(1)
-    
     # 4. Deliver products via Telegram: Check text character length against Telegram limits
     from aiogram.types import BufferedInputFile
     txt_content = "\n\n".join(stock_data_list)
@@ -897,8 +891,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    btn_text = {"en": "📥 Download as TXT", "ar": "📥 تحميل كملف TXT", "ru": "📥 Скачать как TXT"}
-    builder.button(text=btn_text.get(lang, btn_text['en']), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
+    builder.button(text=get_text('btn_download_txt', lang), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
     builder.adjust(1)
     
     try:
