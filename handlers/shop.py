@@ -409,10 +409,9 @@ async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: B
         stars_amount = max(1, int(price_to_pay / stars_rate)) if stars_rate > 0 else 1
         
         from aiogram.utils.keyboard import InlineKeyboardBuilder
-        from aiogram.types import WebAppInfo
         ikb = InlineKeyboardBuilder()
         if pay_url:
-            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), web_app=WebAppInfo(url=pay_url))
+            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
             if stars_enabled:
                 stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
                 ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")

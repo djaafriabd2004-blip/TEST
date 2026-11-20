@@ -2344,6 +2344,9 @@ async def api_verify_payment(request: web.Request) -> web.Response:
     if not token or not txid or amount <= 0:
         return web.json_response({"ok": False, "error": "Missing required fields"}, status=400)
 
+    if len(txid) < 5 or len(txid) > 128:
+        return web.json_response({"ok": False, "error": "Invalid TxID length"}, status=400)
+
     from database import (
         get_payment_session, create_payment, complete_payment, 
         reject_payment, get_setting, mark_payment_session_completed, get_user
@@ -2364,6 +2367,19 @@ async def api_verify_payment(request: web.Request) -> web.Response:
     session = await get_payment_session(token)
     if not session:
         return web.json_response({"ok": False, "error": "Payment session expired or invalid"}, status=403)
+
+    min_dep = float(await get_setting("min_deposit_amount", "1.0") or 1.0)
+    session_preset_amt = float(session.get("amount") or 0.0)
+    if session_preset_amt > 0 and amount < session_preset_amt:
+        return web.json_response({
+            "ok": False, 
+            "error": f"المبلغ المدخل أقل من المبلغ المطلوب للطلب (${session_preset_amt:.2f})"
+        }, status=400)
+    elif session_preset_amt <= 0 and amount < min_dep:
+        return web.json_response({
+            "ok": False, 
+            "error": f"الحد الأدنى للشحن هو ${min_dep:.2f}"
+        }, status=400)
 
     user_id = session["user_id"]
     u_lang = session.get("language", "ar")
@@ -2541,10 +2557,17 @@ async def api_create_cryptobot(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         amount = 0.0
 
-    from database import get_payment_session, create_payment
+    from database import get_payment_session, create_payment, get_setting
     session = await get_payment_session(token)
     if not session or amount <= 0:
         return web.json_response({"ok": False, "error": "Invalid session or amount"}, status=400)
+
+    min_dep = float(await get_setting("min_deposit_amount", "1.0") or 1.0)
+    session_preset_amt = float(session.get("amount") or 0.0)
+    if session_preset_amt > 0 and amount < session_preset_amt:
+        return web.json_response({"ok": False, "error": f"Amount less than required (${session_preset_amt:.2f})"}, status=400)
+    elif session_preset_amt <= 0 and amount < min_dep:
+        return web.json_response({"ok": False, "error": f"Amount less than minimum deposit (${min_dep:.2f})"}, status=400)
 
     from cryptobot_client import create_cryptobot_invoice
     user_id = session["user_id"]
@@ -2569,10 +2592,17 @@ async def api_create_xrocket(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         amount = 0.0
 
-    from database import get_payment_session, create_payment
+    from database import get_payment_session, create_payment, get_setting
     session = await get_payment_session(token)
     if not session or amount <= 0:
         return web.json_response({"ok": False, "error": "Invalid session or amount"}, status=400)
+
+    min_dep = float(await get_setting("min_deposit_amount", "1.0") or 1.0)
+    session_preset_amt = float(session.get("amount") or 0.0)
+    if session_preset_amt > 0 and amount < session_preset_amt:
+        return web.json_response({"ok": False, "error": f"Amount less than required (${session_preset_amt:.2f})"}, status=400)
+    elif session_preset_amt <= 0 and amount < min_dep:
+        return web.json_response({"ok": False, "error": f"Amount less than minimum deposit (${min_dep:.2f})"}, status=400)
 
     from xrocket_client import create_xrocket_invoice
     user_id = session["user_id"]
@@ -2622,7 +2652,7 @@ async def get_admin_web_page(request: web.Request) -> web.Response:
 
     html_content = render_admin_dashboard_html(stats, settings, payments, total_count, provided_key, store_name, filter_status or 'all')
     response = web.Response(text=html_content, content_type="text/html")
-    response.set_cookie("admin_web_key", provided_key, max_age=86400 * 7, httponly=True)
+    response.set_cookie("admin_web_key", provided_key, max_age=86400 * 7, httponly=True, samesite="Lax")
     return response
 
 

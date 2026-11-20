@@ -75,24 +75,23 @@ async def cmd_web_checkout(message: Message, lang='en'):
     pay_url = f"{base_url.rstrip('/')}/pay?uid={user_id}"
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import WebAppInfo
     builder = InlineKeyboardBuilder()
     btn_text = {
-        'ar': "🌐 الدخول إلى موقع الدفع والشحن ↗️",
-        'en': "🌐 Open Web Checkout ↗️",
-        'ru': "🌐 Открыть веб-оплату ↗️",
-        'fr': "🌐 Ouvrir le paiement Web ↗️"
+        'ar': "🌐 فتح موقع الدفع في المتصفح ↗️",
+        'en': "🌐 Open Payment Site in Browser ↗️",
+        'ru': "🌐 Открыть страницу оплаты ↗️",
+        'fr': "🌐 Ouvrir le site de paiement ↗️"
     }
-    builder.button(text=btn_text.get(lang, btn_text['en']), web_app=WebAppInfo(url=pay_url))
+    builder.button(text=btn_text.get(lang, btn_text['en']), url=pay_url)
     builder.adjust(1)
     
     text_map = {
-        'ar': "🌐 اضغط على الزر أدناه للدخول المباشر إلى موقع الدفع:",
-        'en': "🌐 Click the button below to open the checkout portal directly:",
-        'ru': "🌐 Нажмите кнопку ниже для перехода к оплате:",
-        'fr': "🌐 Cliquez sur le bouton ci-dessous pour ouvrir le paiement direct :"
+        'ar': "🌐 *موقع الدفع والشحن الإلكتروني:*\n\nاضغط على الزر أدناه لفتح صفحة الدفع في المتصفح 👇",
+        'en': "🌐 *Online Payment Portal:*\n\nClick the button below to open the checkout page in your browser 👇",
+        'ru': "🌐 *Страница оплаты:*\n\nНажмите кнопку ниже, чтобы открыть страницу в браузере 👇",
+        'fr': "🌐 *Portail de paiement en ligne :*\n\nCliquez sur le bouton ci-dessous pour ouvrir la page dans votre navigateur 👇"
     }
-    await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup())
+    await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
 
 @router.callback_query(F.data == "charge_menu")
 async def cb_charge_menu(callback: CallbackQuery, lang='en'):
@@ -121,9 +120,8 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
     pay_url = f"{base_url.rstrip('/')}/pay/{token}"
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import WebAppInfo
     builder = InlineKeyboardBuilder()
-    builder.button(text="💳 Global Web Checkout ↗️", web_app=WebAppInfo(url=pay_url))
+    builder.button(text="🌐 فتح موقع الدفع في المتصفح ↗️", url=pay_url)
     builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
     builder.adjust(1)
     
