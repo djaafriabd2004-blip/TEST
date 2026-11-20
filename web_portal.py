@@ -1400,7 +1400,106 @@ def render_admin_login_html(error: str = None) -> str:
 </html>
 """
 
-def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, total_count: int, admin_key: str, store_name: str) -> str:
+def parse_payment_display(p: dict) -> dict:
+    method_raw = str(p.get("payment_method") or "").strip()
+    tx_raw = str(p.get("transaction_id") or "").strip()
+
+    badge_color = "#9CA3AF"
+    badge_bg = "rgba(156, 163, 175, 0.12)"
+    badge_border = "rgba(156, 163, 175, 0.25)"
+    method_name = method_raw
+    extracted_hash = tx_raw
+    has_custom_hash = False
+    icon_svg = ""
+
+    if method_raw.startswith("blockchain_"):
+        parts = method_raw.split("_", 2)
+        coin = parts[1].upper() if len(parts) > 1 else ""
+        if len(parts) > 2 and parts[2].strip():
+            extracted_hash = parts[2].strip()
+            has_custom_hash = True
+        
+        if coin == "BINANCE":
+            method_name = "Binance Pay"
+            badge_color = "#F3BA2F"
+            badge_bg = "rgba(243, 186, 47, 0.15)"
+            badge_border = "rgba(243, 186, 47, 0.3)"
+            icon_svg = SVG_BADGE_BINANCE
+        elif "TRC20" in coin:
+            method_name = "USDT (TRC-20)"
+            badge_color = "#26A17B"
+            badge_bg = "rgba(38, 161, 123, 0.15)"
+            badge_border = "rgba(38, 161, 123, 0.3)"
+            icon_svg = SVG_BADGE_TRON
+        elif "BEP20" in coin or coin == "USDT":
+            method_name = "USDT (BEP-20)"
+            badge_color = "#26A17B"
+            badge_bg = "rgba(38, 161, 123, 0.15)"
+            badge_border = "rgba(38, 161, 123, 0.3)"
+            icon_svg = SVG_BADGE_BNB
+        elif coin in ["TON", "GRAM"]:
+            method_name = "TON Network"
+            badge_color = "#0098EA"
+            badge_bg = "rgba(0, 152, 234, 0.15)"
+            badge_border = "rgba(0, 152, 234, 0.3)"
+            icon_svg = SVG_BADGE_TON
+        elif coin == "LTC":
+            method_name = "Litecoin (LTC)"
+            badge_color = "#60A5FA"
+            badge_bg = "rgba(96, 165, 250, 0.15)"
+            badge_border = "rgba(96, 165, 250, 0.3)"
+            icon_svg = SVG_BADGE_LTC
+        else:
+            method_name = f"Crypto ({coin})"
+            badge_color = "#38BDF8"
+            badge_bg = "rgba(56, 189, 248, 0.15)"
+            badge_border = "rgba(56, 189, 248, 0.3)"
+    elif method_raw.startswith("cryptobot_") or tx_raw.startswith("CB_"):
+        method_name = "CryptoBot"
+        badge_color = "#38BDF8"
+        badge_bg = "rgba(56, 189, 248, 0.15)"
+        badge_border = "rgba(56, 189, 248, 0.3)"
+        if "cryptobot_" in method_raw:
+            extracted_hash = method_raw.replace("cryptobot_", "Invoice #")
+            has_custom_hash = True
+    elif method_raw.startswith("xrocket_") or tx_raw.startswith("XR_"):
+        method_name = "xRocket Pay"
+        badge_color = "#A78BFA"
+        badge_bg = "rgba(167, 139, 250, 0.15)"
+        badge_border = "rgba(167, 139, 250, 0.3)"
+        if "xrocket_" in method_raw:
+            extracted_hash = method_raw.replace("xrocket_", "Invoice #")
+            has_custom_hash = True
+    elif method_raw == "telegram_stars" or tx_raw.startswith("STARS_"):
+        method_name = "Telegram Stars ⭐️"
+        badge_color = "#FBBF24"
+        badge_bg = "rgba(251, 191, 36, 0.15)"
+        badge_border = "rgba(251, 191, 36, 0.3)"
+    elif "binance" in method_raw.lower():
+        method_name = "Binance Pay"
+        badge_color = "#F3BA2F"
+        badge_bg = "rgba(243, 186, 47, 0.15)"
+        badge_border = "rgba(243, 186, 47, 0.3)"
+        icon_svg = SVG_BADGE_BINANCE
+    elif "usdt" in method_raw.lower():
+        method_name = "USDT"
+        badge_color = "#26A17B"
+        badge_bg = "rgba(38, 161, 123, 0.15)"
+        badge_border = "rgba(38, 161, 123, 0.3)"
+        icon_svg = SVG_BADGE_BNB
+
+    badge_html = f'<span class="method-badge" style="display:inline-flex; align-items:center; gap:6px; background:{badge_bg}; color:{badge_color}; border:1px solid {badge_border}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; white-space:nowrap;">{icon_svg}<span>{html.escape(method_name)}</span></span>'
+
+    return {
+        "method_name": method_name,
+        "badge_html": badge_html,
+        "extracted_hash": extracted_hash,
+        "has_custom_hash": has_custom_hash,
+        "raw_tx_id": tx_raw
+    }
+
+
+def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, total_count: int, admin_key: str, store_name: str, filter_status: str = "all") -> str:
     total_volume = float(stats.get("total_volume") or 0.0)
     completed_tx = int(stats.get("completed_tx") or 0)
     pending_tx = int(stats.get("pending_tx") or 0)
@@ -1416,7 +1515,9 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
     min_dep = settings.get("min_deposit_amount", "1.0")
     global_web_enabled = (settings.get("global_web_enabled", "1") == "1")
 
-    rows_html = ""
+    desktop_rows_html = ""
+    mobile_cards_html = ""
+
     for p in payments:
         status = p.get("status", "pending")
         if status == "completed":
@@ -1428,34 +1529,109 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
 
         tx_id = html.escape(str(p.get("transaction_id", "")))
         uid = p.get("user_id")
-        uname = html.escape(str(p.get("username") or p.get("first_name") or f"User #{uid}"))
+        raw_uname = str(p.get("username") or p.get("first_name") or f"User #{uid}")
+        uname = html.escape(raw_uname)
+        clean_uname = raw_uname.replace("@", "").strip()
         amt = float(p.get("amount") or 0.0)
-        method = html.escape(str(p.get("payment_method", "")))
         created_at = html.escape(str(p.get("created_at", "")))
 
-        actions = ""
+        parsed = parse_payment_display(p)
+        display_hash = parsed["extracted_hash"]
+        has_custom = parsed["has_custom_hash"]
+        method_badge = parsed["badge_html"]
+
+        desktop_actions = "-"
+        mobile_actions = ""
         if status == "pending":
-            actions = f"""
+            desktop_actions = f"""
             <div style="display:flex; gap:6px;">
                 <button class="btn btn-success btn-copy" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'approve')">قبول وشحن</button>
                 <button class="btn btn-danger btn-copy" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'reject')">رفض</button>
             </div>
             """
+            mobile_actions = f"""
+            <div class="m-actions-grid">
+                <button class="btn btn-success m-btn-action" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'approve')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <span>قبول وشحن الرصيد</span>
+                </button>
+                <button class="btn btn-danger m-btn-action" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'reject')">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <span>رفض</span>
+                </button>
+            </div>
+            """
 
-        rows_html += f"""
+        ref_html = f'<div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Ref: {tx_id}</div>' if (has_custom and tx_id != display_hash) else ""
+
+        desktop_rows_html += f"""
         <tr>
-            <td style="font-weight:600; color:#fff;">{tx_id}</td>
-            <td><a href="https://t.me/{uname.replace('@','')}" target="_blank" style="color:#60A5FA; text-decoration:none;">{uname}</a> <span style="font-size:0.75rem; color:var(--text-muted);">({uid})</span></td>
-            <td><span style="font-weight:700; color:var(--accent);">${amt:.2f}</span></td>
-            <td style="font-size:0.8rem; color:var(--text-muted); direction:ltr;">{method}</td>
+            <td>{method_badge}</td>
+            <td>
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <code class="code-tx" title="{html.escape(display_hash)}">{html.escape(display_hash)}</code>
+                    <button type="button" class="btn-copy-small" onclick="copyText('{html.escape(display_hash)}', this)" title="نسخ المعرف">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                </div>
+                {ref_html}
+            </td>
+            <td><a href="https://t.me/{clean_uname}" target="_blank" style="color:#60A5FA; text-decoration:none; font-weight:600;">{uname}</a> <span style="font-size:0.75rem; color:var(--text-muted);">({uid})</span></td>
+            <td><span style="font-weight:800; font-size:1rem; color:var(--accent);">${amt:.2f}</span></td>
             <td>{badge}</td>
             <td style="font-size:0.8rem; color:var(--text-muted);">{created_at}</td>
-            <td>{actions}</td>
+            <td>{desktop_actions}</td>
         </tr>
         """
 
-    if not rows_html:
-        rows_html = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">لا توجد معاملات مسجلة بعد</td></tr>'
+        mobile_cards_html += f"""
+        <div class="m-card status-{status}">
+            <div class="m-card-header">
+                <div class="m-user-info">
+                    <a href="https://t.me/{clean_uname}" target="_blank" class="m-uname">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.52 2.77-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" fill="#38BDF8"/></svg>
+                        <span>{uname}</span>
+                    </a>
+                    <span class="m-uid">ID: {uid}</span>
+                </div>
+                <div>{badge}</div>
+            </div>
+
+            <div class="m-card-body">
+                <div class="m-val-group">
+                    <span class="m-lbl">المبلغ المطلوب</span>
+                    <span class="m-amt">${amt:.2f} <small style="font-size:0.75rem; color:var(--text-muted); font-weight:400;">USD</small></span>
+                </div>
+                <div class="m-val-group" style="align-items:flex-end;">
+                    <span class="m-lbl">طريقة الدفع</span>
+                    <div>{method_badge}</div>
+                </div>
+            </div>
+
+            <div class="m-txid-box">
+                <div class="m-txid-title-row">
+                    <span class="m-lbl" style="margin:0;">معرّف المعاملة (TxID):</span>
+                    <button type="button" class="btn-copy-hash" onclick="copyText('{html.escape(display_hash)}', this)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span>نسخ الكود</span>
+                    </button>
+                </div>
+                <div class="m-txid-code">{html.escape(display_hash)}</div>
+                {f'<div class="m-ref-sub">معرف النظام: {tx_id}</div>' if (has_custom and tx_id != display_hash) else ''}
+            </div>
+
+            <div class="m-card-footer">
+                <div class="m-date">🕒 {created_at}</div>
+                {mobile_actions}
+            </div>
+        </div>
+        """
+
+    if not desktop_rows_html:
+        desktop_rows_html = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">لا توجد معاملات مسجلة بعد</td></tr>'
+        mobile_cards_html = '<div style="text-align:center; padding:30px; color:var(--text-muted); background:var(--bg-card); border-radius:14px; border:1px solid var(--border);">لا توجد معاملات مسجلة بعد</div>'
+
+    current_status = (filter_status or "all").lower()
 
     return f"""<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -1518,6 +1694,8 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
         .tab-link.active {{ color: #fff; border-bottom-color: var(--primary); }}
         .tab-page {{ display: none; }}
         .tab-page.active {{ display: block; }}
+        
+        /* Table Styles (Desktop) */
         .table-wrap {{
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -1525,13 +1703,271 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
             overflow-x: auto;
         }}
         table {{ width: 100%; border-collapse: collapse; text-align: right; font-size: 0.9rem; }}
-        th {{ background: #0E131F; padding: 14px 16px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border); }}
+        th {{ background: #0E131F; padding: 14px 16px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; }}
         td {{ padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }}
         tr:hover td {{ background: var(--bg-card-hover); }}
+
+        /* Code TX and Copy Buttons */
+        .code-tx {{
+            font-family: monospace;
+            font-size: 0.82rem;
+            color: #E2E8F0;
+            background: #0B0E14;
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+            direction: ltr;
+        }}
+        .btn-copy-small {{
+            background: #1F2937;
+            border: 1px solid var(--border);
+            color: #9CA3AF;
+            border-radius: 6px;
+            padding: 5px 7px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .btn-copy-small:hover {{
+            color: #fff;
+            border-color: #38BDF8;
+            background: rgba(56, 189, 248, 0.1);
+        }}
+
+        /* Filter bar */
+        .filter-bar {{
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            -webkit-overflow-scrolling: touch;
+        }}
+        .filter-btn {{
+            font-size: 0.88rem;
+            padding: 8px 16px;
+            border-radius: 8px;
+            white-space: nowrap;
+            text-decoration: none;
+            transition: all 0.2s;
+        }}
+        .filter-btn.active-filter {{
+            background: rgba(29, 100, 242, 0.25);
+            border-color: #1D64F2;
+            color: #fff !important;
+            font-weight: 700;
+        }}
+
+        /* Mobile Cards Styles */
+        .mobile-cards-wrap {{
+            display: none;
+        }}
+        .m-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }}
+        .m-card.status-pending {{
+            border-color: rgba(245, 158, 11, 0.4);
+            background: #111726;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+        }}
+        .m-card-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .m-user-info {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }}
+        .m-uname {{
+            color: #60A5FA;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        .m-uid {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: rgba(255,255,255,0.05);
+            padding: 2px 6px;
+            border-radius: 6px;
+        }}
+        .m-card-body {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: #0B0E14;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }}
+        .m-val-group {{
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }}
+        .m-lbl {{
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }}
+        .m-amt {{
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--accent);
+        }}
+        .m-txid-box {{
+            background: #0E131F;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+        }}
+        .m-txid-title-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }}
+        .m-txid-code {{
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #F3F4F6;
+            word-break: break-all;
+            background: #06090F;
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.06);
+            direction: ltr;
+            text-align: left;
+        }}
+        .btn-copy-hash {{
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #E5E7EB;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+        }}
+        .btn-copy-hash:active {{
+            transform: scale(0.96);
+        }}
+        .m-ref-sub {{
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }}
+        .m-card-footer {{
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }}
+        .m-date {{
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }}
+        .m-actions-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 2px;
+        }}
+        .m-btn-action {{
+            width: 100%;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            border-radius: 10px;
+        }}
+
         .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px; }}
         .form-card {{ background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }}
         .form-group {{ margin-bottom: 14px; }}
         .form-group label {{ display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: #D1D5DB; }}
+
+        /* Responsive Breakpoints */
+        @media (max-width: 768px) {{
+            .desktop-only {{
+                display: none !important;
+            }}
+            .mobile-cards-wrap {{
+                display: flex !important;
+                flex-direction: column !important;
+            }}
+            .stats-grid {{
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 10px !important;
+                margin-bottom: 16px !important;
+            }}
+            .stat-card {{
+                padding: 12px 14px !important;
+                border-radius: 12px !important;
+            }}
+            .stat-card .lbl {{
+                font-size: 0.72rem !important;
+            }}
+            .stat-card .val {{
+                font-size: 1.3rem !important;
+            }}
+            .main-wrap {{
+                padding: 12px 10px 40px !important;
+            }}
+            .admin-nav {{
+                padding: 12px 14px !important;
+                flex-direction: column !important;
+                gap: 10px !important;
+                align-items: stretch !important;
+            }}
+            .admin-nav .brand {{
+                font-size: 1rem !important;
+                justify-content: center !important;
+            }}
+            .admin-nav .nav-actions {{
+                display: flex !important;
+                gap: 8px !important;
+            }}
+            .admin-nav .nav-actions .btn {{
+                flex: 1 !important;
+                text-align: center !important;
+            }}
+            .tabs {{
+                margin-bottom: 14px !important;
+            }}
+            .tab-link {{
+                padding: 10px 14px !important;
+                font-size: 0.88rem !important;
+            }}
+            .form-grid {{
+                grid-template-columns: 1fr !important;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -1540,7 +1976,7 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
             <span style="color:#1D64F2;">{SVG_SHIELD}</span>
             <span>لوحة تحكم الدفع (الأدمن) | {html.escape(store_name)}</span>
         </div>
-        <div style="display:flex; gap:10px; align-items:center;">
+        <div class="nav-actions" style="display:flex; gap:10px; align-items:center;">
             <a href="/admin/web" class="btn btn-outline btn-copy">تحديث</a>
             <a href="/admin/web?key=logout" class="btn btn-danger btn-copy">تسجيل خروج</a>
         </div>
@@ -1573,30 +2009,36 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
 
         <!-- TRANSACTIONS TAB -->
         <div class="tab-page active" id="tab-tx">
-            <div style="display:flex; gap:6px; margin-bottom:14px;">
-                <a href="/admin/web?key={admin_key}&status=all" class="btn btn-outline btn-copy">الكل</a>
-                <a href="/admin/web?key={admin_key}&status=pending" class="btn btn-outline btn-copy" style="color:var(--warning);">المعلقة</a>
-                <a href="/admin/web?key={admin_key}&status=completed" class="btn btn-outline btn-copy" style="color:var(--accent);">الناجحة</a>
-                <a href="/admin/web?key={admin_key}&status=rejected" class="btn btn-outline btn-copy" style="color:var(--danger);">المرفوضة</a>
+            <div class="filter-bar">
+                <a href="/admin/web?key={admin_key}&status=all" class="btn btn-outline filter-btn {'active-filter' if current_status in ['all', ''] else ''}">الكل</a>
+                <a href="/admin/web?key={admin_key}&status=pending" class="btn btn-outline filter-btn {'active-filter' if current_status == 'pending' else ''}" style="color:var(--warning);">المعلقة</a>
+                <a href="/admin/web?key={admin_key}&status=completed" class="btn btn-outline filter-btn {'active-filter' if current_status == 'completed' else ''}" style="color:var(--accent);">الناجحة</a>
+                <a href="/admin/web?key={admin_key}&status=rejected" class="btn btn-outline filter-btn {'active-filter' if current_status == 'rejected' else ''}" style="color:var(--danger);">المرفوضة</a>
             </div>
 
-            <div class="table-wrap">
+            <!-- DESKTOP TABLE VIEW -->
+            <div class="table-wrap desktop-only">
                 <table>
                     <thead>
                         <tr>
-                            <th>رقم المعاملة</th>
+                            <th>وسيلة الدفع</th>
+                            <th>معرّف المعاملة / TxID</th>
                             <th>العميل</th>
                             <th>المبلغ</th>
-                            <th>وسيلة الدفع / TxID</th>
                             <th>الحالة</th>
                             <th>التاريخ</th>
                             <th>الإجراءات</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {rows_html}
+                        {desktop_rows_html}
                     </tbody>
                 </table>
+            </div>
+
+            <!-- MOBILE CARDS VIEW -->
+            <div class="mobile-cards-wrap">
+                {mobile_cards_html}
             </div>
         </div>
 
@@ -1680,6 +2122,38 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
 
     <script>
         const ADMIN_KEY = "{admin_key}";
+
+        function copyText(val, btn) {{
+            if (!val) return;
+            const originalContent = btn.innerHTML;
+            const fallbackCopy = (text) => {{
+                const ta = document.createElement("textarea");
+                ta.value = text;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                try {{
+                    document.execCommand("copy");
+                    showToast("✅ تم نسخ المعرف إلى الحافظة");
+                    btn.innerHTML = "✓ تم";
+                    setTimeout(() => {{ btn.innerHTML = originalContent; }}, 1500);
+                }} catch(e) {{
+                    showToast("تعذر النسخ التلقائي");
+                }}
+                document.body.removeChild(ta);
+            }};
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(val).then(() => {{
+                    showToast("✅ تم نسخ المعرف إلى الحافظة");
+                    btn.innerHTML = "✓ تم";
+                    setTimeout(() => {{ btn.innerHTML = originalContent; }}, 1500);
+                }}).catch(() => fallbackCopy(val));
+            }} else {{
+                fallbackCopy(val);
+            }}
+        }}
 
         function showToast(msg) {{
             const t = document.getElementById('toast');
@@ -2122,7 +2596,7 @@ async def get_admin_web_page(request: web.Request) -> web.Response:
         "global_web_enabled": await get_setting("global_web_enabled", "1"),
     }
 
-    html_content = render_admin_dashboard_html(stats, settings, payments, total_count, provided_key, store_name)
+    html_content = render_admin_dashboard_html(stats, settings, payments, total_count, provided_key, store_name, filter_status or 'all')
     response = web.Response(text=html_content, content_type="text/html")
     response.set_cookie("admin_web_key", provided_key, max_age=86400 * 7, httponly=True)
     return response
