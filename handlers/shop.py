@@ -23,6 +23,20 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
+async def get_direct_pay_url(user_id: int, price_to_pay: float) -> str:
+    try:
+        from database import get_setting, create_payment_session
+        from utils import get_bot_api_base_url
+        gw_enabled = (await get_setting("global_web_enabled", "1")) == "1"
+        if not gw_enabled or price_to_pay <= 0:
+            return None
+        token = await create_payment_session(user_id, amount=price_to_pay)
+        base_url = await get_bot_api_base_url()
+        return f"{base_url.rstrip('/')}/pay/{token}"
+    except Exception as err:
+        logger.warning(f"Failed to generate direct pay URL: {err}")
+        return None
+
 async def _apply_user_effective_prices(products, user_id):
     if not products or not user_id:
         return products
@@ -296,9 +310,10 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
     unit_price = await get_effective_product_price(product, user_id, qty)
     price_to_pay = round(unit_price * qty, 2)
     
+    pay_url = await get_direct_pay_url(user_id, price_to_pay)
     # Render checkout payment method prompt
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
-    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang)
+    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang, pay_url=pay_url)
     
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
@@ -348,8 +363,9 @@ async def process_activation_email(message: Message, state: FSMContext, bot: Bot
     price_to_pay = round(unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
     
+    pay_url = await get_direct_pay_url(user_id, price_to_pay)
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
-    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang)
+    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang, pay_url=pay_url)
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 # Callback handler for paying from balance
@@ -373,6 +389,19 @@ async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: B
     
     if round(db_user['balance'], 2) < price_to_pay:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay), show_alert=True)
+        pay_url = await get_direct_pay_url(user_id, price_to_pay)
+        if pay_url:
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            ikb = InlineKeyboardBuilder()
+            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
+            ikb.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
+            ikb.adjust(1)
+            low_bal_msg = {
+                'ar': f"⚠️ *رصيدك الحالي غير كافٍ لإتمام الشراء.*\n\n💰 *المطلوب:* `${price_to_pay:.2f} USD`\n💎 *رصيدك الحالي:* `${db_user['balance']:.2f} USD`\n\n👇 يمكنك الدفع المباشر للطلب عبر الرابط المجهز لك أدناه:",
+                'en': f"⚠️ *Your current balance is insufficient.*\n\n💰 *Required:* `${price_to_pay:.2f} USD`\n💎 *Your Balance:* `${db_user['balance']:.2f} USD`\n\n👇 You can pay directly for this order using the prepared link below:",
+                'ru': f"⚠️ *Недостаточно средств на балансе.*\n\n💰 *Сумма:* `${price_to_pay:.2f} USD`\n\n👇 Вы можете оплатить этот заказ напрямую по ссылке:"
+            }
+            await callback.message.answer(low_bal_msg.get(lang, low_bal_msg['en']), reply_markup=ikb.as_markup(), parse_mode="Markdown")
         return
         
     await callback.message.edit_text("⏳ Processing purchase...")

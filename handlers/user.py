@@ -73,11 +73,32 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
     )
     
     button_emojis = await get_button_emojis()
+    gw_enabled = (await get_setting('global_web_enabled', '1')) == '1'
     await message.answer(
         welcome_text,
-        reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis),
+        reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis, global_web_enabled=gw_enabled),
         parse_mode="HTML"
     )
+
+    if gw_enabled:
+        try:
+            from database import create_payment_session
+            from utils import get_bot_api_base_url
+            token = await create_payment_session(user_id)
+            base_url = await get_bot_api_base_url()
+            pay_url = f"{base_url.rstrip('/')}/pay/{token}"
+            from aiogram.utils.keyboard import InlineKeyboardBuilder
+            ikb = InlineKeyboardBuilder()
+            ikb.button(text=get_text('btn_web_checkout_direct', lang), url=pay_url)
+            banner_text = {
+                'ar': "🌐 <b>موقع الدفع والشحن الإلكتروني:</b>\nيمكنك شحن رصيدك مباشرة بجميع وسائل الدفع بالضغط على الزر أدناه 👇",
+                'en': "🌐 <b>Direct Web Checkout Portal:</b>\nYou can top up your balance directly with all payment methods below 👇",
+                'ru': "🌐 <b>Веб-страница оплаты:</b>\nВы можете пополнить баланс прямо на сайте 👇",
+                'fr': "🌐 <b>Portail de paiement Web :</b>\nVous pouvez recharger votre solde directement via le bouton ci-dessous 👇"
+            }
+            await message.answer(banner_text.get(lang, banner_text['en']), reply_markup=ikb.as_markup(), parse_mode="HTML")
+        except Exception as e:
+            logger.warning(f"Could not send web checkout prompt on start: {e}")
 
 @router.message(F.text.in_(get_button_variants('btn_language')))
 async def show_language_menu(message: Message, lang='en'):

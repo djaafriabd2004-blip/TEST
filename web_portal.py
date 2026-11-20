@@ -834,7 +834,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
         </div>
 
         <!-- ================= STAGE 1: AMOUNT ENTRY (INITIAL VIEW ONLY) ================= -->
-        <div id="phase-amount">
+        <div id="phase-amount" style="{'display:none;' if preset_amount > 0 else ''}">
             <div class="amount-card">
                 <div class="amount-card-header">
                     <div class="amount-card-icon">{SVG_WALLET}</div>
@@ -871,7 +871,7 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
         </div>
 
         <!-- ================= STAGE 2: PAYMENT METHODS & DETAILS (UNLOCKED AFTER AMOUNT) ================= -->
-        <div id="phase-payment" style="display:none;">
+        <div id="phase-payment" style="{'display:block;' if preset_amount > 0 else 'display:none;'}">
             <!-- LOCKED AMOUNT BAR WITH EDIT BUTTON -->
             <div class="locked-banner">
                 <div>
@@ -1360,6 +1360,11 @@ def render_user_checkout_html(session: dict, settings: dict, store_name: str, bo
         }}
 
         // Initialize state
+        const HAS_PRESET_AMOUNT = {str(preset_amount > 0).lower()};
+        if (HAS_PRESET_AMOUNT) {{
+            document.getElementById('phase-amount').style.display = 'none';
+            document.getElementById('phase-payment').style.display = 'block';
+        }}
         updateConfirmedTimeDisplay();
         selectMethod(activeMethod);
     </script>

@@ -6,7 +6,7 @@ try:
 except ImportError:
     import config
 
-def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboardMarkup:
+def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enabled=True) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     if button_emojis is None:
         button_emojis = {}
@@ -14,6 +14,11 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
     # Button keys for emoji mapping
     buttons = [
         ('btn_shop', 'shop', 'success'),
+    ]
+    if global_web_enabled:
+        buttons.append(('btn_web_checkout', 'web_checkout', 'primary'))
+    
+    buttons.extend([
         ('btn_my_orders', 'orders', 'primary'),
         ('btn_my_preorders', 'preorders', 'primary'),
         ('btn_charge_balance', 'charge', 'primary'),
@@ -21,7 +26,7 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
         ('btn_support', 'support', None),
         ('btn_language', 'language', None),
         ('btn_reseller_api', 'reseller_api', None),
-    ]
+    ])
     
     for text_key, emoji_key, style in buttons:
         raw_text = get_text(text_key, lang)
@@ -36,7 +41,10 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None) -> ReplyKeyboar
             kwargs["text"] = raw_text
         builder.button(**kwargs)
     
-    builder.adjust(2, 2, 2, 2)
+    if global_web_enabled:
+        builder.adjust(2, 2, 2, 2, 1)
+    else:
+        builder.adjust(2, 2, 2, 2)
     
     if is_admin:
         # Add admin panel on its own line
@@ -168,17 +176,21 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
     builder.adjust(1)
     return builder.as_markup()
 
-def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en') -> InlineKeyboardMarkup:
+def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay_url=None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # 1. Pay with Balance (if user balance is enough)
     if round(balance, 2) >= price_to_pay:
         builder.button(text=get_text('btn_pay_balance', lang, balance=balance), callback_data=f"chk_bal_{product_id}_{qty}")
         
-    # 2. Pay with Binance Pay
+    # 2. Pay directly with Web Link (pre-filled amount, instant checkout)
+    if pay_url:
+        builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
+        
+    # 3. Pay with Binance Pay
     builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
     
-    # 3. Direct button to other payment methods (charge balance menu)
+    # 4. Direct button to other payment methods (charge balance menu)
     builder.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
     
     # Back button

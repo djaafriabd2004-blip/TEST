@@ -139,6 +139,36 @@ LOCALIZATION = {
         'ko': "💳 잔액 충전",
         'pt': "💳 Recarregar Saldo"
     },
+    'btn_web_checkout': {
+        'en': "🌐 Web Checkout",
+        'ar': "🌐 موقع الدفع والشحن",
+        'ru': "🌐 Веб-оплата",
+        'fr': "🌐 Paiement Web",
+        'zh': "🌐 网页充值",
+        'hi': "🌐 वेब भुगतान",
+        'ko': "🌐 웹 결제",
+        'pt': "🌐 Pagamento Web"
+    },
+    'btn_pay_web_link': {
+        'en': "🌐 Direct Web Pay (${price:.2f}) ↗️",
+        'ar': "🌐 دفع مباشر عبر الرابط (${price:.2f}) ↗️",
+        'ru': "🌐 Прямая оплата на сайте (${price:.2f}) ↗️",
+        'fr': "🌐 Paiement Direct Web (${price:.2f}) ↗️",
+        'zh': "🌐 网页直接支付 (${price:.2f}) ↗️",
+        'hi': "🌐 सीधे वेब पर भुगतान (${price:.2f}) ↗️",
+        'ko': "🌐 웹 직접 결제 (${price:.2f}) ↗️",
+        'pt': "🌐 Pagamento Direto Web (${price:.2f}) ↗️"
+    },
+    'btn_web_checkout_direct': {
+        'en': "🌐 Open Web Checkout ↗️",
+        'ar': "🌐 موقع الدفع والشحن المباشر ↗️",
+        'ru': "🌐 Открыть страницу оплаты ↗️",
+        'fr': "🌐 Ouvrir la page de paiement ↗️",
+        'zh': "🌐 打开网页充值 ↗️",
+        'hi': "🌐 वेब भुगतान खोलें ↗️",
+        'ko': "🌐 웹 결제 페이지 열기 ↗️",
+        'pt': "🌐 Abrir Pagamento Web ↗️"
+    },
     'btn_other_payment_methods': {
         'en': "💳 Other Payment Methods",
         'ar': "💳 طرق دفع أخرى",

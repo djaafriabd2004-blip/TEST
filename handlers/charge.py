@@ -56,6 +56,57 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
 async def cmd_charge(message: Message, lang='en'):
     await show_charge_menu(message, message.from_user.id, lang)
 
+@router.message(F.text.in_(get_button_variants('btn_web_checkout')))
+async def cmd_web_checkout(message: Message, lang='en'):
+    global_web_enabled = (await get_setting('global_web_enabled', '1')) == '1'
+    if not global_web_enabled:
+        not_active_msgs = {
+            'ar': "❌ صفحة الدفع الخارجية غير مفعلة حالياً. يرجى استخدام وسائل الدفع المتاحة في البوت.",
+            'en': "❌ External web checkout is currently disabled. Please use available in-bot payment options.",
+            'ru': "❌ Оплата на сайте временно отключена. Пожалуйста, используйте бота.",
+            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot."
+        }
+        await message.answer(not_active_msgs.get(lang, not_active_msgs['en']))
+        return
+
+    user_id = message.from_user.id
+    from database import create_payment_session
+    from utils import get_bot_api_base_url
+    
+    token = await create_payment_session(user_id)
+    base_url = await get_bot_api_base_url()
+    pay_url = f"{base_url.rstrip('/')}/pay/{token}"
+    
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    btn_text = {
+        'ar': "🌐 فتح موقع الدفع والشحن ↗️",
+        'en': "🌐 Open Web Checkout ↗️",
+        'ru': "🌐 Открыть веб-оплату ↗️",
+        'fr': "🌐 Ouvrir le paiement Web ↗️"
+    }
+    builder.button(text=btn_text.get(lang, btn_text['en']), url=pay_url)
+    builder.adjust(1)
+    
+    text_map = {
+        'ar': (
+            "🌐 *بوابة الدفع والشحن المباشر (Global Web)*\n\n"
+            "اضغط على الزر أدناه لفتح صفحة الدفع الآمنة وشحن حسابك بجميع وسائل الدفع المتاحة (Binance Pay, USDT, TON, LTC, CryptoBot):\n\n"
+            "⚡ *تتم إضافة الرصيد لحسابك في البوت تلقائياً وفور تأكيد العملية!*"
+        ),
+        'en': (
+            "🌐 *Direct Payment Portal (Global Web)*\n\n"
+            "Click the button below to open the secure payment page and top up your account with all available payment methods (Binance Pay, USDT, TON, LTC, CryptoBot):\n\n"
+            "⚡ *Balance is credited to your bot account automatically once confirmed!*"
+        ),
+        'ru': (
+            "🌐 *Прямой платежный портал (Global Web)*\n\n"
+            "Нажмите кнопку ниже, чтобы открыть безопасную страницу оплаты и пополнить баланс:\n\n"
+            "⚡ *Средства зачисляются на ваш баланс автоматически!*"
+        )
+    }
+    await message.answer(text_map.get(lang, text_map['en']), reply_markup=builder.as_markup(), parse_mode="Markdown")
+
 @router.callback_query(F.data == "charge_menu")
 async def cb_charge_menu(callback: CallbackQuery, lang='en'):
     await show_charge_menu(callback, callback.from_user.id, lang)
