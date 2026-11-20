@@ -679,6 +679,29 @@ async def process_successful_payment(message: Message, bot: Bot, lang='en'):
                         )
                     except Exception as e:
                         logger.warning(f"Could not notify referrer {ref_id}: {e}")
+    elif payload.startswith("stars_buy_"):
+        parts = payload.split("_")
+        if len(parts) >= 6:
+            p_uid = int(parts[2])
+            product_id = int(parts[3])
+            qty = int(parts[4])
+            transaction_id = "_".join(parts[5:])
+            
+            result = await complete_payment(transaction_id)
+            if result:
+                amount = result['amount']
+                from handlers.shop import execute_delivery
+                await execute_delivery(
+                    message,
+                    p_uid,
+                    product_id,
+                    qty,
+                    amount,
+                    skip_balance_check=False,
+                    bot=bot,
+                    lang=lang,
+                    state=None
+                )
 
 
 @router.callback_query(F.data.startswith("check_cryptobot_"))

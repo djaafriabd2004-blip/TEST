@@ -528,6 +528,13 @@ LOCALIZATION = {
         'ru': "⭐️ Telegram Stars",
         'pt': "⭐️ Telegram Stars"
     },
+    'btn_pay_stars': {
+        'en': "⭐️ Telegram Stars ({stars} ⭐️)",
+        'ar': "⭐️ نجوم تلغرام ({stars} ⭐️)",
+        'ru': "⭐️ Telegram Stars ({stars} ⭐️)",
+        'fr': "⭐️ Telegram Stars ({stars} ⭐️)",
+        'pt': "⭐️ Telegram Stars ({stars} ⭐️)"
+    },
     'btn_cryptobot': {
         'en': "🤖 Crypto Bot (USDT/TON/BTC)",
         'ar': "🤖 كريبتو بوت (USDT/TON/BTC)",

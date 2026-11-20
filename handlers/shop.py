@@ -311,9 +311,16 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
     price_to_pay = round(unit_price * qty, 2)
     
     pay_url = await get_direct_pay_url(user_id, price_to_pay)
+    stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
+    stars_rate = float(await get_setting('stars_rate', '0.02'))
+    stars_amount = max(1, int(price_to_pay / stars_rate)) if stars_rate > 0 else 1
+    
     # Render checkout payment method prompt
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
-    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang, pay_url=pay_url)
+    kb = keyboards.get_checkout_keyboard(
+        product_id, qty, db_user['balance'], price_to_pay, lang,
+        pay_url=pay_url, stars_enabled=stars_enabled, stars_amount=stars_amount
+    )
     
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
@@ -364,8 +371,15 @@ async def process_activation_email(message: Message, state: FSMContext, bot: Bot
     prod_name = get_product_name(product, lang)
     
     pay_url = await get_direct_pay_url(user_id, price_to_pay)
+    stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
+    stars_rate = float(await get_setting('stars_rate', '0.02'))
+    stars_amount = max(1, int(price_to_pay / stars_rate)) if stars_rate > 0 else 1
+    
     text = get_text('checkout_payment_prompt', lang, name=prod_name, qty=qty, price=price_to_pay)
-    kb = keyboards.get_checkout_keyboard(product_id, qty, db_user['balance'], price_to_pay, lang, pay_url=pay_url)
+    kb = keyboards.get_checkout_keyboard(
+        product_id, qty, db_user['balance'], price_to_pay, lang,
+        pay_url=pay_url, stars_enabled=stars_enabled, stars_amount=stars_amount
+    )
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 # Callback handler for paying from balance
@@ -390,23 +404,88 @@ async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: B
     if round(db_user['balance'], 2) < price_to_pay:
         await callback.answer(get_text('insufficient_balance', lang, balance=db_user['balance'], price=price_to_pay), show_alert=True)
         pay_url = await get_direct_pay_url(user_id, price_to_pay)
+        stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
+        stars_rate = float(await get_setting('stars_rate', '0.02'))
+        stars_amount = max(1, int(price_to_pay / stars_rate)) if stars_rate > 0 else 1
+        
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        from aiogram.types import WebAppInfo
+        ikb = InlineKeyboardBuilder()
         if pay_url:
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
-            ikb = InlineKeyboardBuilder()
-            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
-            ikb.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
-            ikb.adjust(1)
-            low_bal_msg = {
-                'ar': f"⚠️ *رصيدك الحالي غير كافٍ لإتمام الشراء.*\n\n💰 *المطلوب:* `${price_to_pay:.2f} USD`\n💎 *رصيدك الحالي:* `${db_user['balance']:.2f} USD`\n\n👇 يمكنك الدفع المباشر للطلب عبر الرابط المجهز لك أدناه:",
-                'en': f"⚠️ *Your current balance is insufficient.*\n\n💰 *Required:* `${price_to_pay:.2f} USD`\n💎 *Your Balance:* `${db_user['balance']:.2f} USD`\n\n👇 You can pay directly for this order using the prepared link below:",
-                'ru': f"⚠️ *Недостаточно средств на балансе.*\n\n💰 *Сумма:* `${price_to_pay:.2f} USD`\n\n👇 Вы можете оплатить этот заказ напрямую по ссылке:"
-            }
-            await callback.message.answer(low_bal_msg.get(lang, low_bal_msg['en']), reply_markup=ikb.as_markup(), parse_mode="Markdown")
+            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), web_app=WebAppInfo(url=pay_url))
+            if stars_enabled:
+                stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
+                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+        else:
+            ikb.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
+            if stars_enabled:
+                stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
+                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+            ikb.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
+        ikb.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
+        ikb.adjust(1)
+        low_bal_msg = {
+            'ar': f"⚠️ *رصيدك الحالي غير كافٍ لإتمام الشراء.*\n\n💰 *المطلوب:* `${price_to_pay:.2f} USD`\n💎 *رصيدك الحالي:* `${db_user['balance']:.2f} USD`\n\n👇 يمكنك اختيار وسيلة الدفع لإتمام الشراء فوراً:",
+            'en': f"⚠️ *Your current balance is insufficient.*\n\n💰 *Required:* `${price_to_pay:.2f} USD`\n💎 *Your Balance:* `${db_user['balance']:.2f} USD`\n\n👇 Please select a payment method below to complete purchase:",
+            'ru': f"⚠️ *Недостаточно средств на балансе.*\n\n💰 *Сумма:* `${price_to_pay:.2f} USD`\n\n👇 Вы можете оплатить этот заказ:"
+        }
+        await callback.message.answer(low_bal_msg.get(lang, low_bal_msg['en']), reply_markup=ikb.as_markup(), parse_mode="Markdown")
         return
         
     await callback.message.edit_text("⏳ Processing purchase...")
     await execute_delivery(callback.message, user_id, product_id, qty, price_to_pay, skip_balance_check=False, bot=bot, lang=lang, state=state)
     await callback.answer()
+
+# Callback handler for Telegram Stars direct checkout
+@router.callback_query(F.data.startswith("chk_stars_"))
+async def cb_checkout_stars(callback: CallbackQuery, state: FSMContext, bot: Bot, lang='en'):
+    user_id = callback.from_user.id
+    parts = callback.data.replace("chk_stars_", "").split("_")
+    product_id = int(parts[0])
+    qty = int(parts[1])
+    
+    from database import get_effective_product_price, sync_single_provider_product, get_setting, create_payment
+    product, stock_count = await sync_single_provider_product(product_id, quantity=qty, bot=bot)
+    if not product:
+        await callback.answer("Product not found.", show_alert=True)
+        return
+        
+    if stock_count < qty:
+        await callback.answer(get_text('out_of_stock_alert', lang), show_alert=True)
+        return
+        
+    unit_price = await get_effective_product_price(product, user_id, qty)
+    price_to_pay = round(unit_price * qty, 2)
+    prod_name = get_product_name(product, lang)
+    
+    stars_rate = float(await get_setting('stars_rate', '0.02'))
+    stars_amount = max(1, int(price_to_pay / stars_rate)) if stars_rate > 0 else 1
+    
+    import time
+    import uuid
+    transaction_id = f"STARS_BUY_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    await create_payment(user_id, price_to_pay, 'telegram_stars', transaction_id)
+    
+    title = f"{prod_name[:25]}"
+    desc = f"Buy {qty}x {prod_name} for ${price_to_pay:.2f} USD"
+    payload = f"stars_buy_{user_id}_{product_id}_{qty}_{transaction_id}"
+    
+    from aiogram.types import LabeledPrice
+    try:
+        await bot.send_invoice(
+            chat_id=user_id,
+            title=title,
+            description=desc,
+            payload=payload,
+            provider_token="",
+            currency="XTR",
+            prices=[LabeledPrice(label="Stars", amount=stars_amount)],
+            start_parameter="stars_checkout"
+        )
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Stars invoice failed for checkout: {e}")
+        await callback.message.answer(f"❌ Failed to generate Telegram Stars invoice: {e}")
 
 # Callback handler for Binance Pay ID checkout instructions
 @router.callback_query(F.data.startswith("chk_bin_"))

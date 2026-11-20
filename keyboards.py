@@ -178,23 +178,27 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
     builder.adjust(1)
     return builder.as_markup()
 
-def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay_url=None) -> InlineKeyboardMarkup:
+def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay_url=None, stars_enabled=False, stars_amount=0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     # 1. Pay with Balance (if user balance is enough)
     if round(balance, 2) >= price_to_pay:
         builder.button(text=get_text('btn_pay_balance', lang, balance=balance), callback_data=f"chk_bal_{product_id}_{qty}")
         
-    # 2. Pay directly with Web Link (pre-filled amount, instant checkout)
+    # 2. When pay_url is enabled: show web link and Stars only (hide other payment methods)
     if pay_url:
         builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), web_app=WebAppInfo(url=pay_url))
+        if stars_enabled:
+            stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
+            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+    else:
+        # Fallback when web link is disabled: show legacy in-bot payment options
+        builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
+        if stars_enabled:
+            stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
+            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+        builder.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
         
-    # 3. Pay with Binance Pay
-    builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
-    
-    # 4. Direct button to other payment methods (charge balance menu)
-    builder.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
-    
     # Back button
     builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     builder.adjust(1)
