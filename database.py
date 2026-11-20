@@ -1623,32 +1623,46 @@ async def cancel_pre_order(pre_order_id, user_id):
 async def process_pending_pre_orders(bot, product_id):
     """
     Called whenever a product is restocked.
-    Processes pending pre-orders for the product one by one in FIFO order.
-    Attempts to buy the items from database using 'buy_product' with skip_balance_check=True.
-    Delivers the codes to the users via bot messages.
+    Processes pending pre-orders in strict FIFO order (id ASC) to guarantee
+    that whoever ordered first is served first, regardless of quantity.
+    Supports partial fulfillment: if a user ordered 100 and only 5 are in stock,
+    the 5 items are delivered immediately, and the pre-order is updated to reflect
+    the remaining 95 items while retaining its #1 priority position in the queue.
     """
     import asyncio
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        # Get all pending pre-orders for this product
+        # Get all pending pre-orders for this product ordered by ID ASC (FIFO - oldest first)
         async with db.execute("SELECT * FROM pre_orders WHERE product_id = ? ORDER BY id ASC;", (product_id,)) as cursor:
             pre_orders = await cursor.fetchall()
             
         if not pre_orders:
             return
             
+        from database import get_stock_count, buy_product, get_product
         from localization import get_text
+        
         for po in pre_orders:
+            # Check available stock before attempting to deliver
+            stock_avail = await get_stock_count(product_id)
+            if stock_avail <= 0:
+                # No more stock available in this batch
+                break
+                
             po_id = po['id']
             po_user_id = po['user_id']
-            po_qty = po['quantity']
+            po_qty = int(po['quantity'])
+            po_price_paid = float(po['price_paid'])
             
-            # Check current stock count of the product
-            from database import get_stock_count, buy_product, get_product
-            stock_avail = await get_stock_count(product_id)
-            if stock_avail < po_qty:
-                # Not enough stock for this pre-order, skip and try next (or wait for next restock)
+            if po_qty <= 0:
+                await db.execute("DELETE FROM pre_orders WHERE id = ?;", (po_id,))
+                await db.commit()
                 continue
+                
+            # Deliver what is available up to po_qty
+            qty_to_deliver = min(po_qty, stock_avail)
+            if qty_to_deliver <= 0:
+                break
                 
             # Attempt to fulfill
             try:
@@ -1656,15 +1670,35 @@ async def process_pending_pre_orders(bot, product_id):
                 stock_data_list, price_paid, purchase_time, actual_qty = await buy_product(
                     user_id=po_user_id,
                     product_id=product_id,
-                    quantity=po_qty,
+                    quantity=qty_to_deliver,
                     skip_balance_check=True,
-                    allow_partial=False
+                    allow_partial=True
                 )
                 
-                # Delete pre-order record
-                await db.execute("DELETE FROM pre_orders WHERE id = ?;", (po_id,))
-                await db.commit()
+                if not stock_data_list or actual_qty <= 0:
+                    continue
+                    
+                remaining_qty = po_qty - actual_qty
                 
+                # Proportional price calculation for remaining vs delivered
+                unit_price = po_price_paid / po_qty if po_qty > 0 else 0.0
+                delivered_cost = round(unit_price * actual_qty, 2)
+                remaining_price_paid = max(0.0, round(po_price_paid - delivered_cost, 2))
+                
+                if remaining_qty <= 0:
+                    # Fully fulfilled! Delete the pre-order record
+                    await db.execute("DELETE FROM pre_orders WHERE id = ?;", (po_id,))
+                    await db.commit()
+                    is_complete = True
+                else:
+                    # Partially fulfilled! Update quantity & remaining locked price, keeping exact same ID for FIFO priority
+                    await db.execute(
+                        "UPDATE pre_orders SET quantity = ?, price_paid = ? WHERE id = ?;",
+                        (remaining_qty, remaining_price_paid, po_id)
+                    )
+                    await db.commit()
+                    is_complete = False
+                    
                 # Notify user and deliver items
                 async with db.execute("SELECT language FROM users WHERE user_id = ?;", (po_user_id,)) as cursor:
                     u_row = await cursor.fetchone()
@@ -1674,7 +1708,7 @@ async def process_pending_pre_orders(bot, product_id):
                 prod_dict = dict(product) if product else {}
                 prod_name = prod_dict.get(f"name_{lang}") or prod_dict.get("name_en") or "Product"
                 
-                # Split stock_data_list into chunks of text, each having length <= 4000 to be safe (just like checkout delivery)
+                # Split stock_data_list into chunks of text, each length <= 4000
                 chunks = []
                 current_chunk = []
                 current_len = 0
@@ -1690,57 +1724,74 @@ async def process_pending_pre_orders(bot, product_id):
                 if current_chunk:
                     chunks.append("\n".join(current_chunk))
                 
-                # Format success notifications (using exact purchase_success format styling)
-                from localization import get_text
                 first_chunk = chunks[0] if chunks else ""
                 success_text = get_text(
                     'purchase_success',
                     lang,
                     name=f"{prod_name} (x{actual_qty})",
-                    price=price_paid,
+                    price=delivered_cost,
                     data=first_chunk
                 )
-                # Prefix with [Pre-order Fulfilled] tag to clarify context
-                title_prefix = {
-                    "ar": "🎉 **[تم تسليم الحجز المسبق المكتمل!]**\n\n",
-                    "en": "🎉 **[Pre-order Fulfilled!]**\n\n",
-                    "ru": "🎉 **[Предзаказ выполнен!]**\n\n"
-                }
+                
+                if is_complete:
+                    title_prefix = {
+                        "ar": f"🎉 **[تم تسليم الحجز المسبق بالكامل!]**\n📦 **الكمية المسلمة:** `{actual_qty}`\n\n",
+                        "en": f"🎉 **[Pre-order Fulfilled in Full!]**\n📦 **Delivered Quantity:** `{actual_qty}`\n\n",
+                        "ru": f"🎉 **[Предзаказ полностью выполнен!]**\n📦 **Доставлено:** `{actual_qty}`\n\n"
+                    }
+                else:
+                    title_prefix = {
+                        "ar": (
+                            f"📦 **[تسليم جزئي لطلبك المسبق]**\n\n"
+                            f"✅ **تم تسليمك الآن:** `{actual_qty}` عنصر\n"
+                            f"⏳ **المتبقي من حجزك:** `{remaining_qty}` عنصر\n"
+                            f"⭐ **الأولوية:** طلبك محتفظ بالأولوية الأولى وستصلك باقي العناصر فور إضافتها تلقائياً!\n\n"
+                        ),
+                        "en": (
+                            f"📦 **[Partial Pre-order Delivery]**\n\n"
+                            f"✅ **Delivered now:** `{actual_qty}` items\n"
+                            f"⏳ **Remaining in queue:** `{remaining_qty}` items\n"
+                            f"⭐ **Priority:** Your #1 queue position is retained and remaining items will be sent automatically as stock arrives!\n\n"
+                        ),
+                        "ru": (
+                            f"📦 **[Частичная доставка предзаказа]**\n\n"
+                            f"✅ **Доставлено сейчас:** `{actual_qty}` шт.\n"
+                            f"⏳ **Осталось в предзаказе:** `{remaining_qty}` шт.\n"
+                            f"⭐ **Приоритет:** Ваш первоочередной статус сохранен, остаток будет доставлен автоматически!\n\n"
+                        )
+                    }
+                
                 success_text = title_prefix.get(lang, title_prefix['en']) + success_text
                 
                 # Send primary message text
                 try:
-                    sent_msg = await bot.send_message(chat_id=po_user_id, text=success_text, parse_mode="Markdown")
-                    
-                    # If multiple chunks, send rest
+                    await bot.send_message(chat_id=po_user_id, text=success_text, parse_mode="Markdown")
                     for chunk in chunks[1:]:
                         await asyncio.sleep(0.4)
                         cont_text = get_text('purchase_success_continued', lang, data=chunk)
                         await bot.send_message(chat_id=po_user_id, text=cont_text, parse_mode="Markdown")
-                except Exception:
-                    pass
+                except Exception as send_err:
+                    logger.warning(f"Failed to send preorder message to {po_user_id}: {send_err}")
                 
-                # Create and deliver TXT file for the user (exactly as done in download purchase callback)
+                # Send TXT file
                 try:
                     from aiogram.types import BufferedInputFile
-                    lines = []
-                    for item in stock_data_list:
-                        lines.append(item.strip())
-                        
+                    lines = [item.strip() for item in stock_data_list]
                     content = "\n\n".join(lines)
                     file_name_time = purchase_time.replace(':', '-').replace(' ', '_')
-                    file = BufferedInputFile(content.encode('utf-8'), filename=f"preorder_{po_user_id}_{file_name_time}.txt")
-                    
+                    file = BufferedInputFile(content.encode('utf-8'), filename=f"preorder_part_{po_user_id}_{file_name_time}.txt")
                     await bot.send_document(chat_id=po_user_id, document=file)
                 except Exception as file_err:
                     logger.error(f"Failed to send txt file for preorder {po_id}: {file_err}")
+                
+                # If this preorder still has items remaining (stock ran out), we stop so lower preorders don't jump ahead!
+                if remaining_qty > 0:
+                    break
                     
             except Exception as e:
                 logger.error(f"Failed to fulfill pre-order {po_id}: {e}")
-                # Keep the pre-order and try on next restock
                 continue
-            
-            # Tiny delay between deliveries
+                
             await asyncio.sleep(0.5)
 
 async def start_api_preorder_auto_verification_loop(bot):

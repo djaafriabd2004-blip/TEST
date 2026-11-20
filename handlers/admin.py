@@ -3438,16 +3438,18 @@ async def process_new_balance(message: Message, state: FSMContext, lang='en'):
         return
         
     from database import set_user_balance, get_user
-    db_user_before = await get_user(user_id)
-    prev_balance = float(db_user_before.get('balance', 0.0)) if db_user_before else 0.0
+    raw_user_before = await get_user(user_id)
+    db_user_before = dict(raw_user_before) if raw_user_before else {}
+    prev_balance = float(db_user_before.get('balance') or 0.0)
     await set_user_balance(user_id, new_balance)
     
-    db_user = await get_user(user_id)
-    name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    raw_user = await get_user(user_id)
+    db_user = dict(raw_user) if raw_user else {}
+    name = db_user.get('first_name') or f"ID: {user_id}"
     
     # Notify user in bot if balance was added
     try:
-        user_lang = db_user.get('language', 'ar') if db_user else 'ar'
+        user_lang = db_user.get('language') or 'ar'
         diff = new_balance - prev_balance
         if diff > 0:
             notif_msgs = {
