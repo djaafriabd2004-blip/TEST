@@ -1877,24 +1877,28 @@ async def create_payment(user_id, amount, payment_method, transaction_id, create
 async def get_payment(transaction_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM payments WHERE transaction_id = ?;", (transaction_id,)) as cursor:
-            return await cursor.fetchone()
+        tx_str = str(transaction_id).strip()
+        async with db.execute("SELECT * FROM payments WHERE transaction_id = ? OR id = ?;", (tx_str, tx_str)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
 async def complete_payment(transaction_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
+        tx_str = str(transaction_id).strip()
         
         # Get payment
-        async with db.execute("SELECT * FROM payments WHERE transaction_id = ? AND status = 'pending';", (transaction_id,)) as cursor:
+        async with db.execute("SELECT * FROM payments WHERE (transaction_id = ? OR id = ?) AND status = 'pending';", (tx_str, tx_str)) as cursor:
             payment = await cursor.fetchone()
             if not payment:
                 return None  # already processed or doesn't exist
         
+        actual_tx_id = payment['transaction_id']
         # Mark payment as completed
-        await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (transaction_id,))
+        await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (actual_tx_id,))
         
         user_id = payment['user_id']
-        amount = payment['amount']
+        amount = float(payment['amount'])
         
         # Credit user balance
         await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?;", (amount, user_id))
@@ -1909,13 +1913,17 @@ async def complete_payment(transaction_id):
 async def reject_payment(transaction_id):
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM payments WHERE transaction_id = ? AND status = 'pending';", (transaction_id,)) as cursor:
+        tx_str = str(transaction_id).strip()
+        async with db.execute("SELECT * FROM payments WHERE (transaction_id = ? OR id = ?) AND status = 'pending';", (tx_str, tx_str)) as cursor:
             payment = await cursor.fetchone()
             if not payment:
                 return None
-        await db.execute("UPDATE payments SET status = 'rejected' WHERE transaction_id = ?;", (transaction_id,))
+        actual_tx_id = payment['transaction_id']
+        await db.execute("UPDATE payments SET status = 'rejected' WHERE transaction_id = ?;", (actual_tx_id,))
         await db.commit()
-        return payment
+        res = dict(payment)
+        res['status'] = 'rejected'
+        return res
 
 async def create_payment_session(user_id: int, amount: float = 0.0, expires_in_seconds: int = 7200) -> str:
     """

@@ -1437,8 +1437,8 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
         if status == "pending":
             actions = f"""
             <div style="display:flex; gap:6px;">
-                <button class="btn btn-success btn-copy" onclick="actionPayment('{tx_id}', 'approve')">قبول وشحن</button>
-                <button class="btn btn-danger btn-copy" onclick="actionPayment('{tx_id}', 'reject')">رفض</button>
+                <button class="btn btn-success btn-copy" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'approve')">قبول وشحن</button>
+                <button class="btn btn-danger btn-copy" data-tx="{tx_id}" onclick="actionPayment(this.dataset.tx, 'reject')">رفض</button>
             </div>
             """
 
@@ -1697,7 +1697,8 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
         }}
 
         async function actionPayment(txid, action) {{
-            if (!confirm("هل أنت متأكد من " + (action === 'approve' ? 'قبول وشحن رصيد العميل' : 'رفض') + " هذه العملية؟")) return;
+            const actionText = (action === 'approve' ? 'قبول وشحن رصيد العميل' : 'رفض');
+            if (!confirm("هل أنت متأكد من " + actionText + " هذه العملية؟")) return;
             try {{
                 const res = await fetch('/api/admin/action-payment', {{
                     method: 'POST',
@@ -1708,15 +1709,21 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
                         action: action
                     }})
                 }});
-                const data = await res.json();
-                if (data.ok) {{
-                    showToast("تمت العملية بنجاح");
-                    setTimeout(() => {{ window.location.reload(); }}, 1000);
+                let data = null;
+                try {{
+                    data = await res.json();
+                }} catch(err) {{
+                    showToast("خطأ في قراءة رد الخادم (" + res.status + ")");
+                    return;
+                }}
+                if (data && data.ok) {{
+                    showToast(action === 'approve' ? "✅ تم قبول وشحن الرصيد بنجاح!" : "✅ تم رفض المعاملة بنجاح");
+                    setTimeout(() => {{ window.location.reload(); }}, 1200);
                 }} else {{
-                    showToast(data.error || "فشلت العملية");
+                    showToast("❌ " + ((data && data.error) || "فشلت العملية"));
                 }}
             }} catch(e) {{
-                showToast("خطأ في الاتصال");
+                showToast("خطأ في الاتصال بالسيرفر: " + (e.message || e));
             }}
         }}
 
@@ -1945,14 +1952,17 @@ async def api_verify_payment(request: web.Request) -> web.Response:
         await mark_payment_session_completed(token)
 
         if comp_res:
+            bot_inst = bot
+            created_bot = False
             try:
-                bot_inst = bot
                 if not bot_inst:
                     from aiogram import Bot
                     import config
                     bot_inst = Bot(token=config.BOT_TOKEN)
+                    created_bot = True
 
-                db_user = await get_user(user_id)
+                raw_user = await get_user(user_id)
+                db_user = dict(raw_user) if raw_user else {}
                 new_bal = float(db_user.get("balance") or amount) if db_user else amount
                 
                 notif_msgs = {
@@ -1965,6 +1975,12 @@ async def api_verify_payment(request: web.Request) -> web.Response:
                 await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
             except Exception as notify_err:
                 logger.warning(f"Could not send Telegram notification for user {user_id}: {notify_err}")
+            finally:
+                if created_bot and bot_inst:
+                    try:
+                        await bot_inst.session.close()
+                    except Exception:
+                        pass
 
         return web.json_response({"ok": True, "status": "completed", "amount": amount})
     else:
@@ -2118,7 +2134,7 @@ async def api_admin_save_settings(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
 
-    admin_key = data.get("key")
+    admin_key = (data.get("key") or request.cookies.get("admin_web_key") or "").strip()
     from database import verify_admin_web_token, set_setting
     if not await verify_admin_web_token(admin_key):
         return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
@@ -2141,57 +2157,94 @@ async def api_admin_action_payment(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"ok": False, "error": "Invalid JSON"}, status=400)
 
-    admin_key = data.get("key")
+    admin_key = (data.get("key") or request.cookies.get("admin_web_key") or "").strip()
     from database import verify_admin_web_token, complete_payment, reject_payment, get_payment, get_user
     if not await verify_admin_web_token(admin_key):
         return web.json_response({"ok": False, "error": "Unauthorized"}, status=401)
 
-    tx_id = data.get("transaction_id")
+    tx_id = str(data.get("transaction_id") or "").strip()
     action = data.get("action")
     if not tx_id or action not in ["approve", "reject"]:
         return web.json_response({"ok": False, "error": "Invalid parameters"}, status=400)
 
-    payment = await get_payment(tx_id)
-    if not payment:
+    raw_payment = await get_payment(tx_id)
+    if not raw_payment:
         return web.json_response({"ok": False, "error": "Payment record not found"}, status=404)
+    payment = dict(raw_payment)
 
-    bot = request.app.get("bot")
     user_id = payment.get("user_id")
+    p_amt = float(payment.get("amount") or 0.0)
+    actual_tx_id = str(payment.get("transaction_id") or tx_id).strip()
 
-    if action == "approve":
-        res = await complete_payment(tx_id)
-        if res and user_id:
-            try:
-                bot_inst = bot
-                if not bot_inst:
-                    from aiogram import Bot
-                    import config
-                    bot_inst = Bot(token=config.BOT_TOKEN)
+    bot_inst = request.app.get("bot")
+    created_bot = False
+    if not bot_inst:
+        try:
+            from aiogram import Bot
+            import config
+            bot_inst = Bot(token=config.BOT_TOKEN)
+            created_bot = True
+        except Exception as e:
+            logger.warning(f"Failed to initialize bot instance: {e}")
+            bot_inst = None
 
-                db_user = await get_user(user_id)
-                u_lang = db_user.get("language", "ar") if db_user else "ar"
-                p_amt = float(payment.get("amount") or 0.0)
-                new_bal = float(db_user.get("balance") or p_amt) if db_user else p_amt
-                
-                notif_msgs = {
-                    'ar': f"✅ *تم قبول وشحن رصيدك بنجاح!*\n\n💰 *المبلغ المضاف:* `${p_amt:.2f} USD`\n💎 *رصيدك الجديد:* `${new_bal:.2f} USD`",
-                    'en': f"✅ *Deposit Approved & Credited!*\n\n💰 *Amount Added:* `${p_amt:.2f} USD`\n💎 *New Balance:* `${new_bal:.2f} USD`",
-                    'ru': f"✅ *Депозит подтвержден!*\n\n💰 *Зачислено:* `${p_amt:.2f} USD`\n💎 *Новый баланс:* `${new_bal:.2f} USD`",
-                    'fr': f"✅ *Dépôt Approuvé !*\n\n💰 *Montant crédité :* `${p_amt:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`"
-                }
-                txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
-                await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
-            except Exception as e:
-                logger.warning(f"Failed to send approval message: {e}")
-        return web.json_response({"ok": bool(res)})
-    else:
-        res = await reject_payment(tx_id)
-        if res and bot and user_id:
+    try:
+        raw_user = await get_user(user_id) if user_id else None
+        db_user = dict(raw_user) if raw_user else {}
+        u_lang = db_user.get("language", "ar") or "ar"
+
+        if action == "approve":
+            res = await complete_payment(actual_tx_id)
+            if not res:
+                current_status = payment.get("status")
+                if current_status == "completed":
+                    return web.json_response({"ok": False, "error": "تم قبول هذه المعاملة وشحن الرصيد مسبقاً"}, status=400)
+                return web.json_response({"ok": False, "error": "تعذر إتمام العملية (قد تكون مكتملة أو معالجة بالفعل)"}, status=400)
+
+            if bot_inst and user_id:
+                try:
+                    updated_raw_user = await get_user(user_id)
+                    updated_user = dict(updated_raw_user) if updated_raw_user else {}
+                    new_bal = float(updated_user.get("balance") or (float(db_user.get("balance") or 0.0) + p_amt))
+
+                    notif_msgs = {
+                        'ar': f"✅ *تم قبول وشحن رصيدك بنجاح!*\n\n💰 *المبلغ المضاف:* `${p_amt:.2f} USD`\n💎 *رصيدك الجديد:* `${new_bal:.2f} USD`",
+                        'en': f"✅ *Deposit Approved & Credited!*\n\n💰 *Amount Added:* `${p_amt:.2f} USD`\n💎 *New Balance:* `${new_bal:.2f} USD`",
+                        'ru': f"✅ *Депозит подтвержден!*\n\n💰 *Зачислено:* `${p_amt:.2f} USD`\n💎 *Новый баланс:* `${new_bal:.2f} USD`",
+                        'fr': f"✅ *Dépôt Approuvé !*\n\n💰 *Montant crédité :* `${p_amt:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`"
+                    }
+                    txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
+                    await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
+                except Exception as e:
+                    logger.warning(f"Failed to send approval message: {e}")
+            return web.json_response({"ok": True, "message": "تم قبول وشحن الرصيد بنجاح"})
+        else:
+            res = await reject_payment(actual_tx_id)
+            if not res:
+                current_status = payment.get("status")
+                if current_status == "rejected":
+                    return web.json_response({"ok": False, "error": "تم رفض هذه المعاملة مسبقاً"}, status=400)
+                return web.json_response({"ok": False, "error": "تعذر رفض العملية (قد تكون معالجة بالفعل)"}, status=400)
+
+            if bot_inst and user_id:
+                try:
+                    notif_msgs = {
+                        'ar': f"❌ *تم رفض طلب الإيداع*\n\n💰 *المبلغ:* `${p_amt:.2f} USD`\n🔖 *معرف المعاملة:* `{actual_tx_id}`\n\nيرجى التواصل مع الدعم الفني للمزيد من التفاصيل.",
+                        'en': f"❌ *Deposit Request Rejected*\n\n💰 *Amount:* `${p_amt:.2f} USD`\n🔖 *TxID:* `{actual_tx_id}`\n\nPlease contact support for assistance.",
+                        'ru': f"❌ *Запрос на пополнение отклонен*\n\n💰 *Сумма:* `${p_amt:.2f} USD`\n🔖 *TxID:* `{actual_tx_id}`\n\nПожалуйста, свяжитесь с поддержкой.",
+                        'fr': f"❌ *Demande de dépôt refusée*\n\n💰 *Montant :* `${p_amt:.2f} USD`\n🔖 *TxID :* `{actual_tx_id}`\n\nVeuillez contacter le support."
+                    }
+                    txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
+                    await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
+                except Exception as e:
+                    logger.warning(f"Failed to send rejection message: {e}")
+            return web.json_response({"ok": True, "message": "تم رفض المعاملة بنجاح"})
+    finally:
+        if created_bot and bot_inst:
             try:
-                await bot.send_message(chat_id=user_id, text=f"تم رفض إيداعك بقيمة ${payment['amount']:.2f} (معرّف المعاملة: {tx_id}). يرجى مراجعة الدعم الفني.", parse_mode="Markdown")
-            except Exception as e:
-                logger.warning(f"Failed to send rejection message: {e}")
-        return web.json_response({"ok": bool(res)})
+                await bot_inst.session.close()
+            except Exception:
+                pass
 
 
 def setup_web_portal_routes(app: web.Application):
