@@ -29,13 +29,21 @@ async def show_charge_menu(message_or_callback, user_id, lang='en'):
     stars_enabled = (await get_setting('stars_enabled', '1')) == '1'
     global_web_enabled = (await get_setting('global_web_enabled', '1')) == '1'
     
-    # Hide all in-bot crypto methods to comply with Telegram rules and leave only Global Web and Stars
-    inchat_crypto = (await get_setting('inchat_crypto_enabled', '0')) == '1'
-    cryptobot_token = await get_setting('cryptobot_token', '')
-    cryptobot_enabled = inchat_crypto and len(cryptobot_token) > 0 and (await get_setting('cryptobot_enabled', '1')) == '1'
-    xrocket_token = await get_setting('xrocket_token', '')
-    xrocket_enabled = inchat_crypto and len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
-    cryptotransfer_enabled = inchat_crypto and (await get_setting('cryptotransfer_enabled', '1')) == '1'
+    if global_web_enabled:
+        # Dynamic Mode: External payment page is enabled.
+        # Direct crypto payments are hosted externally on Global Web.
+        # Inside the Telegram bot, show only Global Web & Telegram Stars.
+        cryptobot_enabled = False
+        xrocket_enabled = False
+        cryptotransfer_enabled = False
+    else:
+        # Fallback Mode: External payment page is disabled.
+        # Fall back to the old in-bot payment system with internal bots and transfers.
+        cryptobot_token = await get_setting('cryptobot_token', '')
+        cryptobot_enabled = len(cryptobot_token) > 0 and (await get_setting('cryptobot_enabled', '1')) == '1'
+        xrocket_token = await get_setting('xrocket_token', '')
+        xrocket_enabled = len(xrocket_token) > 0 and (await get_setting('xrocket_enabled', '1')) == '1'
+        cryptotransfer_enabled = (await get_setting('cryptotransfer_enabled', '1')) == '1'
     
     kb = keyboards.get_charge_methods_keyboard(lang, stars_enabled, cryptobot_enabled, cryptotransfer_enabled, xrocket_enabled, global_web_enabled)
     
@@ -55,6 +63,17 @@ async def cb_charge_menu(callback: CallbackQuery, lang='en'):
 
 @router.callback_query(F.data == "charge_global_web")
 async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
+    global_web_enabled = (await get_setting('global_web_enabled', '1')) == '1'
+    if not global_web_enabled:
+        not_active_msgs = {
+            'ar': "❌ صفحة الدفع الخارجية غير مفعلة حالياً. يرجى استخدام وسائل الدفع المتاحة في البوت.",
+            'en': "❌ External web checkout is currently disabled. Please use available in-bot payment options.",
+            'ru': "❌ Оплата на сайте временно отключена. Пожалуйста, используйте бота.",
+            'fr': "❌ Le paiement sur le site web est désactivé. Veuillez utiliser le bot."
+        }
+        await callback.answer(not_active_msgs.get(lang, not_active_msgs['en']), show_alert=True)
+        return
+
     user_id = callback.from_user.id
     from database import create_payment_session
     from utils import get_bot_api_base_url

@@ -543,6 +543,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
     elif menu == "admin_charge_settings":
         stars = await get_setting("stars_enabled", "1")
         stars_rate = await get_setting("stars_rate", "0.02")
+        global_web = await get_setting("global_web_enabled", "1")
         usdt_addr = await get_setting("crypto_addr_usdt", "0x89846777ea91dee2b25f0fcbf54884a4f79923d8")
         ltc_addr = await get_setting("crypto_addr_ltc", "LbEuNY2o5ePVyd7dqE4dTyNToAPDtcYMXR")
         ton_addr = await get_setting("crypto_addr_ton", "UQC8zbAwkf9-f8SzyYYITLU8Et4g-Cf7ffyQJIhip9nupHGo")
@@ -552,6 +553,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
         xrocket = await get_setting("xrocket_enabled", "1")
         
         s_status = "✅ Enabled" if stars == "1" else "❌ Disabled"
+        gw_status = "✅ Enabled (صفحة خارجية)" if global_web == "1" else "❌ Disabled (دفع داخل البوت)"
         ct_status = "✅ Enabled" if cryptotransfer == "1" else "❌ Disabled"
         cb_status = "✅ Enabled" if cryptobot == "1" else "❌ Disabled"
         xr_status = "✅ Enabled" if xrocket == "1" else "❌ Disabled"
@@ -569,6 +571,7 @@ async def get_admin_settings_content(menu: str, lang: str = 'en'):
             ton_addr=ton_addr,
             binance_addr=binance_addr
         )
+        builder.button(text=f"🌐 صفحة الدفع الخارجية: {gw_status}", callback_data="admin_toggle_global_web")
         builder.button(text=get_text('btn_admin_toggle_stars', lang), callback_data="admin_toggle_stars")
         builder.button(text=get_text('btn_admin_set_stars_rate', lang), callback_data="admin_set_stars_rate")
         builder.button(text=get_text('btn_admin_toggle_cryptobot', lang), callback_data="admin_toggle_cryptobot")
@@ -2461,6 +2464,16 @@ async def cb_admin_toggle_cryptotransfer(callback: CallbackQuery, lang='en'):
 @router.callback_query(F.data == "admin_toggle_cryptobot")
 async def cb_admin_toggle_cryptobot(callback: CallbackQuery, lang='en'):
     method = "cryptobot_enabled"
+    current = await get_setting(method, "1")
+    new_val = "0" if current == "1" else "1"
+    await set_setting(method, new_val)
+    
+    await callback.answer(f"✅")
+    await cb_admin_settings_menu(callback, menu="admin_charge_settings", lang=lang)
+
+@router.callback_query(F.data == "admin_toggle_global_web")
+async def cb_admin_toggle_global_web(callback: CallbackQuery, lang='en'):
+    method = "global_web_enabled"
     current = await get_setting(method, "1")
     new_val = "0" if current == "1" else "1"
     await set_setting(method, new_val)

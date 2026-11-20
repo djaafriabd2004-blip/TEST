@@ -1414,6 +1414,7 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
     cryptobot_token = settings.get("cryptobot_token", "")
     xrocket_token = settings.get("xrocket_token", "")
     min_dep = settings.get("min_deposit_amount", "1.0")
+    global_web_enabled = (settings.get("global_web_enabled", "1") == "1")
 
     rows_html = ""
     for p in payments:
@@ -1650,6 +1651,20 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
                             <input type="password" name="xrocket_token" value="{html.escape(xrocket_token)}" placeholder="xRocket API Token">
                         </div>
                     </div>
+
+                    <div class="form-card">
+                        <h3 style="font-size:1.05rem; margin-bottom:16px;">وضع صفحة الدفع الخارجية (Global Web)</h3>
+                        <div class="form-group">
+                            <label>حالة صفحة الدفع الخارجية:</label>
+                            <select name="global_web_enabled" style="width:100%; padding:10px 12px; background:#0B0E14; border:1px solid var(--border); border-radius:10px; color:#fff;">
+                                <option value="1" {'selected' if global_web_enabled else ''}>✅ مفعل (إظهار صفحة الويب الخارجية + نجوم فقط في البوت)</option>
+                                <option value="0" {'selected' if not global_web_enabled else ''}>❌ معطل (الرجوع لنظام الدفع القديم داخل البوت)</option>
+                            </select>
+                        </div>
+                        <p style="font-size:0.8rem; color:var(--text-muted); margin-top:8px;">
+                            عند تفعيل هذا الخيار، يتم توجيه جميع عمليات الشحن بالعملات المشفرة إلى صفحة الويب الخارجية لحماية البوت من قيود تليجرام. وعند تعطيله، يعود البوت لنظام الدفع الداخلي القديم تلقائياً.
+                        </p>
+                    </div>
                 </div>
 
                 <div style="text-align: left;">
@@ -1750,6 +1765,17 @@ async def get_checkout_page(request: web.Request) -> web.Response:
         return web.Response(text="Invalid or missing payment token.", status=400)
 
     from database import get_payment_session, get_setting
+    gw_enabled = (await get_setting("global_web_enabled", "1")) == "1"
+    if not gw_enabled:
+        return web.Response(
+            text="""<div style="font-family:sans-serif; text-align:center; padding:50px; background:#0B0E14; color:#fff; min-height:100vh;">
+                <h2>Web Checkout Disabled</h2>
+                <p style="color:#8E99A8;">Online web checkout is currently disabled. Please use the Telegram bot directly for deposits.</p>
+            </div>""",
+            content_type="text/html",
+            status=403
+        )
+
     session = await get_payment_session(token)
     if not session:
         return web.Response(
@@ -1817,6 +1843,13 @@ async def api_verify_payment(request: web.Request) -> web.Response:
         get_payment_session, create_payment, complete_payment, 
         reject_payment, get_setting, mark_payment_session_completed, get_user
     )
+
+    gw_enabled = (await get_setting("global_web_enabled", "1")) == "1"
+    if not gw_enabled:
+        return web.json_response({
+            "ok": False, 
+            "error": "External web checkout is disabled. Please use the Telegram bot directly."
+        }, status=403)
     import aiosqlite
     try:
         from bot_config import DB_NAME
@@ -2070,6 +2103,7 @@ async def get_admin_web_page(request: web.Request) -> web.Response:
         "cryptobot_token": await get_setting("cryptobot_token", ""),
         "xrocket_token": await get_setting("xrocket_token", ""),
         "min_deposit_amount": await get_setting("min_deposit_amount", "1.0"),
+        "global_web_enabled": await get_setting("global_web_enabled", "1"),
     }
 
     html_content = render_admin_dashboard_html(stats, settings, payments, total_count, provided_key, store_name)
@@ -2091,7 +2125,8 @@ async def api_admin_save_settings(request: web.Request) -> web.Response:
 
     allowed_keys = [
         "crypto_addr_binance", "crypto_addr_usdt_trc20", "crypto_addr_usdt_bep20",
-        "crypto_addr_ton", "crypto_addr_ltc", "cryptobot_token", "xrocket_token", "min_deposit_amount"
+        "crypto_addr_ton", "crypto_addr_ltc", "cryptobot_token", "xrocket_token", "min_deposit_amount",
+        "global_web_enabled"
     ]
     for k in allowed_keys:
         if k in data:
