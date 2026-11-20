@@ -643,18 +643,37 @@ async def start_auto_sales_proof_loop(bot):
 async def get_bot_api_base_url() -> str:
     """
     Dynamically resolves the public base URL of the bot REST API.
-    Prioritizes server environment variables (Railway, Render, etc.),
-    then database settings, with a universal fallback.
+    Supports custom domains (CUSTOM_DOMAIN, APP_URL, custom_domain setting)
+    with seamless automatic fallback to Railway public domains.
     """
     import os
     from database import get_setting
-    domain = os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RAILWAY_STATIC_URL") or os.getenv("APP_URL") or ""
+
+    # 1. Explicit Custom Domain from Env (CUSTOM_DOMAIN or APP_URL)
+    custom_env = (os.getenv("CUSTOM_DOMAIN") or os.getenv("APP_URL") or "").strip()
+    if custom_env:
+        if not custom_env.startswith("http://") and not custom_env.startswith("https://"):
+            return f"https://{custom_env}"
+        return custom_env
+
+    # 2. Custom Domain from Database Settings (custom_domain or api_domain)
+    db_custom = (await get_setting("custom_domain", "")).strip()
+    if db_custom and db_custom != "worker-production-53ca.up.railway.app":
+        if not db_custom.startswith("http://") and not db_custom.startswith("https://"):
+            return f"https://{db_custom}"
+        return db_custom
+
+    db_domain = (await get_setting("api_domain", "")).strip()
+    if db_domain and db_domain != "worker-production-53ca.up.railway.app":
+        if not db_domain.startswith("http://") and not db_domain.startswith("https://"):
+            return f"https://{db_domain}"
+        return db_domain
+
+    # 3. Railway automatic domain
+    domain = (os.getenv("RAILWAY_PUBLIC_DOMAIN") or os.getenv("RAILWAY_STATIC_URL") or "").strip()
     if not domain or domain == "worker-production-53ca.up.railway.app":
-        db_domain = await get_setting("api_domain", "")
-        if db_domain and db_domain != "worker-production-53ca.up.railway.app":
-            domain = db_domain
-    if not domain or domain == "worker-production-53ca.up.railway.app":
-        domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "your-bot-domain.up.railway.app")
+        domain = "your-bot-domain.up.railway.app"
+
     if not domain.startswith("http://") and not domain.startswith("https://"):
         return f"https://{domain}"
     return domain

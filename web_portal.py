@@ -1518,6 +1518,7 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
     cryptobot_token = settings.get("cryptobot_token", "")
     xrocket_token = settings.get("xrocket_token", "")
     min_dep = settings.get("min_deposit_amount", "1.0")
+    custom_domain = settings.get("custom_domain", "")
     global_web_enabled = (settings.get("global_web_enabled", "1") == "1")
 
     desktop_rows_html = ""
@@ -2112,6 +2113,17 @@ def render_admin_dashboard_html(stats: dict, settings: dict, payments: list, tot
                             عند تفعيل هذا الخيار، يتم توجيه جميع عمليات الشحن بالعملات المشفرة إلى صفحة الويب الخارجية لحماية البوت من قيود تليجرام. وعند تعطيله، يعود البوت لنظام الدفع الداخلي القديم تلقائياً.
                         </p>
                     </div>
+
+                    <div class="form-card">
+                        <h3 style="font-size:1.05rem; margin-bottom:16px;">🌐 الدومين المخصص (Custom Domain)</h3>
+                        <div class="form-group">
+                            <label>رابط الدومين الخاص بك (اختياري):</label>
+                            <input type="text" name="custom_domain" value="{html.escape(custom_domain)}" placeholder="e.g. pay.yourdomain.com">
+                            <small style="color:#8E99A8; font-size:0.75rem; display:block; margin-top:6px;">
+                                إذا قمت بربط دومين خاص في Railway، ضعه هنا لتعمل روابط الشراء والدفع وصفحة الأدمن بالدومين الجديد فوراً.
+                            </small>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="text-align: left;">
@@ -2648,6 +2660,7 @@ async def get_admin_web_page(request: web.Request) -> web.Response:
         "xrocket_token": await get_setting("xrocket_token", ""),
         "min_deposit_amount": await get_setting("min_deposit_amount", "1.0"),
         "global_web_enabled": await get_setting("global_web_enabled", "1"),
+        "custom_domain": await get_setting("custom_domain", ""),
     }
 
     html_content = render_admin_dashboard_html(stats, settings, payments, total_count, provided_key, store_name, filter_status or 'all')
@@ -2670,7 +2683,7 @@ async def api_admin_save_settings(request: web.Request) -> web.Response:
     allowed_keys = [
         "crypto_addr_binance", "crypto_addr_usdt_trc20", "crypto_addr_usdt_bep20",
         "crypto_addr_ton", "crypto_addr_ltc", "cryptobot_token", "xrocket_token", "min_deposit_amount",
-        "global_web_enabled"
+        "global_web_enabled", "custom_domain"
     ]
     for k in allowed_keys:
         if k in data:
