@@ -1228,48 +1228,58 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False, 
 
             # For any item not found in bulk list (or if bulk list failed), fetch stock AND live price individually
             if unmatched_items:
-                async def _fetch_single_item(it):
-                    it_pid = it['product_id']
-                    prov_pid = it['provider_product_id']
-                    local_c = stock_counts.get(it_pid, 0)
-                    try:
-                        stk_res, cost_res = await asyncio.gather(
-                            asyncio.wait_for(adapter.fetch_stock(prov_pid), timeout=6.0),
-                            asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, 1), timeout=6.0),
-                            return_exceptions=True
-                        )
-                        found_stock = None if isinstance(stk_res, Exception) else stk_res
-                        if found_stock is not None:
-                            set_cached_provider_stock(it_pid, found_stock)
-                            stock_counts[it_pid] = local_c + int(found_stock)
-                        elif it_pid in _PROVIDER_STOCK_CACHE:
-                            stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
-                        else:
-                            stock_counts[it_pid] = local_c
-
-                        if not isinstance(cost_res, Exception) and cost_res is not None and float(cost_res) > 0:
-                            p_cost = float(cost_res)
-                            cur_price = float(it['price'] or 0.0)
-                            last_cost = float(it['last_provider_cost'] or 0.0) if 'last_provider_cost' in it.keys() else 0.0
-                            p_type = it['pricing_type'] or 'fixed'
-                            m_val = float(it['margin_value'] or 0.0)
-                            min_p = float(it['min_price'] or 0.0)
-                            cur_req = int(it['requires_email'] or 0) if 'requires_email' in it.keys() else 0
-                            new_selling_price, p_changed = _compute_synced_selling_price(
-                                p_type, m_val, min_p, cur_price, last_cost, p_cost, sync_fixed_deltas=sync_fixed_deltas
-                            )
-                            _PROVIDER_PRICE_SYNC_CACHE[it_pid] = time.time()
-                            if p_changed:
-                                price_changed_pids.append(it_pid)
-                            if p_changed or abs(p_cost - last_cost) > 0.005:
-                                pending_db_updates.append((p_cost, new_selling_price, cur_req, it_pid))
-                    except Exception:
+                if catalog_products is None:
+                    # Bulk catalog failed or timed out (e.g. rate limit). Fallback immediately to cache to avoid hammering provider
+                    for it in unmatched_items:
+                        it_pid = it['product_id']
+                        local_c = stock_counts.get(it_pid, 0)
                         if it_pid in _PROVIDER_STOCK_CACHE:
                             stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
                         else:
                             stock_counts[it_pid] = local_c
+                else:
+                    async def _fetch_single_item(it):
+                        it_pid = it['product_id']
+                        prov_pid = it['provider_product_id']
+                        local_c = stock_counts.get(it_pid, 0)
+                        try:
+                            stk_res, cost_res = await asyncio.gather(
+                                asyncio.wait_for(adapter.fetch_stock(prov_pid), timeout=6.0),
+                                asyncio.wait_for(adapter.fetch_live_product_price(prov_pid, 1), timeout=6.0),
+                                return_exceptions=True
+                            )
+                            found_stock = None if isinstance(stk_res, Exception) else stk_res
+                            if found_stock is not None:
+                                set_cached_provider_stock(it_pid, found_stock)
+                                stock_counts[it_pid] = local_c + int(found_stock)
+                            elif it_pid in _PROVIDER_STOCK_CACHE:
+                                stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
+                            else:
+                                stock_counts[it_pid] = local_c
 
-                await asyncio.gather(*(_fetch_single_item(it) for it in unmatched_items), return_exceptions=True)
+                            if not isinstance(cost_res, Exception) and cost_res is not None and float(cost_res) > 0:
+                                p_cost = float(cost_res)
+                                cur_price = float(it['price'] or 0.0)
+                                last_cost = float(it['last_provider_cost'] or 0.0) if 'last_provider_cost' in it.keys() else 0.0
+                                p_type = it['pricing_type'] or 'fixed'
+                                m_val = float(it['margin_value'] or 0.0)
+                                min_p = float(it['min_price'] or 0.0)
+                                cur_req = int(it['requires_email'] or 0) if 'requires_email' in it.keys() else 0
+                                new_selling_price, p_changed = _compute_synced_selling_price(
+                                    p_type, m_val, min_p, cur_price, last_cost, p_cost, sync_fixed_deltas=sync_fixed_deltas
+                                )
+                                _PROVIDER_PRICE_SYNC_CACHE[it_pid] = time.time()
+                                if p_changed:
+                                    price_changed_pids.append(it_pid)
+                                if p_changed or abs(p_cost - last_cost) > 0.005:
+                                    pending_db_updates.append((p_cost, new_selling_price, cur_req, it_pid))
+                        except Exception:
+                            if it_pid in _PROVIDER_STOCK_CACHE:
+                                stock_counts[it_pid] = local_c + _PROVIDER_STOCK_CACHE[it_pid][0]
+                            else:
+                                stock_counts[it_pid] = local_c
+
+                    await asyncio.gather(*(_fetch_single_item(it) for it in unmatched_items), return_exceptions=True)
 
         # Process all providers concurrently
         await asyncio.gather(*(process_provider_products(pr_id, pr_data) for pr_id, pr_data in providers_group.items()), return_exceptions=True)

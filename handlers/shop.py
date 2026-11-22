@@ -2,6 +2,8 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.fsm.context import FSMContext
 import aiosqlite
+import time
+import uuid
 try:
     import bot_config as config
     from bot_config import DB_NAME
@@ -11,7 +13,7 @@ except ImportError:
 from database import (
     get_products, get_product, get_stock_count, buy_product, get_user, get_setting,
     get_user_discount, is_subscribed_stock_notification, subscribe_stock_notification,
-    unsubscribe_stock_notification
+    unsubscribe_stock_notification, create_payment
 )
 from localization import get_text, get_button_variants
 from handlers.states import ShopStates
@@ -509,6 +511,9 @@ async def cb_checkout_binance(callback: CallbackQuery, state: FSMContext, bot: B
         await callback.answer(get_text('out_of_stock', lang), show_alert=True)
         return
         
+    # Pre-stage checkout state data so it persists
+    await state.update_data(chk_prod_id=product_id, chk_qty=qty, order_time=int(time.time()))
+    
     # Get Binance address / Pay ID config
     default_address = "Not Configured"
     address = await get_setting("crypto_addr_binance", default_address)
@@ -530,7 +535,7 @@ async def cb_checkout_verify_binid(callback: CallbackQuery, state: FSMContext, b
     qty = int(parts[1])
     
     await state.set_state(ShopStates.waiting_for_checkout_binance_txid)
-    await state.update_data(chk_prod_id=product_id, chk_qty=qty)
+    await state.update_data(chk_prod_id=product_id, chk_qty=qty, order_time=int(time.time()))
     
     await callback.message.answer(get_text('checkout_binance_enter_txid', lang), parse_mode="Markdown")
     await callback.answer()
@@ -539,8 +544,9 @@ async def cb_checkout_verify_binid(callback: CallbackQuery, state: FSMContext, b
 @router.message(ShopStates.waiting_for_checkout_binance_txid)
 async def process_checkout_binance_txid(message: Message, state: FSMContext, bot: Bot):
     user_id = message.from_user.id
-    db_user = await get_user(user_id)
-    lang = db_user['language'] if db_user else 'en'
+    raw_user = await get_user(user_id)
+    db_user = dict(raw_user) if raw_user else {}
+    lang = db_user.get('language') or 'en'
     
     txid = message.text.strip()
     if len(txid) < 5:
@@ -553,6 +559,12 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     
     if not product_id or not qty:
         await state.clear()
+        expired_msg = {
+            'ar': "❌ انتهت صلاحية الجلسة أو لم يتم العثور على المنتج. يرجى اختيار المنتج مرة أخرى من المتجر.",
+            'en': "❌ Session expired or product details not found. Please select the product again from the shop.",
+            'ru': "❌ Сессия истекла. Пожалуйста, выберите товар снова в магазине."
+        }
+        await message.answer(expired_msg.get(lang, expired_msg['en']))
         return
         
     product = await get_product(product_id)
@@ -566,64 +578,83 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
     price_to_pay = round(effective_unit_price * qty, 2)
     prod_name = get_product_name(product, lang)
     
-    await state.clear()
-    
     # Check if this TxID is already in database to prevent double spending
     payment_method = f"blockchain_BINANCE_{txid}"
-    import aiosqlite
     try:
-        from bot_config import DB_NAME
-    except ImportError:
-        from config import DB_NAME
+        async with aiosqlite.connect(DB_NAME) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM payments WHERE payment_method = ? OR payment_method LIKE ? ORDER BY id DESC LIMIT 1;",
+                (payment_method, f"%_{txid}")
+            ) as cursor:
+                existing_payment = await cursor.fetchone()
+        if existing_payment:
+            status = existing_payment['status']
+            if status == 'completed':
+                await state.clear()
+                await message.answer(get_text('crypto_already_processed', lang))
+                return
+            elif status == 'pending':
+                await state.clear()
+                pending_warn = {
+                    'ar': "⏳ هذه المعاملة قيد التحقق بالفعل من قبل الإدارة. يرجى الانتظار.",
+                    'en': "⏳ This transaction is already pending verification. Please wait.",
+                    'ru': "⏳ Эта транзакция уже находится на проверке. Пожалуйста, подождите."
+                }
+                await message.answer(pending_warn.get(lang, pending_warn['en']))
+                return
+            elif status == 'rejected':
+                await state.clear()
+                await message.answer("❌ This transaction was previously rejected.")
+                return
+    except Exception as db_chk_err:
+        logger.error(f"Error checking existing payment for txid {txid}: {db_chk_err}")
 
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM payments WHERE payment_method = ? OR payment_method LIKE ? ORDER BY id DESC LIMIT 1;",
-            (payment_method, f"%_{txid}")
-        ) as cursor:
-            existing_payment = await cursor.fetchone()
-    if existing_payment:
-        status = existing_payment['status']
-        if status == 'completed':
-            await message.answer(get_text('crypto_already_processed', lang))
-            return
-        elif status == 'pending':
-            await message.answer("⏳ This transaction is already pending verification. Please wait.")
-            return
-        elif status == 'rejected':
-            await message.answer("❌ This transaction was previously rejected.")
-            return
-            
-    # Save pending direct checkout payment
-    import uuid
+    # Generate unique merchant trade number and save pending payment
     merchant_trade_no = f"CHKP_{uuid.uuid4().hex[:8].upper()}"
-    await create_payment(user_id, price_to_pay, payment_method, merchant_trade_no)
-    
-    await message.answer("⏳ Verifying your Binance transaction ID...")
-    
+    try:
+        await create_payment(user_id, price_to_pay, payment_method, merchant_trade_no)
+    except Exception as create_err:
+        logger.error(f"Failed to create payment in DB for user {user_id}: {create_err}")
+
+    # Clear state now that payment record is successfully registered
+    await state.clear()
+
+    # Always immediately acknowledge the user's TxID
+    verif_msg = {
+        'ar': "⏳ جاري التحقق من عملية الدفع عبر بايننس...",
+        'en': "⏳ Verifying your Binance transaction ID...",
+        'ru': "⏳ Проверка ID транзакции Binance..."
+    }
+    await message.answer(verif_msg.get(lang, verif_msg['en']))
+
     # Verify using Binance API
     from binance_client import verify_binance_payment
     from crypto_verifier import is_amount_matching
     order_time = data.get('order_time') if data else None
-    min_ts = (int(order_time) - 60) if order_time else (int(time.time()) - 3600)
-    success, result_val = await verify_binance_payment(txid, min_timestamp=min_ts)
-    
+    min_ts = (int(order_time) - 120) if order_time else (int(time.time()) - 3600)
+
+    success = False
+    result_val = None
+    try:
+        success, result_val = await verify_binance_payment(txid, min_timestamp=min_ts)
+    except Exception as verif_err:
+        logger.error(f"verify_binance_payment error for txid {txid}: {verif_err}")
+        success = False
+        result_val = str(verif_err)
+
     # Verify both API success AND that the actual amount paid matches required price
     if success and is_amount_matching(price_to_pay, result_val, "BINANCE"):
-        # Complete payment in DB (Direct checkout: manually set completed to avoid adding balance)
-        import aiosqlite
         try:
-            from bot_config import DB_NAME
-        except ImportError:
-            from config import DB_NAME
-        async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (merchant_trade_no,))
-            await db.commit()
-            
+            async with aiosqlite.connect(DB_NAME) as db:
+                await db.execute("UPDATE payments SET status = 'completed' WHERE transaction_id = ?;", (merchant_trade_no,))
+                await db.commit()
+        except Exception as upd_err:
+            logger.error(f"Failed to mark payment completed in DB: {upd_err}")
+
         await message.answer(get_text('checkout_binance_paid', lang), parse_mode="Markdown")
         await execute_delivery(message, user_id, product_id, qty, price_to_pay, skip_balance_check=True, bot=bot, lang=lang, state=state)
-        
+
         # Notify admins
         user_info = f"{message.from_user.first_name}"
         if message.from_user.username:
@@ -641,9 +672,10 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             except Exception:
                 pass
     else:
+        # Inform user that automatic check did not find it yet and order was forwarded to admin
         await message.answer(get_text('checkout_binance_failed', lang), parse_mode="Markdown")
-        
-        # Notify admins of pending checkout for manual review just in case
+
+        # Notify admins of pending checkout for manual review with 1-click Approve/Reject buttons!
         user_info = f"{message.from_user.first_name}"
         if message.from_user.username:
             user_info += f" (@{message.from_user.username})"
@@ -653,7 +685,7 @@ async def process_checkout_binance_txid(message: Message, state: FSMContext, bot
             f"🛍️ *Product:* `{prod_name} (x{qty})`\n"
             f"💵 *Amount Required:* `${price_to_pay:.2f} USD`\n"
             f"🔗 *TxID/PayID:* `{txid}`\n\n"
-            f"You can verify and approve this manually from the Pending Deposits section."
+            f"You can verify and approve this manually below or from the Pending Deposits section."
         )
         kb = keyboards.get_admin_payment_approval_keyboard(merchant_trade_no)
         for admin_id in config.ADMIN_IDS:
