@@ -1097,7 +1097,7 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False, 
             for r in rows:
                 stock_counts[r['product_id']] = r['cnt']
 
-        # 2. Get all provider-linked products (including last_provider_cost)
+        # 2. Get provider-linked products (filtered to target products if specified)
         query_prov = """
             SELECT p.id as product_id, p.provider_id, p.provider_product_id,
                    p.pricing_type, p.margin_value, p.min_price, p.price, p.last_provider_cost, p.requires_email,
@@ -1106,13 +1106,22 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False, 
             JOIN providers pr ON p.provider_id = pr.id
             WHERE p.provider_id IS NOT NULL
         """
-        params_prov = ()
+        params_prov = []
+        if products is not None:
+            prod_ids = [int(p['id']) for p in products if p and (isinstance(p, dict) or hasattr(p, '__getitem__')) and 'id' in (p.keys() if hasattr(p, 'keys') else {})]
+            if not prod_ids:
+                query_prov += " AND 1=0"
+            else:
+                placeholders = ','.join('?' for _ in prod_ids)
+                query_prov += f" AND p.id IN ({placeholders})"
+                params_prov.extend(prod_ids)
+
         if provider_id is not None:
             query_prov += " AND p.provider_id = ?;"
-            params_prov = (int(provider_id),)
+            params_prov.append(int(provider_id))
         else:
             query_prov += ";"
-        async with db.execute(query_prov, params_prov) as cursor:
+        async with db.execute(query_prov, tuple(params_prov)) as cursor:
             prov_prods = await cursor.fetchall()
 
         async with db.execute("SELECT value FROM settings WHERE key = 'auto_sync_fixed_prices';") as sc:
@@ -1151,33 +1160,39 @@ async def get_all_stock_counts(products=None, use_cache=True, local_only=False, 
             field_mapping = pr_data.get("field_mapping")
             items = pr_data["items"]
             
-            # Check if all items in this provider already have valid cache
-            unexpired_all = True
-            if use_cache:
+            # Stale-while-revalidate: If all items in this provider have a cached stock, use it immediately!
+            if use_cache and not force_refresh:
+                all_have_cached = True
                 for it in items:
                     it_pid = it['product_id']
-                    if it_pid not in _PROVIDER_STOCK_CACHE or (now_ts - _PROVIDER_STOCK_CACHE[it_pid][1]) >= PROVIDER_STOCK_CACHE_TTL:
-                        unexpired_all = False
+                    if it_pid not in _PROVIDER_STOCK_CACHE:
+                        all_have_cached = False
                         break
-            else:
-                unexpired_all = False
-                
-            if unexpired_all and use_cache:
-                for it in items:
-                    it_pid = it['product_id']
-                    cached_s, _ = _PROVIDER_STOCK_CACHE[it_pid]
-                    stock_counts[it_pid] = stock_counts.get(it_pid, 0) + cached_s
-                return
+                        
+                if all_have_cached:
+                    for it in items:
+                        it_pid = it['product_id']
+                        cached_s, _ = _PROVIDER_STOCK_CACHE[it_pid]
+                        stock_counts[it_pid] = stock_counts.get(it_pid, 0) + cached_s
+                    # If any item in the cache is older than TTL, schedule a non-blocking background refresh
+                    stale = any((now_ts - _PROVIDER_STOCK_CACHE[it['product_id']][1]) >= PROVIDER_STOCK_CACHE_TTL for it in items)
+                    if stale:
+                        try:
+                            asyncio.create_task(sync_provider_catalog_now(pr_id, force_refresh=False, bot=bot))
+                        except Exception:
+                            pass
+                    return
 
             adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
             custom_price_field = (adapter.field_mapping.get("price_field") or "").strip() or None
             catalog_products = None
+            timeout_sec = 25.0 if force_refresh else 5.0
             try:
                 sig = inspect.signature(adapter.fetch_catalog)
                 if force_refresh and "force_refresh" in sig.parameters:
-                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(force_refresh=True), timeout=25.0)
+                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(force_refresh=True), timeout=timeout_sec)
                 else:
-                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(), timeout=15.0)
+                    catalog_products = await asyncio.wait_for(adapter.fetch_catalog(), timeout=timeout_sec)
             except Exception as e:
                 logger.warning(f"Error fetching bulk catalog for provider {pr_id}: {e}")
 
@@ -1747,7 +1762,12 @@ async def process_pending_pre_orders(bot, product_id):
                     title_prefix = {
                         "ar": f"🎉 **[تم تسليم الحجز المسبق بالكامل!]**\n📦 **الكمية المسلمة:** `{actual_qty}`\n\n",
                         "en": f"🎉 **[Pre-order Fulfilled in Full!]**\n📦 **Delivered Quantity:** `{actual_qty}`\n\n",
-                        "ru": f"🎉 **[Предзаказ полностью выполнен!]**\n📦 **Доставлено:** `{actual_qty}`\n\n"
+                        "ru": f"🎉 **[Предзаказ полностью выполнен!]**\n📦 **Доставлено:** `{actual_qty}`\n\n",
+                        "fr": f"🎉 **[Précommande entièrement livrée !]**\n📦 **Quantité livrée :** `{actual_qty}`\n\n",
+                        "zh": f"🎉 **[预订全部交付完成！]**\n📦 **交付数量：** `{actual_qty}`\n\n",
+                        "hi": f"🎉 **[प्री-ऑर्डर पूरी तरह से डिलीवर हो गया!]**\n📦 **डिलीवर की गई मात्रा:** `{actual_qty}`\n\n",
+                        "ko": f"🎉 **[예약 주문 완료!]**\n📦 **발송된 수량:** `{actual_qty}`\n\n",
+                        "pt": f"🎉 **[Pré-encomenda totalmente entregue!]**\n📦 **Quantidade entregue:** `{actual_qty}`\n\n"
                     }
                 else:
                     title_prefix = {
@@ -1755,7 +1775,7 @@ async def process_pending_pre_orders(bot, product_id):
                             f"📦 **[تسليم جزئي لطلبك المسبق]**\n\n"
                             f"✅ **تم تسليمك الآن:** `{actual_qty}` عنصر\n"
                             f"⏳ **المتبقي من حجزك:** `{remaining_qty}` عنصر\n"
-                            f"⭐ **الأولوية:** طلبك محتفظ بالأولوية الأولى وستصلك باقي العناصر فور إضافتها تلقائياً!\n\n"
+                            f"⭐ **الأولوية:** طلبك محتفظ بالأولوية الأولى (FIFO) وستصلك باقي العناصر فور إضافتها تلقائياً!\n\n"
                         ),
                         "en": (
                             f"📦 **[Partial Pre-order Delivery]**\n\n"
@@ -1768,20 +1788,61 @@ async def process_pending_pre_orders(bot, product_id):
                             f"✅ **Доставлено сейчас:** `{actual_qty}` шт.\n"
                             f"⏳ **Осталось в предзаказе:** `{remaining_qty}` шт.\n"
                             f"⭐ **Приоритет:** Ваш первоочередной статус сохранен, остаток будет доставлен автоматически!\n\n"
+                        ),
+                        "fr": (
+                            f"📦 **[Livraison partielle de votre précommande]**\n\n"
+                            f"✅ **Livré maintenant :** `{actual_qty}` articles\n"
+                            f"⏳ **Restant en attente :** `{remaining_qty}` articles\n"
+                            f"⭐ **Priorité :** Votre position prioritaire est conservée !\n\n"
+                        ),
+                        "zh": (
+                            f"📦 **[预订部分交付]**\n\n"
+                            f"✅ **本次交付：** `{actual_qty}` 件\n"
+                            f"⏳ **剩余等待：** `{remaining_qty}` 件\n"
+                            f"⭐ **优先权：** 您的优先排队位置已保留！\n\n"
+                        ),
+                        "hi": (
+                            f"📦 **[प्री-ऑर्डर आंशिक डिलीवरी]**\n\n"
+                            f"✅ **अब डिलीवर किया गया:** `{actual_qty}` आइटम\n"
+                            f"⏳ **कतार में शेष:** `{remaining_qty}` आइटम\n"
+                            f"⭐ **प्राथमिकता:** आपका पहला स्थान बरकरार है!\n\n"
+                        ),
+                        "ko": (
+                            f"📦 **[예약 주문 부분 발송]**\n\n"
+                            f"✅ **현재 발송 수량:** `{actual_qty}`개\n"
+                            f"⏳ **남은 수량:** `{remaining_qty}`개\n"
+                            f"⭐ **우선순위:** 1순위 대기 상태가 유지됩니다!\n\n"
+                        ),
+                        "pt": (
+                            f"📦 **[Entrega Parcial da Pré-encomenda]**\n\n"
+                            f"✅ **Entregue agora:** `{actual_qty}` itens\n"
+                            f"⏳ **Restante na fila:** `{remaining_qty}` itens\n"
+                            f"⭐ **Prioridade:** Sua posição prioritária #1 está mantida!\n\n"
                         )
                     }
                 
                 success_text = title_prefix.get(lang, title_prefix['en']) + success_text
                 
-                # Send primary message text
+                # Send primary message text with fallback
                 try:
                     await bot.send_message(chat_id=po_user_id, text=success_text, parse_mode="Markdown")
-                    for chunk in chunks[1:]:
-                        await asyncio.sleep(0.4)
-                        cont_text = get_text('purchase_success_continued', lang, data=chunk)
-                        await bot.send_message(chat_id=po_user_id, text=cont_text, parse_mode="Markdown")
                 except Exception as send_err:
-                    logger.warning(f"Failed to send preorder message to {po_user_id}: {send_err}")
+                    logger.warning(f"Failed to send preorder message to {po_user_id} with Markdown: {send_err}, retrying plain text")
+                    try:
+                        await bot.send_message(chat_id=po_user_id, text=success_text)
+                    except Exception as err2:
+                        logger.error(f"Failed to send preorder message to {po_user_id}: {err2}")
+                
+                for chunk in chunks[1:]:
+                    await asyncio.sleep(0.4)
+                    cont_text = get_text('purchase_success_continued', lang, data=chunk)
+                    try:
+                        await bot.send_message(chat_id=po_user_id, text=cont_text, parse_mode="Markdown")
+                    except Exception:
+                        try:
+                            await bot.send_message(chat_id=po_user_id, text=cont_text)
+                        except Exception:
+                            pass
                 
                 # Send TXT file
                 try:

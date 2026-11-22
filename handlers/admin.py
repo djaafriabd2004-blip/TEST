@@ -1944,7 +1944,10 @@ async def process_single_stock(message: Message, state: FSMContext, lang='en'):
     
     # Process any pending pre-order reservations first before restock broadcast
     from database import process_pending_pre_orders
-    await process_pending_pre_orders(message.bot, prod_id)
+    try:
+        await process_pending_pre_orders(message.bot, prod_id)
+    except Exception as po_err:
+        logger.error(f"Error processing pending pre-orders on add_stock: {po_err}")
     
     product = await get_product(prod_id)
     prod_name = get_product_name(product, lang) if product else "Product"
@@ -2051,7 +2054,10 @@ async def process_bulk_stock(message: Message, state: FSMContext, bot: Bot, lang
     
     # Process any pending pre-orders immediately
     from database import process_pending_pre_orders
-    await process_pending_pre_orders(message.bot, prod_id)
+    try:
+        await process_pending_pre_orders(message.bot, prod_id)
+    except Exception as po_err:
+        logger.error(f"Error processing pending pre-orders on bulk_add_stock: {po_err}")
     
     product = await get_product(prod_id)
     prod_name = get_product_name(product, lang) if product else "Product"
@@ -3400,6 +3406,53 @@ async def process_balance_user_id(message: Message, state: FSMContext, lang='en'
     
     await message.answer(text, reply_markup=keyboards.get_admin_user_balance_keyboard(user_id, lang))
 
+async def _apply_admin_balance_update(target_msg_or_cb, user_id: int, new_balance: float, lang='en'):
+    """Helper to update user balance, notify user if positive delta, and respond to admin."""
+    from database import set_user_balance, get_user
+    raw_user_before = await get_user(user_id)
+    db_user_before = dict(raw_user_before) if raw_user_before else {}
+    prev_balance = float(db_user_before.get('balance') or 0.0)
+    await set_user_balance(user_id, new_balance)
+    
+    raw_user = await get_user(user_id)
+    db_user = dict(raw_user) if raw_user else {}
+    raw_name = db_user.get('first_name') or f"ID: {user_id}"
+    safe_name = escape_md(raw_name)
+    
+    # Notify user in bot if balance was added
+    try:
+        user_lang = db_user.get('language') or 'ar'
+        diff = new_balance - prev_balance
+        if diff > 0:
+            notif_msgs = {
+                'ar': f"✅ *تمت إضافة رصيد لحسابك بواسطة الإدارة!*\n\n💰 *المبلغ المضاف:* `${diff:.2f} USD`\n💎 *رصيدك الجديد:* `${new_balance:.2f} USD`",
+                'en': f"✅ *Balance Added by Admin!*\n\n💰 *Amount Added:* `${diff:.2f} USD`\n💎 *New Balance:* `${new_balance:.2f} USD`",
+                'ru': f"✅ *Баланс пополнен администратором!*\n\n💰 *Зачислено:* `${diff:.2f} USD`\n💎 *Новый баланс:* `${new_balance:.2f} USD`",
+                'fr': f"✅ *Solde crédité par l'administration !*\n\n💰 *Montant ajouté :* `${diff:.2f} USD`\n💎 *Nouveau solde :* `${new_balance:.2f} USD`",
+                'zh': f"✅ *管理员已为您的账户充值！*\n\n💰 *充值金额：* `${diff:.2f} USD`\n💎 *新余额：* `${new_balance:.2f} USD`",
+                'hi': f"✅ *व्यवस्थापक द्वारा आपके खाते में बैलेंस जोड़ा गया!*\n\n💰 *जोड़ी गई राशि:* `${diff:.2f} USD`\n💎 *नया बैलेंस:* `${new_balance:.2f} USD`",
+                'ko': f"✅ *관리자가 잔액을 충전했습니다!*\n\n💰 *충전 금액:* `${diff:.2f} USD`\n💎 *새 잔액:* `${new_balance:.2f} USD`",
+                'pt': f"✅ *Saldo adicionado pela administração!*\n\n💰 *Valor adicionado:* `${diff:.2f} USD`\n💎 *Novo saldo:* `${new_balance:.2f} USD`"
+            }
+            target_bot = target_msg_or_cb.bot
+            await target_bot.send_message(chat_id=user_id, text=notif_msgs.get(user_lang, notif_msgs['en']), parse_mode="Markdown")
+    except Exception as notify_err:
+        logger.warning(f"Failed to notify user {user_id} of manual balance addition: {notify_err}")
+    
+    resp_text = get_text('admin_user_bal_updated', lang, name=safe_name, balance=new_balance)
+    back_kb = keyboards.get_admin_back_keyboard(lang)
+    try:
+        if isinstance(target_msg_or_cb, CallbackQuery):
+            await target_msg_or_cb.message.answer(resp_text, reply_markup=back_kb, parse_mode="Markdown")
+        else:
+            await target_msg_or_cb.answer(resp_text, reply_markup=back_kb, parse_mode="Markdown")
+    except Exception:
+        fallback_msg = f"✅ Balance updated successfully for {raw_name}!\nNew Balance: ${new_balance:.2f} USD"
+        if isinstance(target_msg_or_cb, CallbackQuery):
+            await target_msg_or_cb.message.answer(fallback_msg, reply_markup=back_kb)
+        else:
+            await target_msg_or_cb.answer(fallback_msg, reply_markup=back_kb)
+
 @router.callback_query(F.data.startswith("admin_edit_bal_"))
 async def cb_admin_edit_balance(callback: CallbackQuery, state: FSMContext, lang='en'):
     if not is_user_admin(callback.from_user.id):
@@ -3410,10 +3463,36 @@ async def cb_admin_edit_balance(callback: CallbackQuery, state: FSMContext, lang
     
     from database import get_user
     db_user = await get_user(user_id)
-    name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    raw_name = db_user['first_name'] if db_user else f"ID: {user_id}"
+    name = escape_md(raw_name)
     cur_bal = db_user['balance'] if db_user else 0.0
     
-    await callback.message.answer(get_text('admin_user_new_bal_prompt', lang, name=name, user_id=user_id, current_balance=cur_bal), parse_mode="Markdown")
+    prompt = get_text('admin_user_new_bal_prompt', lang, name=name, user_id=user_id, current_balance=cur_bal)
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    builder.button(text="💵 Set to $0.00", callback_data=f"admin_setbal_{user_id}_0")
+    builder.button(text=get_text('btn_admin_back', lang), callback_data=f"admin_manage_users")
+    builder.adjust(1)
+    
+    try:
+        await callback.message.answer(prompt, reply_markup=builder.as_markup(), parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(
+            f"👤 User: {raw_name} ({user_id})\nCurrent Balance: ${cur_bal:.2f} USD\n\n✍️ Enter the new balance in USD (e.g. 10.50):",
+            reply_markup=builder.as_markup()
+        )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_setbal_"))
+async def cb_admin_quick_set_balance(callback: CallbackQuery, state: FSMContext, lang='en'):
+    if not is_user_admin(callback.from_user.id):
+        return
+    parts = callback.data.split("_")
+    # format: admin_setbal_USERID_AMOUNT
+    user_id = int(parts[2])
+    val = float(parts[3])
+    await state.clear()
+    await _apply_admin_balance_update(callback, user_id, val, lang=lang)
     await callback.answer()
 
 @router.message(AdminStates.waiting_for_new_balance)
@@ -3434,35 +3513,57 @@ async def process_new_balance(message: Message, state: FSMContext, lang='en'):
     await state.clear()
     
     if not user_id:
-        await message.answer("❌ Session expired. Try again.")
+        await message.answer("❌ Session expired. Please select the user again from Manage Users.")
         return
         
-    from database import set_user_balance, get_user
-    raw_user_before = await get_user(user_id)
-    db_user_before = dict(raw_user_before) if raw_user_before else {}
-    prev_balance = float(db_user_before.get('balance') or 0.0)
-    await set_user_balance(user_id, new_balance)
-    
-    raw_user = await get_user(user_id)
-    db_user = dict(raw_user) if raw_user else {}
-    name = db_user.get('first_name') or f"ID: {user_id}"
-    
-    # Notify user in bot if balance was added
+    await _apply_admin_balance_update(message, user_id, new_balance, lang=lang)
+
+@router.message(Command("setbalance"))
+async def cmd_admin_setbalance(message: Message, command: CommandObject, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    if not command.args:
+        await message.answer("⚠️ Usage: `/setbalance <user_id> <amount>`\nExample: `/setbalance 8035421066 0`", parse_mode="Markdown")
+        return
+    parts = command.args.strip().split()
+    if len(parts) < 2:
+        await message.answer("⚠️ Usage: `/setbalance <user_id> <amount>`\nExample: `/setbalance 8035421066 0`", parse_mode="Markdown")
+        return
     try:
-        user_lang = db_user.get('language') or 'ar'
-        diff = new_balance - prev_balance
-        if diff > 0:
-            notif_msgs = {
-                'ar': f"✅ *تمت إضافة رصيد لحسابك بواسطة الإدارة!*\n\n💰 *المبلغ المضاف:* `${diff:.2f} USD`\n💎 *رصيدك الجديد:* `${new_balance:.2f} USD`",
-                'en': f"✅ *Balance Added by Admin!*\n\n💰 *Amount Added:* `${diff:.2f} USD`\n💎 *New Balance:* `${new_balance:.2f} USD`",
-                'ru': f"✅ *Баланс пополнен администратором!*\n\n💰 *Зачислено:* `${diff:.2f} USD`\n💎 *Новый баланс:* `${new_balance:.2f} USD`",
-                'fr': f"✅ *Solde crédité par l'administration !*\n\n💰 *Montant ajouté :* `${diff:.2f} USD`\n💎 *Nouveau solde :* `${new_balance:.2f} USD`"
-            }
-            await message.bot.send_message(chat_id=user_id, text=notif_msgs.get(user_lang, notif_msgs['en']), parse_mode="Markdown")
-    except Exception as notify_err:
-        logger.warning(f"Failed to notify user {user_id} of manual balance addition: {notify_err}")
-    
-    await message.answer(get_text('admin_user_bal_updated', lang, name=name, balance=new_balance), reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
+        user_id = int(parts[0])
+        amount = float(parts[1].replace("$", ""))
+        if amount < 0:
+            raise ValueError()
+    except ValueError:
+        await message.answer("❌ Invalid User ID or amount.")
+        return
+    await _apply_admin_balance_update(message, user_id, amount, lang=lang)
+
+@router.message(Command("addbalance"))
+async def cmd_admin_addbalance(message: Message, command: CommandObject, lang='en'):
+    if not is_user_admin(message.from_user.id):
+        return
+    if not command.args:
+        await message.answer("⚠️ Usage: `/addbalance <user_id> <amount>`\nExample: `/addbalance 8035421066 10.0`", parse_mode="Markdown")
+        return
+    parts = command.args.strip().split()
+    if len(parts) < 2:
+        await message.answer("⚠️ Usage: `/addbalance <user_id> <amount>`\nExample: `/addbalance 8035421066 10.0`", parse_mode="Markdown")
+        return
+    try:
+        user_id = int(parts[0])
+        add_amount = float(parts[1].replace("$", ""))
+    except ValueError:
+        await message.answer("❌ Invalid User ID or amount.")
+        return
+    from database import get_user
+    u = await get_user(user_id)
+    if not u:
+        await message.answer("❌ User not found.")
+        return
+    cur_bal = float(u['balance'] or 0.0)
+    new_bal = max(0.0, round(cur_bal + add_amount, 2))
+    await _apply_admin_balance_update(message, user_id, new_bal, lang=lang)
 
 
 # --- Secret Database Backup & Restore Commands ---

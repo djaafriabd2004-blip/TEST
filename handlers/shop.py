@@ -85,8 +85,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang, category_id=category_id)
         else:
-            stock_counts = await get_all_stock_counts(products)
-            products = await get_products(category_id=category_id)
+            stock_counts = await get_all_stock_counts(products, use_cache=True)
             products = await _apply_user_effective_prices(products, user_id)
             if hide_oos:
                 products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
@@ -100,8 +99,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
         categories = await get_categories()
         standalone_products = await get_uncategorized_products()
         if categories:
-            stock_counts = await get_all_stock_counts(standalone_products)
-            standalone_products = await get_uncategorized_products()
+            stock_counts = await get_all_stock_counts(standalone_products, use_cache=True) if standalone_products else {}
             standalone_products = await _apply_user_effective_prices(standalone_products, user_id)
             if hide_oos:
                 standalone_products = [p for p in standalone_products if stock_counts.get(p['id'], 0) > 0]
@@ -113,8 +111,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
                 text = get_text('shop_empty', lang)
                 kb = keyboards.get_products_keyboard([], {}, lang)
             else:
-                stock_counts = await get_all_stock_counts(products)
-                products = await get_products()
+                stock_counts = await get_all_stock_counts(products, use_cache=True)
                 products = await _apply_user_effective_prices(products, user_id)
                 if hide_oos:
                     products = [p for p in products if stock_counts.get(p['id'], 0) > 0]
@@ -130,8 +127,7 @@ async def show_products_list(message_or_callback, lang='en', category_id=None):
             text = get_text('shop_empty', lang)
             kb = keyboards.get_products_keyboard([], {}, lang)
         else:
-            stock_counts = await get_all_stock_counts(products)
-            products = await get_products()
+            stock_counts = await get_all_stock_counts(products, use_cache=True)
             products = await _apply_user_effective_prices(products, user_id)
             if hide_oos:
                 products = [p for p in products if stock_counts.get(p['id'], 0) > 0]

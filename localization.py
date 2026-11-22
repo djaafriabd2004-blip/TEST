@@ -304,10 +304,14 @@ LOCALIZATION = {
         'pt': "📭 Você não tem nenhuma pré-encomenda ativa."
     },
     'preorder_item': {
-        'en': "⏳ *Pre-order #{id}*\n🛍️ *Product:* {name}\n📦 *Quantity:* `{qty}`\n💰 *Locked Amount:* `${price:.2f} USD`\n📅 *Date:* {date}\n\n",
-        'ar': "⏳ *حجز #{id}*\n🛍️ *المنتج:* {name}\n📦 *الكمية:* `{qty}`\n💰 *المبلغ المعلق:* `${price:.2f} USD`\n📅 *التاريخ:* {date}\n\n",
-        'ru': "⏳ *Предзаказ #{id}*\n🛍️ *Товар:* {name}\n📦 *Количество:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n📅 *Дата:* {date}\n\n",
-        'pt': "⏳ *Pré-encomenda #{id}*\n🛍️ *Produto:* {name}\n📦 *Quantidade:* `{qty}`\n💰 *Valor Bloqueado:* `${price:.2f} USD`\n📅 *Data:* {date}\n\n"
+        'en': "⏳ *Pre-order #{id}*\n🛍️ *Product:* {name}\n📦 *Remaining Quantity:* `{qty}`\n💰 *Locked Amount:* `${price:.2f} USD`\n⭐ *Priority:* Retained #1 FIFO queue position\n📅 *Date:* {date}\n\n",
+        'ar': "⏳ *طلب مسبق #{id}*\n🛍️ *المنتج:* {name}\n📦 *الكمية المتبقية للتسليم:* `{qty}`\n💰 *المبلغ المعلق:* `${price:.2f} USD`\n⭐ *الأولوية:* طلبك محتفظ بالأولوية الأولى (FIFO)\n📅 *التاريخ:* {date}\n\n",
+        'ru': "⏳ *Предзаказ #{id}*\n🛍️ *Товар:* {name}\n📦 *Осталось доставить:* `{qty}`\n💰 *Заблокировано:* `${price:.2f} USD`\n⭐ *Приоритет:* Сохранен первоочередной статус (FIFO)\n📅 *Дата:* {date}\n\n",
+        'fr': "⏳ *Précommande #{id}*\n🛍️ *Produit :* {name}\n📦 *Quantité restante :* `{qty}`\n💰 *Montant bloqué :* `${price:.2f} USD`\n⭐ *Priorité :* Position prioritaire (FIFO) conservée\n📅 *Date :* {date}\n\n",
+        'zh': "⏳ *预订 #{id}*\n🛍️ *商品：* {name}\n📦 *剩余交付数量：* `{qty}`\n💰 *锁定金额：* `${price:.2f} USD`\n⭐ *优先级：* 保持 FIFO 优先队列位置\n📅 *日期：* {date}\n\n",
+        'hi': "⏳ *प्री-ऑर्डर #{id}*\n🛍️ *उत्पाद:* {name}\n📦 *शेष मात्रा:* `{qty}`\n💰 *अवरुद्ध राशि:* `${price:.2f} USD`\n⭐ *प्राथमिकता:* FIFO कतार में पहली स्थिति सुरक्षित है\n📅 *दिनांक:* {date}\n\n",
+        'ko': "⏳ *예약 주문 #{id}*\n🛍️ *상품:* {name}\n📦 *남은 발송 수량:* `{qty}`\n💰 *예치 금액:* `${price:.2f} USD`\n⭐ *우선순위:* FIFO 1순위 대기열 유지\n📅 *날짜:* {date}\n\n",
+        'pt': "⏳ *Pré-encomenda #{id}*\n🛍️ *Produto:* {name}\n📦 *Quantidade Restante:* `{qty}`\n💰 *Valor Bloqueado:* `${price:.2f} USD`\n⭐ *Prioridade:* Posição prioritária FIFO mantida\n📅 *Data:* {date}\n\n"
     },
     'btn_cancel_preorder': {
         'en': "❌ Cancel Reservation & Refund",
