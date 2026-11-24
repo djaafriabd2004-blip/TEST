@@ -20,6 +20,7 @@ try:
     import bot_config as config
 except ImportError:
     import config
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
