@@ -3881,18 +3881,21 @@ async def fetch_provider_store_name(base_url, api_key):
     except Exception:
         return base_url
 
-async def fetch_provider_products(base_url, api_key, field_mapping=None, force_refresh=False):
+async def fetch_provider_products(base_url, api_key, field_mapping=None, force_refresh=False, timeout=25.0):
     from providers_engine import get_provider_adapter
     import inspect
     try:
         adapter = get_provider_adapter(base_url, api_key, field_mapping=field_mapping)
         sig = inspect.signature(adapter.fetch_catalog)
         if force_refresh and "force_refresh" in sig.parameters:
-            catalog = await adapter.fetch_catalog(force_refresh=True)
+            coro = adapter.fetch_catalog(force_refresh=True)
         else:
-            catalog = await adapter.fetch_catalog()
+            coro = adapter.fetch_catalog()
+        catalog = await asyncio.wait_for(coro, timeout=timeout)
         if catalog is not None:
             return catalog
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout ({timeout}s) fetching provider products from {base_url}")
     except Exception as e:
         logger.error(f"Error fetching provider products from {base_url}: {e}")
     return None
@@ -4208,21 +4211,44 @@ async def cb_admin_prov_pull(callback: CallbackQuery, state: FSMContext, lang='e
         
     prov_dict = dict(prov)
     await callback.message.edit_text("⏳ Fetching products from provider bot...")
-    products = await fetch_provider_products(prov_dict['base_url'], prov_dict['api_key'], field_mapping=prov_dict.get('field_mapping'), force_refresh=True)
-    
-    if products is None:
-        await callback.message.edit_text("❌ Failed to fetch products from provider bot. Please make sure the URL and API key are correct.", reply_markup=keyboards.get_admin_back_keyboard())
-    elif len(products) == 0:
-        empty_msg = {
-            'ar': "📭 لا توجد أي منتجات معروضة للبيع في متجر هذا المزود حالياً.\n(تأكد من إضافة وتفعيل منتجات في البوت المزود أولاً).",
-            'en': "📭 No products available in this provider's store currently.\n(Make sure to add products in the provider bot first).",
-            'ru': "📭 В магазине этого поставщика пока нет доступных товаров."
-        }
-        await callback.message.edit_text(empty_msg.get(lang, empty_msg['en']), reply_markup=keyboards.get_admin_back_keyboard(), parse_mode="Markdown")
-    else:
-        await state.update_data(prov_products=products, prov_id=prov['id'])
-        await callback.message.edit_text(get_text('prov_select_product', lang), reply_markup=keyboards.get_provider_products_keyboard(products, lang))
-    await callback.answer()
+    try:
+        # Use cached catalog when fresh (< 3 min) to avoid rate limits & hangs; timeout at 25s
+        products = await fetch_provider_products(
+            prov_dict['base_url'],
+            prov_dict['api_key'],
+            field_mapping=prov_dict.get('field_mapping'),
+            force_refresh=False,
+            timeout=25.0
+        )
+        
+        if products is None:
+            await callback.message.edit_text(
+                "❌ Failed to fetch products from provider bot (timeout or connection error). Please make sure the URL/API key are correct or try again in a moment.",
+                reply_markup=keyboards.get_admin_back_keyboard(lang)
+            )
+        elif len(products) == 0:
+            empty_msg = {
+                'ar': "📭 لا توجد أي منتجات معروضة للبيع في متجر هذا المزود حالياً.\n(تأكد من إضافة وتفعيل منتجات في البوت المزود أولاً).",
+                'en': "📭 No products available in this provider's store currently.\n(Make sure to add products in the provider bot first).",
+                'ru': "📭 В магазине этого поставщика пока нет доступных товаров."
+            }
+            await callback.message.edit_text(empty_msg.get(lang, empty_msg['en']), reply_markup=keyboards.get_admin_back_keyboard(lang), parse_mode="Markdown")
+        else:
+            await state.update_data(prov_products=products, prov_id=prov['id'])
+            await callback.message.edit_text(get_text('prov_select_product', lang), reply_markup=keyboards.get_provider_products_keyboard(products, lang))
+    except Exception as e:
+        logger.error(f"Error in cb_admin_prov_pull for provider {provider_id}: {e}")
+        try:
+            await callback.message.edit_text(
+                f"❌ Error loading provider products: {e}",
+                reply_markup=keyboards.get_admin_back_keyboard(lang)
+            )
+        except Exception:
+            pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.message(ProvidersStates.waiting_for_url)
 async def process_provider_url(message: Message, state: FSMContext, lang='en'):

@@ -85,9 +85,9 @@ class BaseProviderAdapter:
            "description": str, "price": float, "stock": int, "custom_emoji_id": str }]
         """
         endpoints = [
+            f"{self.base_url}/api/products",
             f"{self.base_url}/api/v1/products",
             f"{self.base_url}/v1/products",
-            f"{self.base_url}/api/products",
             f"{self.base_url}/products",
             f"{self.base_url}/api/reseller/products",
             f"{self.base_url}/reseller/products",
@@ -102,7 +102,7 @@ class BaseProviderAdapter:
             saw_empty_valid = False
             for url in endpoints:
                 try:
-                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=35, connect=10)) as resp:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
                         if resp.status == 200:
                             try:
                                 data = await resp.json(content_type=None)
@@ -115,8 +115,13 @@ class BaseProviderAdapter:
                                     return standardized
                             if isinstance(data, dict) and (data.get('ok') is True or data.get('status') == 'success' or 'products' in data):
                                 saw_empty_valid = True
+                                return []
                             elif isinstance(data, list) and len(data) == 0:
                                 saw_empty_valid = True
+                                return []
+                        elif resp.status in (401, 403):
+                            logger.warning(f"Auth failed ({resp.status}) on {url}")
+                            return None
                 except Exception as e:
                     logger.debug(f"Catalog probe {url} failed: {e}")
             return [] if saw_empty_valid else None
