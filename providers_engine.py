@@ -122,6 +122,9 @@ class BaseProviderAdapter:
                         elif resp.status in (401, 403):
                             logger.warning(f"Auth failed ({resp.status}) on {url}")
                             return None
+                except (aiohttp.ClientConnectorError, asyncio.TimeoutError) as ce:
+                    logger.warning(f"Connection/timeout error on {url}: {ce}. Aborting remaining probes.")
+                    break
                 except Exception as e:
                     logger.debug(f"Catalog probe {url} failed: {e}")
             return [] if saw_empty_valid else None
