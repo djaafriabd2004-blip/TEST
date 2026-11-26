@@ -2526,6 +2526,18 @@ async def get_user_full_report(user_id):
             discount_row = await cur.fetchone()
             discount = discount_row['discount_percent'] if discount_row else 0
 
+        # Active Pre-orders
+        async with db.execute(
+            """SELECT po.id, po.product_id, po.quantity, po.price_paid, po.created_at,
+                      p.name_en, p.name_ar, p.name_ru
+               FROM pre_orders po
+               LEFT JOIN products p ON po.product_id = p.id
+               WHERE po.user_id = ?
+               ORDER BY po.id DESC;""",
+            (user_id,)
+        ) as cur:
+            active_preorders = [dict(r) for r in await cur.fetchall()]
+
         return {
             'user': dict(user),
             'deposits_count': deposits['cnt'],
@@ -2536,6 +2548,7 @@ async def get_user_full_report(user_id):
             'orders_count': orders['cnt'],
             'orders_total': orders['total'],
             'recent_orders': [dict(o) for o in recent_orders],
+            'active_preorders': active_preorders,
             'referral_count': referral_count,
             'referred_by_name': referred_by_name,
             'discount': discount,

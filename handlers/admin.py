@@ -346,6 +346,16 @@ async def process_inspect_user_id(message: Message, state: FSMContext, lang='en'
             p_name = o.get(f'product_name_{lang}') or o['product_name_en']
             text += f"├ 🛍 `{escape_md(p_name)}` \u2014 `${o['price_paid']:.2f}` ({o['purchased_at'][:10]})\n"
 
+    # Active pre-orders (locked balance)
+    active_pos = report.get('active_preorders') or []
+    if active_pos:
+        po_title = {"en": "\n⏳ *Active Pre-orders (Locked Balance)*\n", "ar": "\n⏳ *الحجوزات المسبقة النشطة (رصيد معلق)*\n", "ru": "\n⏳ *Активные предзаказы*\n"}.get(lang, "\n⏳ *Active Pre-orders (Locked Balance)*\n")
+        text += po_title
+        for po in active_pos[:10]:
+            p_name = po.get(f'name_{lang}') or po.get('name_en') or po.get('name_ar') or f"Product #{po['product_id']}"
+            dt = str(po.get('created_at') or '')[:10]
+            text += f"├ ⏳ `{escape_md(p_name)}` (x{po['quantity']}) \u2014 `${po['price_paid']:.2f}` ({dt})\n"
+
     text += "\n━━━━━━━━━━━━━━━━━━━━"
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
