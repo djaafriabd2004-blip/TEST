@@ -415,6 +415,22 @@ def get_utf16_len(text: str) -> int:
     """Returns length of text in UTF-16 code units (as required by Telegram Bot API)."""
     return len(text.encode('utf-16-le')) // 2
 
+def format_stock_display(stock_count, product=None) -> str:
+    """Display ♾️ instead of 999 for slot/unlimited provider products."""
+    try:
+        cnt = int(stock_count or 0)
+    except (ValueError, TypeError):
+        return str(stock_count)
+    if cnt == 999:
+        p = dict(product) if (product is not None and not isinstance(product, dict) and hasattr(product, 'keys')) else (product if isinstance(product, dict) else {})
+        if not p or p.get('provider_id') is not None or p.get('requires_email') or p.get('is_unlimited'):
+            return "♾️"
+    elif cnt > 0:
+        p = dict(product) if (product is not None and not isinstance(product, dict) and hasattr(product, 'keys')) else (product if isinstance(product, dict) else {})
+        if p.get('is_unlimited'):
+            return "♾️"
+    return str(cnt)
+
 def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_price=None):
     """
     Constructs (text, entities, parse_mode) for displaying a product.
@@ -457,16 +473,18 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
 
     tier_text = format_product_tier_prices_text(product, lang)
     tier_str = f"\n\n{tier_text}" if tier_text else ""
+    stock_display = format_stock_display(stock_count, prod_dict)
 
     if not desc_entities:
         desc_clean = (desc or "").strip()
         desc_line = (f"\n\n📝 *الوصف:* {desc_clean}" if lang == 'ar' else (f"\n\n📝 *Описание:* {desc_clean}" if lang == 'ru' else f"\n\n📝 *Description:* {desc_clean}")) if desc_clean else ""
+        stock_disp_md = stock_display if stock_display == "♾️" else f"`{stock_display}`"
         if lang == 'ar':
-            text = f"🛍️ *المنتج:* {name}{desc_line}\n\n💵 *السعر:* {price_str_markdown}\n📦 *المخزون:* `{stock_count}` متوفر" + tier_str
+            text = f"🛍️ *المنتج:* {name}{desc_line}\n\n💵 *السعر:* {price_str_markdown}\n📦 *المخزون:* {stock_disp_md} متوفر" + tier_str
         elif lang == 'ru':
-            text = f"🛍️ *Товар:* {name}{desc_line}\n\n💵 *Цена:* {price_str_markdown}\n📦 *В наличии:* `{stock_count}` шт." + tier_str
+            text = f"🛍️ *Товар:* {name}{desc_line}\n\n💵 *Цена:* {price_str_markdown}\n📦 *В наличии:* {stock_disp_md} шт." + tier_str
         else:
-            text = f"🛍️ *Product:* {name}{desc_line}\n\n💵 *Price:* {price_str_markdown}\n📦 *Stock:* `{stock_count}` available" + tier_str
+            text = f"🛍️ *Product:* {name}{desc_line}\n\n💵 *Price:* {price_str_markdown}\n📦 *Stock:* {stock_disp_md} available" + tier_str
         return text, None, "Markdown"
 
     # Rich formatting with MessageEntities (preserves Telegram Premium Custom Emojis)
@@ -505,15 +523,15 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
 
     # Footer section
     if lang == 'ar':
-        footer_text = f"\n\n💵 السعر: {price_str_plain}\n📦 المخزون: {stock_count} متوفر" + (f"\n\n{tier_text}" if tier_text else "")
+        footer_text = f"\n\n💵 السعر: {price_str_plain}\n📦 المخزون: {stock_display} متوفر" + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 السعر: "
         s_label = f"\n📦 المخزون: "
     elif lang == 'ru':
-        footer_text = f"\n\n💵 Цена: {price_str_plain}\n📦 В наличии: {stock_count} шт." + (f"\n\n{tier_text}" if tier_text else "")
+        footer_text = f"\n\n💵 Цена: {price_str_plain}\n📦 В наличии: {stock_display} шт." + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 Цена: "
         s_label = f"\n📦 В наличии: "
     else:
-        footer_text = f"\n\n💵 Price: {price_str_plain}\n📦 Stock: {stock_count} available" + (f"\n\n{tier_text}" if tier_text else "")
+        footer_text = f"\n\n💵 Price: {price_str_plain}\n📦 Stock: {stock_display} available" + (f"\n\n{tier_text}" if tier_text else "")
         p_label = "\n\n💵 Price: "
         s_label = f"\n📦 Stock: "
 

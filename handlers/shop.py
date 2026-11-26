@@ -19,7 +19,7 @@ from localization import get_text, get_button_variants
 from handlers.states import ShopStates
 import keyboards
 import asyncio
-from utils import send_message_with_retry, get_product_name, get_product_desc, get_product_unit_price
+from utils import send_message_with_retry, get_product_name, get_product_desc, get_product_unit_price, format_stock_display
 import logging
 
 logger = logging.getLogger(__name__)
@@ -247,8 +247,9 @@ async def cb_product_buy(callback: CallbackQuery, state: FSMContext, lang='en'):
     await state.update_data(buy_product_id=product_id, buy_stock_max=stock_count)
     
     prod_name = get_product_name(product, lang)
+    stock_disp = format_stock_display(stock_count, product)
     
-    msg = get_text('buy_quantity_prompt', lang, name=prod_name, stock=stock_count)
+    msg = get_text('buy_quantity_prompt', lang, name=prod_name, stock=stock_disp)
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
@@ -272,15 +273,16 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         await state.clear()
         return
         
+    product = await get_product(product_id)
     try:
         qty = int(message.text.strip())
         if qty < 1 or qty > max_stock:
             raise ValueError()
     except ValueError:
-        await message.answer(get_text('invalid_quantity', lang, max_stock=max_stock))
+        max_disp = format_stock_display(max_stock, product) if product else format_stock_display(max_stock)
+        await message.answer(get_text('invalid_quantity', lang, max_stock=max_disp))
         return
         
-    product = await get_product(product_id)
     if not product:
         await state.clear()
         await message.answer("Product not found.")
