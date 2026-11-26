@@ -13,7 +13,7 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enab
     
     # Button keys for emoji mapping
     buttons = [
-        ('btn_shop', 'shop', 'success'),
+        ('btn_shop', 'shop', 'primary'),
     ]
     if global_web_enabled:
         buttons.append(('btn_web_checkout', 'web_checkout', 'primary'))
@@ -23,9 +23,9 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enab
         ('btn_my_preorders', 'preorders', 'primary'),
         ('btn_charge_balance', 'charge', 'primary'),
         ('btn_referral', 'referral', 'primary'),
-        ('btn_support', 'support', None),
-        ('btn_language', 'language', None),
-        ('btn_reseller_api', 'reseller_api', None),
+        ('btn_support', 'support', 'primary'),
+        ('btn_language', 'language', 'primary'),
+        ('btn_reseller_api', 'reseller_api', 'primary'),
     ])
     
     for text_key, emoji_key, style in buttons:
