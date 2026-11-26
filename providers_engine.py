@@ -2649,6 +2649,505 @@ class AitoolifyProviderAdapter(BaseProviderAdapter):
 
 
 # -------------------------------------------------------------------------
+# 9. Canboso Telegram Buyer API v2 Adapter (https://canboso.com/api/swagger)
+# -------------------------------------------------------------------------
+_CANBOSO_CATALOG_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
+_CANBOSO_CATALOG_LOCKS: Dict[str, asyncio.Lock] = {}
+_CANBOSO_RATE_UNTIL: Dict[str, float] = {}
+_CANBOSO_USD_RATE_CACHE: Dict[str, Tuple[float, float]] = {}
+_CANBOSO_CACHE_TTL = 90.0  # 90s TTL (well under 30 req/60s quota to prevent escalating 429 penalties)
+_CANBOSO_USD_RATE_TTL = 600.0
+
+class CanbosoProviderAdapter(BaseProviderAdapter):
+    """
+    Canboso Buyer API v2.2.0 Adapter.
+    Docs: https://canboso.com/api/swagger
+    Supports /api/v2/telegram-buyer/{products, balance, orders, purchase}.
+    """
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
+        clean_base = self.base_url.rstrip('/')
+        if clean_base.lower().endswith('/api/v2/telegram-buyer'):
+            self.api_v2_url = clean_base
+        else:
+            self.api_v2_url = f"{clean_base}/api/v2/telegram-buyer"
+        self.provider_type = "canboso"
+
+    def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = {
+            "x-buyer-key": self.api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    def _handle_rate_limit(self, cache_key: str, resp: aiohttp.ClientResponse, err_json: Optional[dict] = None) -> int:
+        retry_after = 15
+        try:
+            ra_hdr = resp.headers.get("Retry-After")
+            if ra_hdr and str(ra_hdr).isdigit():
+                retry_after = max(1, int(ra_hdr))
+            elif isinstance(err_json, dict):
+                rl = err_json.get("rateLimit") or {}
+                if isinstance(rl, dict) and rl.get("retryAfter"):
+                    retry_after = max(1, int(rl["retryAfter"]))
+        except Exception:
+            pass
+        _CANBOSO_RATE_UNTIL[cache_key] = time.time() + min(retry_after, 3600)
+        logger.warning(f"Canboso rate limited (429). Cooling down for {retry_after}s.")
+        return retry_after
+
+    async def _get_vnd_to_usd_rate(self, session: aiohttp.ClientSession) -> float:
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+        now_ts = time.time()
+        if cache_key in _CANBOSO_USD_RATE_CACHE:
+            rate_val, ts = _CANBOSO_USD_RATE_CACHE[cache_key]
+            if (now_ts - ts) < _CANBOSO_USD_RATE_TTL and rate_val > 0:
+                return rate_val
+        bal = await self.fetch_balance(session=session)
+        if isinstance(bal, dict):
+            try:
+                rate = float(bal.get("usdRate") or 0)
+                if rate > 0:
+                    _CANBOSO_USD_RATE_CACHE[cache_key] = (rate, time.time())
+                    return rate
+            except Exception:
+                pass
+        return 25400.0
+
+    def _standardize_canboso_catalog(self, raw_products: List[Any], wallet_currency: str = "USD", usd_rate: float = 25400.0) -> List[Dict[str, Any]]:
+        formatted: List[Dict[str, Any]] = []
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
+
+        for p in raw_products:
+            if not isinstance(p, dict):
+                continue
+            p_id = str(p.get("productId") or p.get("id") or "").strip()
+            if not p_id:
+                continue
+
+            p_name = str(p.get("name") or f"Product #{p_id}").strip()
+            p_desc = str(p.get("description") or "").strip()
+            prod_type = str(p.get("productType") or "account").strip().lower()
+            reqs = p.get("purchaseRequirements") if isinstance(p.get("purchaseRequirements"), dict) else {}
+
+            if reqs.get("allowedMonths"):
+                months_str = ", ".join(str(m) for m in reqs["allowedMonths"])
+                note = f"Allowed durations (months): {months_str}"
+                p_desc = f"{p_desc}\n⏱️ {note}".strip() if p_desc else f"⏱️ {note}"
+
+            # Extract price & normalize VND -> USD if wallet/price is VND
+            price_usd = None
+            if custom_price_field and p.get(custom_price_field) is not None:
+                price_usd = extract_price_from_dict(p, custom_field=custom_price_field)
+            if price_usd is None:
+                price_obj = p.get("price")
+                if isinstance(price_obj, dict):
+                    raw_amt = float(price_obj.get("amount") or 0.0)
+                    p_curr = str(price_obj.get("currency") or wallet_currency or "USD").upper()
+                    if raw_amt > 0:
+                        if p_curr == "VND":
+                            div_rate = usd_rate if usd_rate > 0 else 25400.0
+                            price_usd = round(raw_amt / div_rate, 2)
+                            if price_usd <= 0:
+                                price_usd = 0.01
+                        else:
+                            price_usd = round(raw_amt, 4)
+                    else:
+                        price_usd = 0.0
+                else:
+                    price_usd = float(extract_price_from_dict(p) or 0.0)
+            price_usd = float(price_usd or 0.0)
+
+            # Extract availability/stock
+            avail_obj = p.get("availability") if isinstance(p.get("availability"), dict) else {}
+            raw_avail = avail_obj.get("available")
+            is_unlimited = False
+            if custom_stock_field and p.get(custom_stock_field) is not None:
+                stock_val = extract_stock_from_dict(p, allow_boolean=True, custom_field=custom_stock_field) or 0
+            elif raw_avail is None:
+                if prod_type in ("slot", "upgrade_account") or p_id == "slot_chatgpt_business":
+                    stock_val = 999
+                    is_unlimited = True
+                else:
+                    stock_val = 0
+            else:
+                try:
+                    stock_val = max(0, int(raw_avail))
+                except Exception:
+                    stock_val = 0
+
+            req_email = bool(
+                reqs.get("customerEmail")
+                or reqs.get("customerAccounts")
+                or prod_type in ("slot", "upgrade_account")
+                or p_id == "slot_chatgpt_business"
+            )
+
+            formatted.append({
+                "id": p_id,
+                "productId": p_id,
+                "name": p_name,
+                "name_ar": p_name,
+                "name_en": p_name,
+                "name_ru": p_name,
+                "description": p_desc,
+                "description_ar": p_desc,
+                "description_en": p_desc,
+                "description_ru": p_desc,
+                "price": price_usd,
+                "stock": stock_val,
+                "is_unlimited": is_unlimited,
+                "product_type": prod_type,
+                "purchase_requirements": reqs,
+                "requires_email": req_email,
+                "requiresEmailActivation": req_email
+            })
+        return formatted
+
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None, force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+        now_ts = time.time()
+
+        # Respect active 429 cooldown
+        if now_ts < _CANBOSO_RATE_UNTIL.get(cache_key, 0):
+            if cache_key in _CANBOSO_CATALOG_CACHE:
+                return _CANBOSO_CATALOG_CACHE[cache_key][0]
+            return None
+
+        if not force_refresh and cache_key in _CANBOSO_CATALOG_CACHE:
+            cached_list, cached_time = _CANBOSO_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < _CANBOSO_CACHE_TTL and cached_list is not None:
+                return cached_list
+
+        lock = _CANBOSO_CATALOG_LOCKS.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            now_ts = time.time()
+            if now_ts < _CANBOSO_RATE_UNTIL.get(cache_key, 0):
+                if cache_key in _CANBOSO_CATALOG_CACHE:
+                    return _CANBOSO_CATALOG_CACHE[cache_key][0]
+                return None
+
+            if not force_refresh and cache_key in _CANBOSO_CATALOG_CACHE:
+                cached_list, cached_time = _CANBOSO_CATALOG_CACHE[cache_key]
+                if (now_ts - cached_time) < _CANBOSO_CACHE_TTL and cached_list is not None:
+                    return cached_list
+
+            url = f"{self.api_v2_url}/products"
+            params = {"key": self.api_key}
+
+            async def _req(s: aiohttp.ClientSession):
+                try:
+                    async with s.get(url, headers=self.get_headers(), params=params, timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            if not isinstance(data, dict):
+                                return None
+                            raw_list = data.get("products") if isinstance(data.get("products"), list) else extract_products_list_from_json(data)
+                            wallet_curr = str(data.get("walletCurrency") or "USD").upper()
+                            usd_rate = 25400.0
+                            needs_vnd = wallet_curr == "VND" or any(
+                                isinstance(it, dict) and isinstance(it.get("price"), dict) and str(it["price"].get("currency") or "").upper() == "VND"
+                                for it in (raw_list or [])
+                            )
+                            if needs_vnd:
+                                usd_rate = await self._get_vnd_to_usd_rate(s)
+                            standardized = self._standardize_canboso_catalog(raw_list or [], wallet_currency=wallet_curr, usd_rate=usd_rate)
+                            _CANBOSO_CATALOG_CACHE[cache_key] = (standardized, time.time())
+                            return standardized
+                        elif resp.status == 429:
+                            err_json = None
+                            try:
+                                err_json = await resp.json(content_type=None)
+                            except Exception:
+                                pass
+                            self._handle_rate_limit(cache_key, resp, err_json)
+                            if cache_key in _CANBOSO_CATALOG_CACHE:
+                                return _CANBOSO_CATALOG_CACHE[cache_key][0]
+                            return None
+                        elif resp.status in (401, 403):
+                            logger.warning(f"Canboso auth failed ({resp.status}) on {url}")
+                            return None
+                        else:
+                            logger.warning(f"Canboso catalog {url} returned HTTP {resp.status}")
+                except Exception as e:
+                    logger.warning(f"Canboso catalog fetch error: {e}")
+
+                if cache_key in _CANBOSO_CATALOG_CACHE:
+                    return _CANBOSO_CATALOG_CACHE[cache_key][0]
+                return None
+
+            if session:
+                return await _req(session)
+            else:
+                async with aiohttp.ClientSession() as s:
+                    return await _req(s)
+
+    def _get_cached_product_meta(self, provider_product_id: Any) -> Optional[Dict[str, Any]]:
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+        if cache_key not in _CANBOSO_CATALOG_CACHE:
+            return None
+        cached_list, _ = _CANBOSO_CATALOG_CACHE[cache_key]
+        for p in (cached_list or []):
+            if matches_product_id(p, provider_product_id):
+                return p
+        return None
+
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        prov_pid = str(provider_product_id).strip()
+        catalog = await self.fetch_catalog(session=session)
+        if catalog:
+            for p in catalog:
+                if matches_product_id(p, prov_pid):
+                    return int(p.get("stock", 0))
+        return None
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+        now_ts = time.time()
+        use_force = False
+        # Only refresh if cache is missing or > 15s old (respect 30 req/60s quota)
+        if cache_key not in _CANBOSO_CATALOG_CACHE or (now_ts - _CANBOSO_CATALOG_CACHE[cache_key][1]) > 15.0:
+            use_force = now_ts >= _CANBOSO_RATE_UNTIL.get(cache_key, 0)
+        catalog = await self.fetch_catalog(session=session, force_refresh=use_force)
+        if catalog:
+            for p in catalog:
+                if matches_product_id(p, prov_pid):
+                    return float(p.get("price", 0.0))
+        return None
+
+    async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+        if time.time() < _CANBOSO_RATE_UNTIL.get(cache_key, 0):
+            return None
+        url = f"{self.api_v2_url}/balance"
+        params = {"key": self.api_key}
+
+        async def _req(s: aiohttp.ClientSession):
+            try:
+                async with s.get(url, headers=self.get_headers(), params=params, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict):
+                            return data
+                    elif resp.status == 429:
+                        try:
+                            err_json = await resp.json(content_type=None)
+                        except Exception:
+                            err_json = None
+                        self._handle_rate_limit(cache_key, resp, err_json)
+            except Exception as e:
+                logger.debug(f"Canboso balance fetch failed: {e}")
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    def _format_delivered_accounts(self, accounts: List[Any]) -> List[str]:
+        delivered_lines: List[str] = []
+        for acc_item in accounts:
+            if isinstance(acc_item, dict):
+                user_val = str(acc_item.get("user") or "").strip()
+                pwd_val = str(acc_item.get("password") or "").strip()
+                verify_email = str(acc_item.get("verifyEmail") or "").strip()
+                expiry_text = str(acc_item.get("expiryText") or "").strip()
+                other_info = str(acc_item.get("otherInfo") or "").strip()
+
+                if user_val and pwd_val:
+                    line = f"{user_val}:{pwd_val}"
+                elif user_val:
+                    line = user_val
+                else:
+                    line = ""
+
+                extras = []
+                if verify_email:
+                    extras.append(f"Verify: {verify_email}")
+                if expiry_text:
+                    extras.append(f"Exp: {expiry_text}")
+                if other_info:
+                    extras.append(other_info)
+
+                if extras:
+                    line = f"{line} | {' | '.join(extras)}" if line else " | ".join(extras)
+                if line:
+                    delivered_lines.append(line)
+                else:
+                    delivered_lines.append(json.dumps(acc_item, ensure_ascii=False))
+            elif isinstance(acc_item, str) and acc_item.strip():
+                delivered_lines.append(acc_item.strip())
+        return delivered_lines
+
+    async def execute_order(
+        self,
+        provider_product_id: Any,
+        quantity: int,
+        expected_price: Optional[float] = None,
+        client_order_ref: Optional[str] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
+    ) -> List[str]:
+        """
+        Places an order via POST /api/v2/telegram-buyer/purchase using Idempotency-Key.
+        Supports account, slot_chatgpt_business, catalog slot, and upgrade_account flows.
+        """
+        prov_pid = str(provider_product_id).strip()
+        qty = max(1, int(quantity))
+        cache_key = f"{self.api_v2_url}:{self.api_key}"
+
+        raw_ref = str(client_order_ref or f"canboso-{int(time.time())}-{uuid.uuid4().hex[:8]}").strip()
+        if len(raw_ref) < 8:
+            raw_ref = f"canboso-{raw_ref}-{uuid.uuid4().hex[:6]}"
+        idempotency_key = raw_ref[:128]
+
+        meta = self._get_cached_product_meta(prov_pid)
+        if not meta:
+            try:
+                await self.fetch_catalog(session=session)
+                meta = self._get_cached_product_meta(prov_pid)
+            except Exception:
+                meta = None
+
+        prod_type = str((meta or {}).get("product_type") or "account").lower()
+        reqs = (meta or {}).get("purchase_requirements") or {}
+        if not isinstance(reqs, dict):
+            reqs = {}
+
+        payload: Dict[str, Any] = {
+            "key": self.api_key,
+            "product_id": prov_pid,
+            "quantity": qty
+        }
+
+        email_list: List[str] = []
+        if customer_email:
+            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
+            email_list = [e.strip() for e in email_str.replace(',', '\n').split('\n') if e.strip()]
+
+        if prov_pid == "slot_chatgpt_business":
+            payload["quantity"] = 1
+            if not email_list:
+                raise Exception("Provider requires email: customer_email is required for ChatGPT Business Slot")
+            payload["customer_email"] = email_list[0]
+            allowed_months = reqs.get("allowedMonths") or [1, 3, 6, 12]
+            cfg_months = self.field_mapping.get("slot_months")
+            try:
+                slot_months = int(cfg_months) if cfg_months else (1 if 1 in allowed_months else int(allowed_months[0]))
+            except Exception:
+                slot_months = int(allowed_months[0]) if allowed_months else 1
+            if allowed_months and slot_months not in allowed_months:
+                slot_months = int(allowed_months[0])
+            payload["slot_months"] = slot_months
+        elif prod_type == "slot" or (reqs.get("customerEmail") and not reqs.get("customerAccounts")):
+            payload["quantity"] = 1
+            if not email_list:
+                raise Exception("Provider requires email: customer_email is required for slot product")
+            payload["customer_email"] = email_list[0]
+        elif prod_type == "upgrade_account" or reqs.get("customerAccounts"):
+            if not email_list:
+                raise Exception("Provider requires email: customer_accounts is required for upgrade product")
+            if qty == 1 and len(email_list) == 1:
+                payload["customer_accounts"] = [email_list[0]]
+            else:
+                if len(email_list) < qty:
+                    raise Exception(f"Provider requires {qty} unique account identifiers (customer_accounts), got {len(email_list)}")
+                payload["customer_accounts"] = email_list[:qty]
+        elif email_list:
+            payload["customer_email"] = email_list[0]
+
+        ep = f"{self.api_v2_url}/purchase"
+        headers = self.get_headers({"Idempotency-Key": idempotency_key})
+
+        async def _req(s: aiohttp.ClientSession):
+            last_err = "No response from Canboso"
+            for attempt in range(2):
+                try:
+                    safe_log_payload = {k: ("***" if k == "key" else v) for k, v in payload.items()}
+                    logger.info(f"Executing Canboso order on {ep} with payload: {safe_log_payload}")
+                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=45, connect=10)) as resp:
+                        if resp.status in [200, 201]:
+                            data = await resp.json(content_type=None)
+                            if not isinstance(data, dict):
+                                return [str(data)]
+
+                            delivery = data.get("delivery") or {}
+                            accounts = delivery.get("accounts") if isinstance(delivery, dict) else None
+                            if isinstance(accounts, list) and accounts:
+                                formatted = self._format_delivered_accounts(accounts)
+                                if formatted:
+                                    return formatted
+
+                            order = data.get("order") or {}
+                            order_code = order.get("orderCode") or idempotency_key
+                            fulfillment = str(order.get("fulfillmentStatus") or order.get("status") or "completed").strip()
+                            target = payload.get("customer_email") or (", ".join(payload.get("customer_accounts") or []))
+                            if target:
+                                return [f"✅ Canboso Order #{order_code} ({fulfillment}) | Account: {target}"]
+                            return [f"✅ Canboso Order #{order_code} ({fulfillment})"]
+
+                        err_json = None
+                        err_code = ""
+                        err_msg = ""
+                        try:
+                            err_json = await resp.json(content_type=None)
+                            if isinstance(err_json, dict):
+                                err_code = str(err_json.get("code") or "").upper()
+                                err_msg = str(err_json.get("message") or "")
+                        except Exception:
+                            err_msg = (await resp.text())[:200]
+
+                        last_err = f"{err_code}: {err_msg}".strip(": ") or f"HTTP {resp.status}"
+                        err_l = last_err.lower()
+
+                        if resp.status == 429:
+                            retry_after = self._handle_rate_limit(cache_key, resp, err_json)
+                            if attempt == 0 and retry_after <= 5:
+                                await asyncio.sleep(retry_after)
+                                continue
+                            raise Exception(f"Canboso rate limit exceeded (retry after {retry_after}s): {err_msg}")
+                        elif resp.status == 400 and ("balance" in err_l or "enough" in err_l):
+                            raise Exception(f"Provider balance insufficient: {err_msg or last_err}")
+                        elif resp.status == 400 and ("customer_email" in err_l or "customer_accounts" in err_l or "email" in err_l):
+                            raise Exception(f"Provider requires email: {err_msg or last_err}")
+                        elif resp.status == 409:
+                            if "inventory" in err_l or "stock" in err_l or "enough" in err_l:
+                                raise Exception(f"Out of stock ({err_msg or last_err})")
+                            raise Exception(f"Provider conflict: {err_msg or last_err}")
+                        elif resp.status in (401, 403, 404):
+                            raise Exception(f"Provider error: {last_err}")
+                        elif resp.status >= 500 and attempt == 0:
+                            logger.warning(f"Canboso order returned HTTP {resp.status}, retrying once with same Idempotency-Key...")
+                            await asyncio.sleep(2.0)
+                            continue
+                        else:
+                            raise Exception(f"Provider error: {last_err}")
+                except (aiohttp.ClientConnectorError, aiohttp.ServerTimeoutError, asyncio.TimeoutError) as conn_err:
+                    last_err = str(conn_err)
+                    if attempt == 0:
+                        logger.warning(f"Canboso connection error on {ep}, retrying safely with same Idempotency-Key: {conn_err}")
+                        await asyncio.sleep(1.5)
+                        continue
+                    raise Exception(f"Cannot connect to provider: {last_err}")
+                except Exception as ex:
+                    raise ex
+            raise Exception(f"Provider error: {last_err}")
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+
+# -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
 def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[Any] = None) -> BaseProviderAdapter:
@@ -2671,6 +3170,8 @@ def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[An
         return AitoolifyProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "ventetelegrambot" in clean_url or "ventebot" in clean_url or "/api/reseller" in clean_url or "/reseller" in clean_url:
         return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
+    elif "canboso" in clean_url or "/api/v2/telegram-buyer" in clean_url:
+        return CanbosoProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "roboticvn" in clean_url:
         return RoboticvnProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     else:

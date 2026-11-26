@@ -3835,6 +3835,26 @@ async def fetch_provider_store_name(base_url, api_key):
     from utils import normalize_provider_url
     base_url = normalize_provider_url(base_url)
     is_supabase = "supabase.co" in base_url
+    is_canboso = "canboso" in base_url.lower()
+    
+    if is_canboso:
+        try:
+            async with aiohttp.ClientSession() as session:
+                bal_url = f"{base_url}/api/v2/telegram-buyer/balance?key={api_key}"
+                async with session.get(bal_url, headers={"x-buyer-key": api_key}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict):
+                            req_obj = data.get("requester") or {}
+                            req_name = req_obj.get("name") if isinstance(req_obj, dict) else ""
+                            bal_text = data.get("balanceText") or ""
+                            if req_name and bal_text:
+                                return f"Canboso ({req_name} - {bal_text})"
+                            elif req_name:
+                                return f"Canboso ({req_name})"
+        except Exception:
+            pass
+        return "Canboso API"
     
     headers = {
         "x-api-key": api_key,

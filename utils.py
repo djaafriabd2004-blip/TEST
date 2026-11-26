@@ -19,13 +19,14 @@ def normalize_provider_url(url: str) -> str:
         url = 'https://' + url
         
     suffixes = [
+        '/api/v2/telegram-buyer/products', '/api/v2/telegram-buyer',
         '/api/swagger', '/swagger', '/api/reseller/openapi.json', '/openapi.json',
         '/api/reseller/products', '/reseller/products',
         '/api/reseller', '/reseller',
         '/docs', '/api-docs', '/api/docs', 
         '/api/v1/products', '/api/products', '/v1/products', '/products', 
         '/api/v1/catalog', '/v1/catalog', '/catalog', 
-        '/api/v1', '/api', '/v1'
+        '/api/v2', '/api/v1', '/api', '/v1'
     ]
     changed = True
     while changed:
