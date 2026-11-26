@@ -223,7 +223,7 @@ async def show_orders_menu(message: Message, lang='en'):
     # Show download button
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_download_txt', lang), callback_data="download_orders_txt")
+    builder.button(text=get_text('btn_download_txt', lang), callback_data="download_orders_txt", style="primary")
     builder.adjust(1)
     
     info_text = {
@@ -268,7 +268,7 @@ async def show_preorders_menu(message: Message, lang='en'):
         preorder_items_combined.append(po_text)
         
         # Add cancel button for this pre-order to the combined keyboard
-        builder.button(text=get_text('btn_cancel_preorder_item', lang, id=po['id']), callback_data=f"cancel_preorder_{po['id']}")
+        builder.button(text=get_text('btn_cancel_preorder_item', lang, id=po['id']), callback_data=f"cancel_preorder_{po['id']}", style="danger")
         
     builder.adjust(1)
     

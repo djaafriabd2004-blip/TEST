@@ -28,7 +28,7 @@ async def cmd_support(message: Message, lang='en'):
     text = get_text('support_info', lang, username=username_clean)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=get_text('btn_contact_support', lang), url=f"https://t.me/{username_clean}")]
+        [InlineKeyboardButton(text=get_text('btn_contact_support', lang), url=f"https://t.me/{username_clean}", style="primary")]
     ])
     
     await message.answer(text, reply_markup=kb, parse_mode="HTML")

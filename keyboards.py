@@ -79,9 +79,9 @@ def get_language_keyboard(lang_emojis=None) -> InlineKeyboardMarkup:
     for code, full_text, clean_text in langs:
         emoji_id = lang_emojis.get(code)
         if emoji_id:
-            builder.button(text=clean_text, callback_data=f"set_lang_{code}", icon_custom_emoji_id=str(emoji_id))
+            builder.button(text=clean_text, callback_data=f"set_lang_{code}", icon_custom_emoji_id=str(emoji_id), style="primary")
         else:
-            builder.button(text=full_text, callback_data=f"set_lang_{code}")
+            builder.button(text=full_text, callback_data=f"set_lang_{code}", style="primary")
             
     builder.adjust(2, 2, 2, 2)
     return builder.as_markup()
@@ -132,9 +132,9 @@ def get_shop_home_keyboard(categories, standalone_products, stock_counts=None, l
         c_emoji = cat_dict.get('icon_emoji') or '📁'
         c_custom_eid = cat_dict.get('custom_emoji_id')
         if c_custom_eid:
-            builder.button(text=f"{c_name}", callback_data=f"cat_view_{cat_dict['id']}", icon_custom_emoji_id=str(c_custom_eid))
+            builder.button(text=f"{c_name}", callback_data=f"cat_view_{cat_dict['id']}", icon_custom_emoji_id=str(c_custom_eid), style="primary")
         else:
-            builder.button(text=f"{c_emoji} {c_name}", callback_data=f"cat_view_{cat_dict['id']}")
+            builder.button(text=f"{c_emoji} {c_name}", callback_data=f"cat_view_{cat_dict['id']}", style="primary")
         
     # 2. Standalone / Uncategorized products
     for product in standalone_products:
@@ -168,7 +168,7 @@ def get_product_view_keyboard(product_id, has_stock, lang='en', is_subscribed=Fa
         # Out of stock: Show Pre-order reservation button AND subscribe notifications button
         builder.button(text=get_text('btn_preorder', lang), callback_data=f"prod_preorder_{product_id}", style="success")
         if is_subscribed:
-            builder.button(text=get_text('btn_cancel_notify_stock', lang), callback_data=f"notify_unsub_{product_id}")
+            builder.button(text=get_text('btn_cancel_notify_stock', lang), callback_data=f"notify_unsub_{product_id}", style="danger")
         else:
             builder.button(text=get_text('btn_notify_stock', lang), callback_data=f"notify_sub_{product_id}", style="primary")
     back_cb = f"cat_view_{category_id}" if category_id else "shop_list"
@@ -181,20 +181,20 @@ def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay
     
     # 1. Pay with Balance (if user balance is enough)
     if round(balance, 2) >= price_to_pay:
-        builder.button(text=get_text('btn_pay_balance', lang, balance=balance), callback_data=f"chk_bal_{product_id}_{qty}")
+        builder.button(text=get_text('btn_pay_balance', lang, balance=balance), callback_data=f"chk_bal_{product_id}_{qty}", style="success")
         
     # 2. When pay_url is enabled: show web link (opens in browser) and Stars only (hide other payment methods)
     if pay_url:
-        builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
+        builder.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url, style="success")
         if stars_enabled:
             stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
-            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}", style="primary")
     else:
         # Fallback when web link is disabled: show legacy in-bot payment options
-        builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
+        builder.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}", style="primary")
         if stars_enabled:
             stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
-            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+            builder.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}", style="primary")
         builder.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
         
     # Back button
@@ -204,7 +204,7 @@ def get_checkout_keyboard(product_id, qty, balance, price_to_pay, lang='en', pay
 
 def get_binance_id_checkout_keyboard(product_id, qty, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_check_payment', lang), callback_data=f"chk_verify_binid_{product_id}_{qty}")
+    builder.button(text=get_text('btn_check_payment', lang), callback_data=f"chk_verify_binid_{product_id}_{qty}", style="success")
     builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     builder.adjust(1)
     return builder.as_markup()
@@ -227,11 +227,11 @@ def get_charge_methods_keyboard(lang='en', stars_enabled=True, cryptobot_enabled
 
 def get_crypto_coins_keyboard(lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="USDT BEP20", callback_data="crypto_coin_USDT")
-    builder.button(text="Litecoin (LTC)", callback_data="crypto_coin_LTC")
-    builder.button(text="TON", callback_data="crypto_coin_TON")
-    builder.button(text="Binance ID / Pay (USDT)", callback_data="crypto_coin_BINANCE")
-    builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+    builder.button(text="USDT BEP20", callback_data="crypto_coin_USDT", style="primary")
+    builder.button(text="Litecoin (LTC)", callback_data="crypto_coin_LTC", style="primary")
+    builder.button(text="TON", callback_data="crypto_coin_TON", style="primary")
+    builder.button(text="Binance ID / Pay (USDT)", callback_data="crypto_coin_BINANCE", style="primary")
+    builder.button(text=get_text('btn_back', lang), callback_data="charge_menu", style="danger")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -480,11 +480,11 @@ def get_admin_api_key_revoke_keyboard(keys_list, lang='en') -> InlineKeyboardMar
 def get_user_api_key_keyboard(has_key=False, lang='en') -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if not has_key:
-        builder.button(text=get_text('btn_generate_api_key', lang), callback_data="user_api_key_gen")
+        builder.button(text=get_text('btn_generate_api_key', lang), callback_data="user_api_key_gen", style="success")
     else:
-        builder.button(text=get_text('btn_regenerate_api_key', lang), callback_data="user_api_key_regen")
-        builder.button(text=get_text('btn_revoke_api_key', lang), callback_data="user_api_key_revoke")
-    builder.button(text=get_text('btn_download_api_doc', lang), callback_data="user_api_key_doc")
+        builder.button(text=get_text('btn_regenerate_api_key', lang), callback_data="user_api_key_regen", style="primary")
+        builder.button(text=get_text('btn_revoke_api_key', lang), callback_data="user_api_key_revoke", style="danger")
+    builder.button(text=get_text('btn_download_api_doc', lang), callback_data="user_api_key_doc", style="primary")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -610,7 +610,7 @@ async def get_force_sub_keyboard(bot, channels: list, lang='en') -> InlineKeyboa
                 user_part = clean_ch.replace("@", "")
                 url = f"https://t.me/{user_part}"
                 
-        builder.button(text=title, url=url)
+        builder.button(text=title, url=url, style="primary")
         
     verify_text = {
         'ar': "✅ تحقق من الاشتراك",

@@ -81,7 +81,7 @@ async def cmd_web_checkout(message: Message, lang='en'):
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url)
+    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url, style="success")
     builder.adjust(1)
     
     text_map = {
@@ -128,8 +128,8 @@ async def cb_charge_global_web(callback: CallbackQuery, lang='en'):
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url)
-    builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+    builder.button(text=get_text('btn_open_payment_browser', lang), url=pay_url, style="success")
+    builder.button(text=get_text('btn_back', lang), callback_data="charge_menu", style="danger")
     builder.adjust(1)
     
     text_map = {
@@ -638,9 +638,9 @@ async def process_charge_amount(message: Message, state: FSMContext, bot: Bot, l
         
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text=get_text('btn_pay_now', lang), url=pay_url)
-        builder.button(text=get_text('btn_check_payment', lang), callback_data=f"check_cryptobot_{transaction_id}")
-        builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+        builder.button(text=get_text('btn_pay_now', lang), url=pay_url, style="success")
+        builder.button(text=get_text('btn_check_payment', lang), callback_data=f"check_cryptobot_{transaction_id}", style="primary")
+        builder.button(text=get_text('btn_back', lang), callback_data="charge_menu", style="danger")
         builder.adjust(1)
         
         await message.answer(inst_text, reply_markup=builder.as_markup(), parse_mode="Markdown")
@@ -665,9 +665,9 @@ async def process_charge_amount(message: Message, state: FSMContext, bot: Bot, l
         
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text=get_text('btn_pay_now', lang), url=pay_url)
-        builder.button(text=get_text('btn_check_payment', lang), callback_data=f"check_xrocket_{transaction_id}")
-        builder.button(text=get_text('btn_back', lang), callback_data="charge_menu")
+        builder.button(text=get_text('btn_pay_now', lang), url=pay_url, style="success")
+        builder.button(text=get_text('btn_check_payment', lang), callback_data=f"check_xrocket_{transaction_id}", style="primary")
+        builder.button(text=get_text('btn_back', lang), callback_data="charge_menu", style="danger")
         builder.adjust(1)
         
         await message.answer(inst_text, reply_markup=builder.as_markup(), parse_mode="Markdown")

@@ -257,7 +257,7 @@ async def cb_product_buy(callback: CallbackQuery, state: FSMContext, lang='en'):
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     
     await callback.message.edit_text(msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
@@ -299,7 +299,7 @@ async def process_buy_quantity(message: Message, state: FSMContext, bot: Bot):
         await state.update_data(buy_product_id=product_id, buy_qty=qty)
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+        builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
         if qty == 1:
             msg = get_text('ask_activation_email_single', lang, name=prod_name)
         else:
@@ -415,15 +415,15 @@ async def cb_checkout_balance(callback: CallbackQuery, state: FSMContext, bot: B
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         ikb = InlineKeyboardBuilder()
         if pay_url:
-            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url)
+            ikb.button(text=get_text('btn_pay_web_link', lang, price=price_to_pay), url=pay_url, style="success")
             if stars_enabled:
                 stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
-                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}", style="primary")
         else:
-            ikb.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}")
+            ikb.button(text=get_text('btn_pay_binance', lang), callback_data=f"chk_bin_{product_id}_{qty}", style="primary")
             if stars_enabled:
                 stars_text = get_text('btn_pay_stars', lang, stars=stars_amount) if stars_amount > 0 else get_text('btn_stars', lang)
-                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}")
+                ikb.button(text=stars_text, callback_data=f"chk_stars_{product_id}_{qty}", style="primary")
             ikb.button(text=get_text('btn_other_payment_methods', lang), callback_data="charge_menu", style="primary")
         ikb.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
         ikb.adjust(1)
@@ -731,7 +731,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 await state.update_data(buy_product_id=product_id, buy_qty=qty)
                 from aiogram.utils.keyboard import InlineKeyboardBuilder
                 builder = InlineKeyboardBuilder()
-                builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+                builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
                 if qty == 1:
                     prompt_msg = get_text('ask_activation_email_single', lang, name=prod_name)
                 else:
@@ -925,7 +925,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
 
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_download_txt', lang), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}")
+    builder.button(text=get_text('btn_download_txt', lang), callback_data=f"dl_pur_{purchase_time.replace(' ', '_')}", style="primary")
     builder.adjust(1)
     
     try:
@@ -1008,7 +1008,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 f"👉 <i>Want to buy? Visit our bot:</i> @{bot_username}"
             )
             kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🛍️ Shop Now", url=f"https://t.me/{bot_username}")]
+                [InlineKeyboardButton(text="🛍️ Shop Now", url=f"https://t.me/{bot_username}", style="success")]
             ])
             await send_message_with_retry(bot.send_message, chat_id=news_channel, text=sale_text, parse_mode="HTML", reply_markup=kb)
         except Exception as e:
@@ -1110,7 +1110,7 @@ async def cb_product_preorder(callback: CallbackQuery, state: FSMContext, lang='
     
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
-    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}")
+    builder.button(text=get_text('btn_back', lang), callback_data=f"prod_view_{product_id}", style="danger")
     
     await callback.message.edit_text(msg, reply_markup=builder.as_markup(), parse_mode="Markdown")
     await callback.answer()
