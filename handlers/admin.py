@@ -2649,10 +2649,13 @@ async def cb_admin_pay_approve(callback: CallbackQuery, bot: Bot):
     new_balance = db_user['balance'] if db_user else 0.0
     
     # Notify user
+    from utils import send_private_with_effect, EFFECT_FIRE, EFFECT_HEART
     try:
-        await bot.send_message(
+        await send_private_with_effect(
+            bot.send_message,
             chat_id=user_id,
             text=get_text('payment_success', user_lang, amount=amount, new_balance=new_balance),
+            effect_id=EFFECT_FIRE,
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -2664,9 +2667,11 @@ async def cb_admin_pay_approve(callback: CallbackQuery, bot: Bot):
         ref_id = ref_notif['referrer_id']
         ref_bonus = ref_notif['bonus']
         try:
-            await bot.send_message(
+            await send_private_with_effect(
+                bot.send_message,
                 chat_id=ref_id,
                 text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                effect_id=EFFECT_HEART,
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -3446,7 +3451,8 @@ async def _apply_admin_balance_update(target_msg_or_cb, user_id: int, new_balanc
                 'pt': f"✅ *Saldo adicionado pela administração!*\n\n💰 *Valor adicionado:* `${diff:.2f} USD`\n💎 *Novo saldo:* `${new_balance:.2f} USD`"
             }
             target_bot = target_msg_or_cb.bot
-            await target_bot.send_message(chat_id=user_id, text=notif_msgs.get(user_lang, notif_msgs['en']), parse_mode="Markdown")
+            from utils import send_private_with_effect, EFFECT_FIRE
+            await send_private_with_effect(target_bot.send_message, chat_id=user_id, text=notif_msgs.get(user_lang, notif_msgs['en']), effect_id=EFFECT_FIRE, parse_mode="Markdown")
     except Exception as notify_err:
         logger.warning(f"Failed to notify user {user_id} of manual balance addition: {notify_err}")
     

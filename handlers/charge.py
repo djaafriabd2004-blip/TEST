@@ -9,6 +9,7 @@ from crypto_verifier import verify_crypto_transaction, is_tx_too_old_error, get_
 from localization import get_text, get_button_variants
 from handlers.states import ChargeStates
 from cryptobot_client import create_cryptobot_invoice, get_cryptobot_invoice
+from utils import send_private_with_effect, EFFECT_FIRE, EFFECT_HEART
 try:
     import bot_config as config
 except ImportError:
@@ -454,8 +455,11 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
             db_user = await get_user(user_id)
             new_balance = db_user['balance'] if db_user else 0.0
             
-            await message.answer(
+            await send_private_with_effect(
+                message.answer,
                 get_text('payment_success', lang, amount=result_val, new_balance=new_balance),
+                effect_id=EFFECT_FIRE,
+                chat_type=message.chat.type,
                 parse_mode="Markdown"
             )
             
@@ -465,9 +469,11 @@ async def process_crypto_txid(message: Message, state: FSMContext, bot: Bot, lan
                 ref_id = ref_notif['referrer_id']
                 ref_bonus = ref_notif['bonus']
                 try:
-                    await bot.send_message(
+                    await send_private_with_effect(
+                        bot.send_message,
                         chat_id=ref_id,
                         text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                        effect_id=EFFECT_HEART,
                         parse_mode="Markdown"
                     )
                 except Exception as re:
@@ -690,8 +696,11 @@ async def process_successful_payment(message: Message, bot: Bot, lang='en'):
                 db_user = await get_user(user_id)
                 new_balance = db_user['balance'] if db_user else 0.0
                 
-                await message.answer(
+                await send_private_with_effect(
+                    message.answer,
                     get_text('payment_success', lang, amount=amount, new_balance=new_balance),
+                    effect_id=EFFECT_FIRE,
+                    chat_type=message.chat.type,
                     parse_mode="Markdown"
                 )
                 
@@ -701,9 +710,11 @@ async def process_successful_payment(message: Message, bot: Bot, lang='en'):
                     ref_bonus = ref_notif['bonus']
                     
                     try:
-                        await bot.send_message(
+                        await send_private_with_effect(
+                            bot.send_message,
                             chat_id=ref_id,
                             text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                            effect_id=EFFECT_HEART,
                             parse_mode="Markdown"
                         )
                     except Exception as e:
@@ -762,8 +773,15 @@ async def cb_check_cryptobot_payment(callback: CallbackQuery, bot: Bot, lang='en
             db_user = await get_user(payment['user_id'])
             new_balance = db_user['balance'] if db_user else 0.0
             
-            await callback.message.edit_text(
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await send_private_with_effect(
+                callback.message.answer,
                 get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                effect_id=EFFECT_FIRE,
+                chat_type=callback.message.chat.type,
                 parse_mode="Markdown"
             )
             
@@ -772,9 +790,11 @@ async def cb_check_cryptobot_payment(callback: CallbackQuery, bot: Bot, lang='en
                 ref_id = ref_notif['referrer_id']
                 ref_bonus = ref_notif['bonus']
                 try:
-                    await bot.send_message(
+                    await send_private_with_effect(
+                        bot.send_message,
                         chat_id=ref_id,
                         text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                        effect_id=EFFECT_HEART,
                         parse_mode="Markdown"
                     )
                 except Exception as re:
@@ -831,8 +851,15 @@ async def cb_check_xrocket_payment(callback: CallbackQuery, bot: Bot, lang='en')
             db_user = await get_user(payment['user_id'])
             new_balance = db_user['balance'] if db_user else 0.0
             
-            await callback.message.edit_text(
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await send_private_with_effect(
+                callback.message.answer,
                 get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                effect_id=EFFECT_FIRE,
+                chat_type=callback.message.chat.type,
                 parse_mode="Markdown"
             )
             
@@ -841,9 +868,11 @@ async def cb_check_xrocket_payment(callback: CallbackQuery, bot: Bot, lang='en')
                 ref_id = ref_notif['referrer_id']
                 ref_bonus = ref_notif['bonus']
                 try:
-                    await bot.send_message(
+                    await send_private_with_effect(
+                        bot.send_message,
                         chat_id=ref_id,
                         text=f"🎉 *Referral Bonus!*\n💰 You earned `${ref_bonus:.2f} USD` from your referral's deposit!",
+                        effect_id=EFFECT_HEART,
                         parse_mode="Markdown"
                     )
                 except Exception as re:

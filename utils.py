@@ -546,15 +546,22 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
 
     return full_text, full_entities, None
 
+# Verified free default Telegram Bot API message_effect_id animations (private 1-on-1 chats)
+EFFECT_CONFETTI = "5046509860389126442"  # 🎉 Celebration Confetti
+EFFECT_FIRE     = "5104841245755180586"  # 🔥 Fire
+EFFECT_HEART    = "5159385139981059251"  # ❤️ Red Heart
+
+
 async def send_message_with_retry(send_func, *args, retries=3, delay=1.5, **kwargs):
     """
     Executes a message sending coroutine function (like message.answer or bot.send_message)
     with retry logic in case of network glitches or connection resets on hosting platforms.
-    Falls back to plain text if Markdown formatting entity parsing fails.
+    Falls back cleanly if message_effect_id or Markdown entities fail.
     """
+    working_kwargs = kwargs.copy()
     for attempt in range(1, retries + 1):
         try:
-            return await send_func(*args, **kwargs)
+            return await send_func(*args, **working_kwargs)
         except Exception as e:
             err_str = str(e).lower()
             if any(perm in err_str for perm in [
@@ -562,17 +569,40 @@ async def send_message_with_retry(send_func, *args, retries=3, delay=1.5, **kwar
                 "chat not found", "bot was kicked", "have no rights to send"
             ]):
                 raise e
-            if ("can't parse entities" in err_str or "entity" in err_str or "find end of the entity" in err_str) and "parse_mode" in kwargs:
-                kwargs_no_pm = kwargs.copy()
-                kwargs_no_pm["parse_mode"] = None
+            if ("effect" in err_str) and "message_effect_id" in working_kwargs:
+                working_kwargs.pop("message_effect_id", None)
                 try:
-                    return await send_func(*args, **kwargs_no_pm)
+                    return await send_func(*args, **working_kwargs)
+                except Exception as eff_e:
+                    logger.warning(f"Retry without message_effect_id failed: {eff_e}")
+            if ("can't parse entities" in err_str or "entity" in err_str or "find end of the entity" in err_str) and "parse_mode" in working_kwargs:
+                working_kwargs["parse_mode"] = None
+                try:
+                    return await send_func(*args, **working_kwargs)
                 except Exception as inner_e:
+                    inner_err = str(inner_e).lower()
+                    if ("effect" in inner_err) and "message_effect_id" in working_kwargs:
+                        working_kwargs.pop("message_effect_id", None)
+                        try:
+                            return await send_func(*args, **working_kwargs)
+                        except Exception:
+                            pass
                     logger.warning(f"Fallback with parse_mode=None failed: {inner_e}")
             logger.warning(f"Attempt {attempt}/{retries} to send message failed: {e}")
             if attempt == retries:
                 raise e
             await asyncio.sleep(delay * attempt)
+
+
+async def send_private_with_effect(send_func, *args, effect_id: str = EFFECT_CONFETTI, chat_type: str = None, **kwargs):
+    """
+    Sends a Telegram message with a full-screen animated effect in private 1-on-1 chats,
+    automatically skipping effects in groups/channels and falling back safely on error.
+    """
+    send_kwargs = kwargs.copy()
+    if effect_id and (chat_type is None or chat_type == "private"):
+        send_kwargs["message_effect_id"] = effect_id
+    return await send_message_with_retry(send_func, *args, **send_kwargs)
 
 
 async def start_auto_sales_proof_loop(bot):

@@ -601,10 +601,13 @@ async def start_auto_verification_loop(bot):
                             lang = db_user['language'] if db_user else 'en'
                             
                             from localization import get_text
+                            from utils import send_private_with_effect, EFFECT_FIRE
                             try:
-                                await bot.send_message(
+                                await send_private_with_effect(
+                                    bot.send_message,
                                     chat_id=user_id,
                                     text=get_text('payment_success', lang, amount=result_val, new_balance=new_balance),
+                                    effect_id=EFFECT_FIRE,
                                     parse_mode="Markdown"
                                 )
                             except Exception as ne:
@@ -721,10 +724,13 @@ async def start_auto_verification_loop(bot):
                                 lang = db_user['language'] if db_user else 'en'
                                 
                                 from localization import get_text
+                                from utils import send_private_with_effect, EFFECT_FIRE
                                 try:
-                                    await bot.send_message(
+                                    await send_private_with_effect(
+                                        bot.send_message,
                                         chat_id=user_id,
                                         text=get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                                        effect_id=EFFECT_FIRE,
                                         parse_mode="Markdown"
                                     )
                                 except Exception as ne:
@@ -801,10 +807,13 @@ async def start_auto_verification_loop(bot):
                                 lang = db_user['language'] if db_user else 'en'
                                 
                                 from localization import get_text
+                                from utils import send_private_with_effect, EFFECT_FIRE
                                 try:
-                                    await bot.send_message(
+                                    await send_private_with_effect(
+                                        bot.send_message,
                                         chat_id=user_id,
                                         text=get_text('payment_success', lang, amount=payment['amount'], new_balance=new_balance),
+                                        effect_id=EFFECT_FIRE,
                                         parse_mode="Markdown"
                                     )
                                 except Exception as ne:

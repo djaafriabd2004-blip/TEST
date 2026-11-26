@@ -19,7 +19,11 @@ from localization import get_text, get_button_variants
 from handlers.states import ShopStates
 import keyboards
 import asyncio
-from utils import send_message_with_retry, get_product_name, get_product_desc, get_product_unit_price, format_stock_display
+from utils import (
+    send_message_with_retry, send_private_with_effect,
+    EFFECT_CONFETTI, EFFECT_HEART,
+    get_product_name, get_product_desc, get_product_unit_price, format_stock_display
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -955,7 +959,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 data=preview
             ) + note_msg.get(lang, note_msg['en'])
             
-            await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+            await send_private_with_effect(message.answer, success_text, effect_id=EFFECT_CONFETTI, chat_type=message.chat.type, parse_mode="Markdown", reply_markup=builder.as_markup())
         else:
             success_text = get_text(
                 'purchase_success',
@@ -964,7 +968,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
                 price=price_paid,
                 data=first_chunk
             )
-            await send_message_with_retry(message.answer, success_text, parse_mode="Markdown", reply_markup=builder.as_markup())
+            await send_private_with_effect(message.answer, success_text, effect_id=EFFECT_CONFETTI, chat_type=message.chat.type, parse_mode="Markdown", reply_markup=builder.as_markup())
                     
         # Send partial delivery warning and refund notification
         if refund_amount > 0:
@@ -981,7 +985,7 @@ async def execute_delivery(message: Message, user_id: int, product_id: int, qty:
             "ru": f"🎉 *Покупка успешно совершена!* ({prod_name} x{actual_qty})\n\n⚠️ Все ваши товары отправлены в прикрепленном файле TXT выше."
         }
         try:
-            await send_message_with_retry(message.answer, fallback_msg.get(lang, fallback_msg['en']), parse_mode="Markdown", reply_markup=builder.as_markup())
+            await send_private_with_effect(message.answer, fallback_msg.get(lang, fallback_msg['en']), effect_id=EFFECT_CONFETTI, chat_type=message.chat.type, parse_mode="Markdown", reply_markup=builder.as_markup())
         except Exception:
             pass
             
@@ -1150,7 +1154,7 @@ async def process_preorder_quantity(message: Message, state: FSMContext):
     try:
         await create_pre_order(user_id, product_id, qty)
         success_text = get_text('preorder_success', lang, amount=total_price)
-        await message.answer(success_text, parse_mode="Markdown")
+        await send_private_with_effect(message.answer, success_text, effect_id=EFFECT_HEART, chat_type=message.chat.type, parse_mode="Markdown")
     except Exception as e:
         await message.answer(f"❌ Failed to reserve: {e}")
 

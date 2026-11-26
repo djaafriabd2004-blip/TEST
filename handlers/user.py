@@ -83,8 +83,12 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, db_user=
         except Exception as e:
             logger.warning(f"Could not build web_app_url: {e}")
 
-    await message.answer(
+    from utils import send_private_with_effect, EFFECT_CONFETTI
+    await send_private_with_effect(
+        message.answer,
         welcome_text,
+        effect_id=EFFECT_CONFETTI,
+        chat_type=message.chat.type,
         reply_markup=keyboards.get_main_menu(lang, is_admin, button_emojis=button_emojis, global_web_enabled=gw_enabled, web_app_url=pay_url),
         parse_mode="HTML"
     )

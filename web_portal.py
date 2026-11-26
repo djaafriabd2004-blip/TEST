@@ -2498,7 +2498,8 @@ async def api_verify_payment(request: web.Request) -> web.Response:
                     'fr': f"✅ *Dépôt Réussi !*\n\n💰 *Montant crédité :* `${amount:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`\n\n⚡ Votre solde a été mis à jour avec succès."
                 }
                 txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
-                await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
+                from utils import send_private_with_effect, EFFECT_FIRE
+                await send_private_with_effect(bot_inst.send_message, chat_id=user_id, text=txt_to_send, effect_id=EFFECT_FIRE, parse_mode="Markdown")
             except Exception as notify_err:
                 logger.warning(f"Could not send Telegram notification for user {user_id}: {notify_err}")
             finally:
@@ -2755,7 +2756,8 @@ async def api_admin_action_payment(request: web.Request) -> web.Response:
                         'fr': f"✅ *Dépôt Approuvé !*\n\n💰 *Montant crédité :* `${p_amt:.2f} USD`\n💎 *Nouveau solde :* `${new_bal:.2f} USD`"
                     }
                     txt_to_send = notif_msgs.get(u_lang, notif_msgs['en'])
-                    await bot_inst.send_message(chat_id=user_id, text=txt_to_send, parse_mode="Markdown")
+                    from utils import send_private_with_effect, EFFECT_FIRE
+                    await send_private_with_effect(bot_inst.send_message, chat_id=user_id, text=txt_to_send, effect_id=EFFECT_FIRE, parse_mode="Markdown")
                 except Exception as e:
                     logger.warning(f"Failed to send approval message: {e}")
             return web.json_response({"ok": True, "message": "تم قبول وشحن الرصيد بنجاح"})

@@ -1823,15 +1823,18 @@ async def process_pending_pre_orders(bot, product_id):
                 
                 success_text = title_prefix.get(lang, title_prefix['en']) + success_text
                 
-                # Send primary message text with fallback
+                # Send primary message text with celebratory effect & fallback
+                from utils import send_private_with_effect, EFFECT_CONFETTI
                 try:
-                    await bot.send_message(chat_id=po_user_id, text=success_text, parse_mode="Markdown")
-                except Exception as send_err:
-                    logger.warning(f"Failed to send preorder message to {po_user_id} with Markdown: {send_err}, retrying plain text")
-                    try:
-                        await bot.send_message(chat_id=po_user_id, text=success_text)
-                    except Exception as err2:
-                        logger.error(f"Failed to send preorder message to {po_user_id}: {err2}")
+                    await send_private_with_effect(
+                        bot.send_message,
+                        chat_id=po_user_id,
+                        text=success_text,
+                        effect_id=EFFECT_CONFETTI,
+                        parse_mode="Markdown"
+                    )
+                except Exception as err2:
+                    logger.error(f"Failed to send preorder message to {po_user_id}: {err2}")
                 
                 for chunk in chunks[1:]:
                     await asyncio.sleep(0.4)
