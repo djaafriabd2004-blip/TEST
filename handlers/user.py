@@ -3,6 +3,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from database import create_user, get_user, update_user_lang, get_referral_count, get_user_by_ref_code, get_setting, get_orders, get_button_emojis
 from localization import get_text, get_button_variants
+import html
 import keyboards
 import logging
 
@@ -198,25 +199,43 @@ async def show_orders_menu(message: Message, lang='en'):
     # Display products bought. Limit to recent 10 and combine into a single message to avoid flood limit.
     order_items_combined = []
     for order in orders[:10]:
-        prod_name = order[f'product_name_{lang}'] or order['product_name_en']
+        prod_name = order[f'product_name_{lang}'] or order['product_name_en'] or ""
+        raw_data = str(order['stock_data'] or "")
+        if len(raw_data) > 1500:
+            raw_data = raw_data[:1500] + "\n... (use TXT export for full data)"
         order_text = get_text(
             'order_item',
             lang,
             id=order['id'],
-            name=prod_name,
+            name=html.escape(str(prod_name)),
             price=order['price_paid'],
-            date=order['purchased_at'],
-            data=order['stock_data']
+            date=html.escape(str(order['purchased_at'] or "")),
+            data=html.escape(raw_data)
         )
         order_items_combined.append(order_text)
         
     if order_items_combined:
-        full_text = "\n".join(order_items_combined)
-        # Handle cases where full text exceeds max message length
-        if len(full_text) > 4000:
-            full_text = full_text[:3900] + "\n\n⚠️ (Some items truncated, please download as TXT file to view all items.)"
+        max_len = 3800
+        selected_items = []
+        current_len = 0
+        truncated = False
+        for item_text in order_items_combined:
+            sep_len = 2 if selected_items else 0
+            if current_len + sep_len + len(item_text) > max_len:
+                truncated = True
+                break
+            selected_items.append(item_text)
+            current_len += sep_len + len(item_text)
+
+        full_text = "\n\n".join(selected_items)
+        if truncated:
+            trunc_note = {
+                'ar': "\n\n⚠️ <i>(تم اختصار بعض العناصر لطول الرسالة، يرجى تنزيل ملف TXT لعرض السجل الكامل.)</i>",
+                'ru': "\n\n⚠️ <i>(Часть заказов скрыта, скачайте TXT-файл для просмотра всех заказов.)</i>"
+            }.get(lang, "\n\n⚠️ <i>(Some items truncated, please download as TXT file to view all items.)</i>")
+            full_text += trunc_note
         try:
-            await message.answer(full_text, parse_mode="Markdown")
+            await message.answer(full_text, parse_mode="HTML")
         except Exception:
             await message.answer(full_text)
     
@@ -351,8 +370,8 @@ async def cmd_user_api(message: Message, lang='en'):
         text = get_text('reseller_api_info_no_key', lang)
         await message.answer(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=False, lang=lang), parse_mode="Markdown")
     else:
-        text = get_text('reseller_api_info_has_key', lang, api_key=api_key, api_base_url=api_base_url)
-        await message.answer(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="Markdown")
+        text = get_text('reseller_api_info_has_key', lang, api_key=html.escape(str(api_key)), api_base_url=html.escape(str(api_base_url)))
+        await message.answer(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="HTML")
 
 @router.callback_query(F.data == "user_api_key_gen")
 async def cb_user_api_key_gen(callback: CallbackQuery, lang='en'):
@@ -369,8 +388,8 @@ async def cb_user_api_key_gen(callback: CallbackQuery, lang='en'):
         
     api_base_url = await get_bot_api_base_url()
     
-    text = get_text('reseller_api_info_has_key', lang, api_key=api_key, api_base_url=api_base_url)
-    await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="Markdown")
+    text = get_text('reseller_api_info_has_key', lang, api_key=html.escape(str(api_key)), api_base_url=html.escape(str(api_base_url)))
+    await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="HTML")
 
 @router.callback_query(F.data == "user_api_key_regen")
 async def cb_user_api_key_regen(callback: CallbackQuery, lang='en'):
@@ -383,8 +402,8 @@ async def cb_user_api_key_regen(callback: CallbackQuery, lang='en'):
     
     api_base_url = await get_bot_api_base_url()
     
-    text = get_text('reseller_api_info_has_key', lang, api_key=api_key, api_base_url=api_base_url)
-    await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="Markdown")
+    text = get_text('reseller_api_info_has_key', lang, api_key=html.escape(str(api_key)), api_base_url=html.escape(str(api_base_url)))
+    await callback.message.edit_text(text, reply_markup=keyboards.get_user_api_key_keyboard(has_key=True, lang=lang), parse_mode="HTML")
 
 @router.callback_query(F.data == "user_api_key_revoke")
 async def cb_user_api_key_revoke(callback: CallbackQuery, lang='en'):

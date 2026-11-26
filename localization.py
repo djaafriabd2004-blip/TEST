@@ -413,10 +413,10 @@ LOCALIZATION = {
         'pt': "📭 Você ainda não fez nenhuma compra."
     },
     'order_item': {
-        'en': "🆔 *Order #{id}*\n🛍️ *Product:* {name}\n💵 *Paid:* `${price:.2f} USD`\n📅 *Date:* {date}\n📦 *Data delivered:* \n`{data}`\n\n" + ("=" * 20),
-        'ar': "🆔 *طلب #{id}*\n🛍️ *المنتج:* {name}\n💵 *المدفوع:* `${price:.2f} USD`\n📅 *التاريخ:* {date}\n📦 *البيانات المرسلة:* \n`{data}`\n\n" + ("=" * 20),
-        'ru': "🆔 *Заказ #{id}*\n🛍️ *Товар:* {name}\n💵 *Оплачено:* `${price:.2f} USD`\n📅 *Дата:* {date}\n📦 *Доставленные данные:* \n`{data}`\n\n" + ("=" * 20),
-        'pt': "🆔 *Pedido #{id}*\n🛍️ *Produto:* {name}\n💵 *Pago:* `${price:.2f} USD`\n📅 *Data:* {date}\n📦 *Dados entregues:* \n`{data}`\n\n" + ("=" * 20)
+        'en': "🆔 <b>Order #{id}</b> — {name}\n💵 <b>Paid:</b> <code>${price:.2f} USD</code>\n<blockquote expandable>📅 <b>Date:</b> {date}\n📦 <b>Data delivered:</b>\n<code>{data}</code></blockquote>",
+        'ar': "🆔 <b>طلب #{id}</b> — {name}\n💵 <b>المدفوع:</b> <code>${price:.2f} USD</code>\n<blockquote expandable>📅 <b>التاريخ:</b> {date}\n📦 <b>البيانات المرسلة:</b>\n<code>{data}</code></blockquote>",
+        'ru': "🆔 <b>Заказ #{id}</b> — {name}\n💵 <b>Оплачено:</b> <code>${price:.2f} USD</code>\n<blockquote expandable>📅 <b>Дата:</b> {date}\n📦 <b>Доставленные данные:</b>\n<code>{data}</code></blockquote>",
+        'pt': "🆔 <b>Pedido #{id}</b> — {name}\n💵 <b>Pago:</b> <code>${price:.2f} USD</code>\n<blockquote expandable>📅 <b>Data:</b> {date}\n📦 <b>Dados entregues:</b>\n<code>{data}</code></blockquote>"
     },
     'shop_title': {
         'en': "🛍️ *Store Products*\nSelect a product to view details and purchase:",
@@ -849,9 +849,51 @@ LOCALIZATION = {
         'ru': "🔑 *API для реселлеров*\n\nРеселлеры могут использовать наше API для интеграции продуктов в свои боты.\n\n⚠️ У вас еще нет API-ключа. Нажмите кнопку ниже, чтобы создать его."
     },
     'reseller_api_info_has_key': {
-        'en': "🔑 *Reseller API*\n\nYour API Key:\n`{api_key}`\n\n🌐 *API Base URL*:\n`{api_base_url}`\n\n📌 *API Endpoints*:\n• `GET` `/api/products` - Product list\n• `POST` `/api/buy` - Purchase product\n\n⚠️ *Do not share this key with anyone!*",
-        'ar': "🔑 *بوابة الموزعين (API)*\n\nمفتاح الـ API الخاص بك:\n`{api_key}`\n\n🌐 *رابط الـ API الأساسي*:\n`{api_base_url}`\n\n📌 *المسارات (Endpoints)*:\n• `GET` `/api/products` - عرض المنتجات والمخزون\n• `POST` `/api/buy` - شراء منتج تلقائياً\n\n⚠️ *لا تشارك هذا المفتاح مع أي شخص!*",
-        'ru': "🔑 *API для реселлеров*\n\nВаш API-ключ:\n`{api_key}`\n\n🌐 *Базовый URL-адрес API*:\n`{api_base_url}`\n\n📌 *Пути (Endpoints)*:\n• `GET` `/api/products` - Список товаров\n• `POST` `/api/buy` - Покупка товара\n\n⚠️ *Никому не передавайте этот ключ!*"
+        'en': (
+            "🔑 <b>Reseller API</b>\n\n"
+            "Your API Key:\n<code>{api_key}</code>\n\n"
+            "🌐 <b>API Base URL:</b>\n<code>{api_base_url}</code>\n\n"
+            "📌 <b>API Documentation &amp; Endpoints:</b>\n"
+            "<blockquote expandable>"
+            "• <b>Auth Header:</b> <code>X-API-Key: {api_key}</code>\n"
+            "• <code>GET /api/health</code> — Service health check\n"
+            "• <code>GET /api/me</code> — Account details &amp; balance\n"
+            "• <code>GET /api/products</code> — Product list &amp; stock\n"
+            "• <code>POST /api/buy</code> — Auto-purchase product\n"
+            "  Body (JSON): <code>{{\"product_id\": 1, \"quantity\": 1}}</code>"
+            "</blockquote>\n\n"
+            "⚠️ <b>Do not share this key with anyone!</b>"
+        ),
+        'ar': (
+            "🔑 <b>بوابة الموزعين (API)</b>\n\n"
+            "مفتاح الـ API الخاص بك:\n<code>{api_key}</code>\n\n"
+            "🌐 <b>رابط الـ API الأساسي:</b>\n<code>{api_base_url}</code>\n\n"
+            "📌 <b>توثيق الـ API والمسارات (Endpoints):</b>\n"
+            "<blockquote expandable>"
+            "• <b>ترويسة التحقق (Header):</b> <code>X-API-Key: {api_key}</code>\n"
+            "• <code>GET /api/health</code> — فحص حالة الخادم\n"
+            "• <code>GET /api/me</code> — بيانات الحساب والرصيد\n"
+            "• <code>GET /api/products</code> — عرض المنتجات والمخزون\n"
+            "• <code>POST /api/buy</code> — شراء منتج تلقائياً\n"
+            "  البيانات (JSON): <code>{{\"product_id\": 1, \"quantity\": 1}}</code>"
+            "</blockquote>\n\n"
+            "⚠️ <b>لا تشارك هذا المفتاح مع أي شخص!</b>"
+        ),
+        'ru': (
+            "🔑 <b>API для реселлеров</b>\n\n"
+            "Ваш API-ключ:\n<code>{api_key}</code>\n\n"
+            "🌐 <b>Базовый URL-адрес API:</b>\n<code>{api_base_url}</code>\n\n"
+            "📌 <b>Документация API и эндпоинты:</b>\n"
+            "<blockquote expandable>"
+            "• <b>Заголовок авторизации:</b> <code>X-API-Key: {api_key}</code>\n"
+            "• <code>GET /api/health</code> — Проверка статуса сервиса\n"
+            "• <code>GET /api/me</code> — Данные аккаунта и баланс\n"
+            "• <code>GET /api/products</code> — Список товаров и наличие\n"
+            "• <code>POST /api/buy</code> — Автоматическая покупка\n"
+            "  Тело (JSON): <code>{{\"product_id\": 1, \"quantity\": 1}}</code>"
+            "</blockquote>\n\n"
+            "⚠️ <b>Никому не передавайте этот ключ!</b>"
+        )
     },
     'btn_admin_pull_external_product': {
         'en': "🔌 Pull External Product",

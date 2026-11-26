@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import json
 from aiogram.types import MessageEntity
@@ -333,7 +334,7 @@ def get_product_unit_price(product, qty: int) -> float:
         logger.warning(f"Error parsing tier_prices JSON: {e}")
     return round(base_price, 2)
 
-def format_product_tier_prices_text(product, lang='en') -> str:
+def format_product_tier_prices_text(product, lang='en', html_mode: bool = False) -> str:
     """
     Formats localized text showing quantity tier prices for a product.
     """
@@ -350,18 +351,28 @@ def format_product_tier_prices_text(product, lang='en') -> str:
         
         sorted_tiers = sorted(tiers, key=lambda x: int(x.get('min_qty', 0)))
         lines = []
-        header = {
-            "ar": "🏷️ *أسعار الجملة حسب الكمية:*",
-            "en": "🏷️ *Bulk Quantity Prices:*",
-            "ru": "🏷️ *Оптовые цены от количества:*"
-        }
+        if html_mode:
+            header = {
+                "ar": "🏷️ <b>أسعار الجملة حسب الكمية:</b>",
+                "en": "🏷️ <b>Bulk Quantity Prices:</b>",
+                "ru": "🏷️ <b>Оптовые цены от количества:</b>"
+            }
+        else:
+            header = {
+                "ar": "🏷️ *أسعار الجملة حسب الكمية:*",
+                "en": "🏷️ *Bulk Quantity Prices:*",
+                "ru": "🏷️ *Оптовые цены от количества:*"
+            }
         lines.append(header.get(lang, header['en']))
         
         for t in sorted_tiers:
             mq = int(t.get('min_qty', 0))
             up = float(t.get('unit_price', 0.0))
             if mq > 0 and up > 0:
-                lines.append(f"🔹 *{mq}+* ⬅️ `${up:.2f} USD`")
+                if html_mode:
+                    lines.append(f"🔹 <b>{mq}+</b> ⬅️ <code>${up:.2f} USD</code>")
+                else:
+                    lines.append(f"🔹 *{mq}+* ⬅️ `${up:.2f} USD`")
         if len(lines) > 1:
             return "\n".join(lines)
     except Exception:
@@ -435,8 +446,10 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
     """
     Constructs (text, entities, parse_mode) for displaying a product.
     If product has stored description entities (e.g. Premium Custom Emojis, bold, etc.),
-    it constructs full_text and full_entities with correct offset shifting and parse_mode=None.
-    Otherwise, returns fallback text with parse_mode="Markdown".
+    it constructs full_text and full_entities with correct offset shifting (wrapping long
+    descriptions in expandable_blockquote) and parse_mode=None.
+    Otherwise, returns HTML text with <blockquote expandable> for long descriptions/terms
+    and parse_mode="HTML".
     """
     prod_dict = dict(product) if product else {}
     name = get_product_name(product, lang)
@@ -448,45 +461,67 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
     prod_price = get_product_unit_price(prod_dict, 1) or float(prod_dict.get('price', 0.0) or 0.0)
     if custom_price is not None and custom_price > 0:
         if lang == 'ar':
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (سعر خاص بك 🎯)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${custom_price:.2f} USD</b> (سعر خاص بك 🎯)"
             price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (سعر خاص بك 🎯)"
         elif lang == 'ru':
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (Ваша спеццена 🎯)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${custom_price:.2f} USD</b> (Ваша спеццена 🎯)"
             price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (Ваша спеццена 🎯)"
         else:
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${custom_price:.2f} USD* (Your Special Price 🎯)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${custom_price:.2f} USD</b> (Your Special Price 🎯)"
             price_str_plain = f"${prod_price:.2f} -> ${custom_price:.2f} USD (Your Special Price 🎯)"
     elif discount_pct > 0:
         price_val = prod_price * (1 - discount_pct / 100)
         if lang == 'ar':
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* (خصم {discount_pct:.0f}%)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${price_val:.2f} USD</b> (خصم {discount_pct:.0f}%)"
             price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD (خصم {discount_pct:.0f}%)"
         elif lang == 'ru':
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* (Скидка {discount_pct:.0f}%)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${price_val:.2f} USD</b> (Скидка {discount_pct:.0f}%)"
             price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD (Скидка {discount_pct:.0f}%)"
         else:
-            price_str_markdown = f"~~${prod_price:.2f}~~ *${price_val:.2f} USD* ({discount_pct:.0f}% Discount)"
+            price_str_html = f"<s>${prod_price:.2f}</s> <b>${price_val:.2f} USD</b> ({discount_pct:.0f}% Discount)"
             price_str_plain = f"${prod_price:.2f} -> ${price_val:.2f} USD ({discount_pct:.0f}% Discount)"
     else:
-        price_str_markdown = f"`${prod_price:.2f} USD`"
+        price_str_html = f"<code>${prod_price:.2f} USD</code>"
         price_str_plain = f"${prod_price:.2f} USD"
 
-    tier_text = format_product_tier_prices_text(product, lang)
-    tier_str = f"\n\n{tier_text}" if tier_text else ""
     stock_display = format_stock_display(stock_count, prod_dict)
 
     if not desc_entities:
-        desc_clean = (desc or "").strip()
-        desc_line = (f"\n\n📝 *الوصف:* {desc_clean}" if lang == 'ar' else (f"\n\n📝 *Описание:* {desc_clean}" if lang == 'ru' else f"\n\n📝 *Description:* {desc_clean}")) if desc_clean else ""
-        stock_disp_md = stock_display if stock_display == "♾️" else f"`{stock_display}`"
-        if lang == 'ar':
-            text = f"🛍️ *المنتج:* {name}{desc_line}\n\n💵 *السعر:* {price_str_markdown}\n📦 *المخزون:* {stock_disp_md} متوفر" + tier_str
-        elif lang == 'ru':
-            text = f"🛍️ *Товар:* {name}{desc_line}\n\n💵 *Цена:* {price_str_markdown}\n📦 *В наличии:* {stock_disp_md} шт." + tier_str
-        else:
-            text = f"🛍️ *Product:* {name}{desc_line}\n\n💵 *Price:* {price_str_markdown}\n📦 *Stock:* {stock_disp_md} available" + tier_str
-        return text, None, "Markdown"
+        tier_text_html = format_product_tier_prices_text(product, lang, html_mode=True)
+        tier_str = f"\n\n{tier_text_html}" if tier_text_html else ""
 
+        escaped_name = html.escape(str(name or ""))
+        desc_clean = (desc or "").strip()
+        if len(desc_clean) > 3000:
+            desc_clean = desc_clean[:3000] + "..."
+        escaped_desc = html.escape(desc_clean)
+
+        if desc_clean:
+            is_long_desc = len(desc_clean) > 100 or desc_clean.count("\n") >= 2
+            if lang == 'ar':
+                desc_label = "📝 <b>الوصف والتفاصيل:</b>"
+            elif lang == 'ru':
+                desc_label = "📝 <b>Описание и детали:</b>"
+            else:
+                desc_label = "📝 <b>Description &amp; Details:</b>"
+            if is_long_desc:
+                desc_line = f"\n\n{desc_label}\n<blockquote expandable>{escaped_desc}</blockquote>"
+            else:
+                desc_line = f"\n\n{desc_label} {escaped_desc}"
+        else:
+            desc_line = ""
+
+        escaped_stock = html.escape(str(stock_display))
+        stock_disp_html = "♾️" if stock_display == "♾️" else f"<code>{escaped_stock}</code>"
+        if lang == 'ar':
+            text = f"🛍️ <b>المنتج:</b> {escaped_name}{desc_line}\n\n💵 <b>السعر:</b> {price_str_html}\n📦 <b>المخزون:</b> {stock_disp_html} متوفر" + tier_str
+        elif lang == 'ru':
+            text = f"🛍️ <b>Товар:</b> {escaped_name}{desc_line}\n\n💵 <b>Цена:</b> {price_str_html}\n📦 <b>В наличии:</b> {stock_disp_html} шт." + tier_str
+        else:
+            text = f"🛍️ <b>Product:</b> {escaped_name}{desc_line}\n\n💵 <b>Price:</b> {price_str_html}\n📦 <b>Stock:</b> {stock_disp_html} available" + tier_str
+        return text, None, "HTML"
+
+    tier_text = format_product_tier_prices_text(product, lang)
     # Rich formatting with MessageEntities (preserves Telegram Premium Custom Emojis)
     full_entities = []
 
@@ -508,6 +543,18 @@ def format_product_message(product, lang, stock_count, discount_pct=0.0, custom_
     full_entities.append(MessageEntity(type="bold", offset=d_offset, length=get_utf16_len(d_label.strip())))
 
     header_utf16_len = get_utf16_len(header_text)
+
+    # Wrap long rich descriptions in a collapsible blockquote unless nested inside an existing block entity
+    desc_trimmed = (desc or "").strip()
+    desc_utf16_len = get_utf16_len(desc or "")
+    has_block_entity = any(e.type in ('blockquote', 'expandable_blockquote', 'pre') for e in desc_entities)
+    if desc_trimmed and desc_utf16_len > 0 and (len(desc_trimmed) > 100 or (desc or "").count("\n") >= 2) and not has_block_entity:
+        if all(0 <= e.offset and e.offset + e.length <= desc_utf16_len for e in desc_entities):
+            full_entities.append(MessageEntity(
+                type="expandable_blockquote",
+                offset=header_utf16_len,
+                length=desc_utf16_len
+            ))
 
     # Shift description entities by header_utf16_len
     for e in desc_entities:
