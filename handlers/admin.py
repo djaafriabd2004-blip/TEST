@@ -3924,7 +3924,13 @@ async def fetch_provider_products(base_url, api_key, field_mapping=None, force_r
             coro = adapter.fetch_catalog()
         catalog = await asyncio.wait_for(coro, timeout=timeout)
         if catalog is not None:
-            return catalog
+            def _prov_sort_key(p):
+                if not isinstance(p, dict):
+                    return str(p).casefold()
+                raw_name = str(p.get('name_en') or p.get('name_ar') or p.get('name') or p.get('id') or '').strip()
+                clean = strip_leading_emoji(raw_name).strip()
+                return (clean or raw_name).casefold()
+            return sorted(catalog, key=_prov_sort_key)
     except asyncio.TimeoutError:
         logger.warning(f"Timeout ({timeout}s) fetching provider products from {base_url}")
     except Exception as e:
