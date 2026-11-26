@@ -3842,6 +3842,7 @@ async def fetch_provider_store_name(base_url, api_key):
     base_url = normalize_provider_url(base_url)
     is_supabase = "supabase.co" in base_url
     is_canboso = "canboso" in base_url.lower()
+    is_digitalcore = "digitalcore" in base_url.lower()
     
     if is_canboso:
         try:
@@ -3861,8 +3862,31 @@ async def fetch_provider_store_name(base_url, api_key):
         except Exception:
             pass
         return "Canboso API"
+
+    if is_digitalcore:
+        try:
+            async with aiohttp.ClientSession() as session:
+                me_url = f"{base_url}/api/user/me"
+                dc_headers = {
+                    "Api-Key": api_key,
+                    "X-Api-Key": api_key,
+                    "Authorization": f"Bearer {api_key}"
+                }
+                async with session.get(me_url, headers=dc_headers, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict) and data.get("balance") is not None:
+                            try:
+                                bal_val = float(data["balance"])
+                                return f"DigitalCore (${bal_val:.2f})"
+                            except (ValueError, TypeError):
+                                pass
+        except Exception:
+            pass
+        return "DigitalCore API"
     
     headers = {
+        "Api-Key": api_key,
         "x-api-key": api_key,
         "X-Reseller-Key": api_key,
         "X-API-Key": api_key,
@@ -3871,6 +3895,7 @@ async def fetch_provider_store_name(base_url, api_key):
     }
     endpoints = [
         f"{base_url}?action=balance" if is_supabase else f"{base_url}/api/reseller/me",
+        f"{base_url}/api/user/me",
         f"{base_url}/api/v2/me",
         f"{base_url}/v2/me",
         f"{base_url}/reseller/me",

@@ -21,6 +21,7 @@ def normalize_provider_url(url: str) -> str:
         
     suffixes = [
         '/api/v2/telegram-buyer/products', '/api/v2/telegram-buyer',
+        '/api/user/products', '/api/user/product', '/api/user/me', '/api/user/buy', '/api/user',
         '/api/swagger', '/swagger', '/api/reseller/openapi.json', '/openapi.json',
         '/api/reseller/products', '/reseller/products',
         '/api/reseller', '/reseller',

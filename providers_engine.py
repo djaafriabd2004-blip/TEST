@@ -3175,6 +3175,391 @@ class CanbosoProviderAdapter(BaseProviderAdapter):
 
 
 # -------------------------------------------------------------------------
+# 10. DigitalCore API Adapter (https://digitalcore.top/docs)
+# -------------------------------------------------------------------------
+_DIGITALCORE_CATALOG_CACHE: Dict[str, Tuple[List[Dict[str, Any]], float]] = {}
+_DIGITALCORE_CATALOG_LOCKS: Dict[str, asyncio.Lock] = {}
+_DIGITALCORE_CACHE_TTL = 60.0
+
+
+class DigitalCoreProviderAdapter(BaseProviderAdapter):
+    """
+    DigitalCore Wholesale REST API Adapter.
+    Docs: https://digitalcore.top/docs
+    Supports /api/user/{products, product, me, buy, history, order} using Api-Key header.
+    """
+    def __init__(self, base_url: str, api_key: str, field_mapping: Optional[Any] = None):
+        super().__init__(base_url, api_key, field_mapping=field_mapping)
+        clean_base = self.base_url.rstrip('/')
+        if clean_base.lower().endswith('/api/user'):
+            self.api_user_url = clean_base
+        else:
+            self.api_user_url = f"{clean_base}/api/user"
+        self.provider_type = "digitalcore"
+
+    def get_headers(self, extra_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers = {
+            "Api-Key": self.api_key,
+            "X-Api-Key": self.api_key,
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        return headers
+
+    def _resolve_tier_unit_price(
+        self,
+        p: Dict[str, Any],
+        quantity: int = 1,
+        custom_price_field: Optional[str] = None
+    ) -> Optional[float]:
+        if custom_price_field and p.get(custom_price_field) is not None:
+            custom_val = extract_price_from_dict(p, custom_field=custom_price_field)
+            if custom_val is not None:
+                return float(custom_val)
+
+        qty = max(1, int(quantity or 1))
+        tiers = p.get("tiers")
+        if isinstance(tiers, list) and tiers:
+            matched_tier_price = None
+            best_fallback_min = -1
+            best_fallback_price = None
+            for tier in tiers:
+                if not isinstance(tier, dict):
+                    continue
+                try:
+                    min_q = int(tier.get("minQty") if tier.get("minQty") is not None else (tier.get("min_qty") or 0))
+                    raw_max = tier.get("maxQty") if "maxQty" in tier else tier.get("max_qty")
+                    max_q = int(raw_max) if raw_max is not None else None
+                    t_price = float(tier.get("price") or 0.0)
+                except (TypeError, ValueError):
+                    continue
+                if t_price <= 0:
+                    continue
+                if min_q <= qty and (max_q is None or qty <= max_q):
+                    matched_tier_price = t_price
+                    break
+                if min_q <= qty and min_q >= best_fallback_min:
+                    best_fallback_min = min_q
+                    best_fallback_price = t_price
+            if matched_tier_price is not None:
+                return matched_tier_price
+            if best_fallback_price is not None:
+                return best_fallback_price
+
+        base_price = extract_price_from_dict(p)
+        if base_price is not None and float(base_price) > 0:
+            return float(base_price)
+        if p.get("priceFrom") is not None:
+            try:
+                pf = float(p.get("priceFrom") or 0.0)
+                if pf > 0:
+                    return pf
+            except (TypeError, ValueError):
+                pass
+        return float(base_price) if base_price is not None else None
+
+    def _standardize_digitalcore_catalog(self, raw_products: List[Any]) -> List[Dict[str, Any]]:
+        formatted: List[Dict[str, Any]] = []
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
+        custom_id_field = (self.field_mapping.get("id_field") or "").strip() or None
+
+        for p in raw_products:
+            if not isinstance(p, dict):
+                continue
+            p_id = p.get(custom_id_field) if (custom_id_field and p.get(custom_id_field) is not None) else (p.get("id") or p.get("slug"))
+            if p_id is None or not str(p_id).strip():
+                continue
+            p_id_str = str(p_id).strip()
+
+            p_name = str(p.get("name") or f"Product #{p_id_str}").strip()
+            p_desc = str(p.get("description") or "").strip()
+            price_val = self._resolve_tier_unit_price(p, quantity=1, custom_price_field=custom_price_field)
+            price_usd = float(price_val) if price_val is not None else 0.0
+
+            stock_val = extract_stock_from_dict(p, allow_boolean=False, custom_field=custom_stock_field)
+            if stock_val is None:
+                stock_val = 0
+
+            req_email = bool(p.get("requiresEmailActivation") or p.get("requires_email"))
+
+            formatted.append({
+                "id": p_id_str,
+                "name": p_name,
+                "name_ar": p_name,
+                "name_en": p_name,
+                "name_ru": p_name,
+                "description": p_desc,
+                "description_ar": p_desc,
+                "description_en": p_desc,
+                "description_ru": p_desc,
+                "price": price_usd,
+                "stock": max(0, int(stock_val)),
+                "tiers": p.get("tiers") if isinstance(p.get("tiers"), list) else [],
+                "requires_email": req_email,
+                "requiresEmailActivation": req_email
+            })
+        return formatted
+
+    async def fetch_catalog(self, session: Optional[aiohttp.ClientSession] = None, force_refresh: bool = False) -> Optional[List[Dict[str, Any]]]:
+        cache_key = f"{self.api_user_url}:{self.api_key}"
+        now_ts = time.time()
+
+        if not force_refresh and cache_key in _DIGITALCORE_CATALOG_CACHE:
+            cached_list, cached_time = _DIGITALCORE_CATALOG_CACHE[cache_key]
+            if (now_ts - cached_time) < _DIGITALCORE_CACHE_TTL and cached_list is not None:
+                return cached_list
+
+        lock = _DIGITALCORE_CATALOG_LOCKS.setdefault(cache_key, asyncio.Lock())
+        async with lock:
+            now_ts = time.time()
+            if not force_refresh and cache_key in _DIGITALCORE_CATALOG_CACHE:
+                cached_list, cached_time = _DIGITALCORE_CATALOG_CACHE[cache_key]
+                if (now_ts - cached_time) < _DIGITALCORE_CACHE_TTL and cached_list is not None:
+                    return cached_list
+
+            url = f"{self.api_user_url}/products"
+
+            async def _req(s: aiohttp.ClientSession):
+                try:
+                    async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=15, connect=6)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            raw_list = data if isinstance(data, list) else extract_products_list_from_json(data)
+                            standardized = self._standardize_digitalcore_catalog(raw_list or [])
+                            _DIGITALCORE_CATALOG_CACHE[cache_key] = (standardized, time.time())
+                            return standardized
+                        elif resp.status in (401, 403):
+                            logger.warning(f"DigitalCore auth failed ({resp.status}) on {url}")
+                            return None
+                        else:
+                            logger.warning(f"DigitalCore catalog {url} returned HTTP {resp.status}")
+                except Exception as e:
+                    logger.warning(f"DigitalCore catalog fetch error: {e}")
+
+                if cache_key in _DIGITALCORE_CATALOG_CACHE:
+                    return _DIGITALCORE_CATALOG_CACHE[cache_key][0]
+                return None
+
+            if session:
+                return await _req(session)
+            else:
+                async with aiohttp.ClientSession() as s:
+                    return await _req(s)
+
+    async def _fetch_single_product(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
+        prov_pid = str(provider_product_id).strip()
+        url = f"{self.api_user_url}/product"
+
+        async def _req(s: aiohttp.ClientSession):
+            try:
+                async with s.get(url, headers=self.get_headers(), params={"id": prov_pid}, timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict):
+                            if data.get("success") is False:
+                                return None
+                            inner = data.get("product") or data.get("data") or data
+                            if isinstance(inner, dict) and (matches_product_id(inner, prov_pid) or "stock" in inner or "price" in inner):
+                                return inner
+            except Exception as e:
+                logger.debug(f"DigitalCore single product fetch failed for {prov_pid}: {e}")
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_stock(self, provider_product_id: Any, session: Optional[aiohttp.ClientSession] = None) -> Optional[int]:
+        prov_pid = str(provider_product_id).strip()
+        custom_stock_field = (self.field_mapping.get("stock_field") or "").strip() or None
+
+        async def _req(s: aiohttp.ClientSession):
+            single = await self._fetch_single_product(prov_pid, session=s)
+            if isinstance(single, dict):
+                num_s = extract_stock_from_dict(single, allow_boolean=False, custom_field=custom_stock_field)
+                if num_s is not None:
+                    return int(num_s)
+
+            catalog = await self.fetch_catalog(session=s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        return int(p.get("stock", 0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_live_product_price(self, provider_product_id: Any, quantity: int = 1, session: Optional[aiohttp.ClientSession] = None) -> Optional[float]:
+        prov_pid = str(provider_product_id).strip()
+        custom_price_field = (self.field_mapping.get("price_field") or "").strip() or None
+
+        async def _req(s: aiohttp.ClientSession):
+            single = await self._fetch_single_product(prov_pid, session=s)
+            if isinstance(single, dict):
+                u_price = self._resolve_tier_unit_price(single, quantity=quantity, custom_price_field=custom_price_field)
+                if u_price is not None and u_price > 0:
+                    return float(u_price)
+
+            catalog = await self.fetch_catalog(session=s)
+            if catalog:
+                for p in catalog:
+                    if matches_product_id(p, prov_pid):
+                        u_price = self._resolve_tier_unit_price(p, quantity=quantity, custom_price_field=custom_price_field)
+                        if u_price is not None and u_price > 0:
+                            return float(u_price)
+                        return float(p.get("price", 0.0))
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def fetch_balance(self, session: Optional[aiohttp.ClientSession] = None) -> Optional[Dict[str, Any]]:
+        url = f"{self.api_user_url}/me"
+
+        async def _req(s: aiohttp.ClientSession):
+            try:
+                async with s.get(url, headers=self.get_headers(), timeout=aiohttp.ClientTimeout(total=10, connect=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        if isinstance(data, dict):
+                            return data
+            except Exception as e:
+                logger.debug(f"DigitalCore balance fetch failed: {e}")
+            return None
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+    async def _parse_dc_error(self, resp: aiohttp.ClientResponse) -> str:
+        try:
+            err_json = await resp.json(content_type=None)
+            if isinstance(err_json, dict):
+                msg = err_json.get("msg") or err_json.get("message") or err_json.get("error") or err_json.get("detail")
+                if msg:
+                    return str(msg)
+        except Exception:
+            pass
+        try:
+            err_txt = await resp.text()
+            if "<!DOCTYPE html>" in err_txt or "<html" in err_txt:
+                return f"Provider service error (HTTP {resp.status})"
+            if err_txt:
+                return err_txt[:200]
+        except Exception:
+            pass
+        return f"HTTP {resp.status}"
+
+    async def execute_order(
+        self,
+        provider_product_id: Any,
+        quantity: int,
+        expected_price: Optional[float] = None,
+        client_order_ref: Optional[str] = None,
+        session: Optional[aiohttp.ClientSession] = None,
+        customer_email: Optional[Any] = None
+    ) -> List[str]:
+        """
+        Executes order via POST /api/user/buy with JSON payload {"id": <slug_or_id>, "count": <qty>}.
+        """
+        prov_pid = str(provider_product_id).strip()
+        qty = max(1, int(quantity))
+        pid_field = (self.field_mapping.get("buy_pid_field") or "").strip() or "id"
+        qty_field = (self.field_mapping.get("buy_qty_field") or "").strip() or "count"
+        payload: Dict[str, Any] = {pid_field: prov_pid, qty_field: qty}
+
+        default_ep = f"{self.api_user_url}/buy"
+        endpoints = self._get_custom_buy_endpoints([default_ep])
+        ep = endpoints[0]
+
+        def _raise_mapped_error(status: int, err_msg: str):
+            err_l = err_msg.lower()
+            if "insufficient_balance" in err_l or "balance" in err_l:
+                raise Exception(f"Provider balance insufficient: {err_msg}")
+            elif "out_of_stock" in err_l or "stock" in err_l:
+                raise Exception(f"Out of stock ({err_msg})")
+            elif "email" in err_l:
+                raise Exception(f"Provider requires email: {err_msg}")
+            elif status in (401, 403) or "api_key" in err_l or "unauthorized" in err_l:
+                raise Exception(f"Provider authentication error ({err_msg})")
+            raise Exception(f"Provider error: {err_msg}")
+
+        async def _req(s: aiohttp.ClientSession) -> List[str]:
+            for attempt in range(2):
+                try:
+                    logger.info(f"Executing DigitalCore order on {ep} with payload: {payload}")
+                    async with s.post(ep, headers=self.get_headers(), json=payload, timeout=aiohttp.ClientTimeout(total=45, connect=10)) as resp:
+                        if resp.status in (200, 201):
+                            data = await resp.json(content_type=None)
+                            if isinstance(data, dict):
+                                if data.get("success") is False:
+                                    err_m = str(data.get("msg") or data.get("error") or "Order failed")
+                                    _raise_mapped_error(resp.status, err_m)
+
+                                items = data.get("items")
+                                if isinstance(items, list) and items:
+                                    cleaned = []
+                                    for it in items:
+                                        if isinstance(it, dict):
+                                            val = it.get("key") or it.get("code") or it.get("credentials") or it.get("data") or it.get("item")
+                                            cleaned.append(str(val).strip() if val is not None else json.dumps(it, ensure_ascii=False))
+                                        else:
+                                            s_it = str(it).strip()
+                                            if s_it:
+                                                cleaned.append(s_it)
+                                    if cleaned:
+                                        return cleaned
+                                elif isinstance(items, str) and items.strip():
+                                    return [ln.strip() for ln in items.splitlines() if ln.strip()]
+
+                                if data.get("success") is True:
+                                    ord_id = data.get("order_id") or client_order_ref or "OK"
+                                    view_url = data.get("view_url") or ""
+                                    if view_url:
+                                        return [f"Order #{ord_id} | {view_url}"]
+                                    return [f"Order #{ord_id} Completed Successfully"]
+
+                            raise Exception("Provider returned empty delivery data")
+
+                        err_msg = await self._parse_dc_error(resp)
+                        logger.warning(f"DigitalCore order on {ep} returned HTTP {resp.status}: {err_msg}")
+                        _raise_mapped_error(resp.status, err_msg)
+                except aiohttp.ClientConnectorError as conn_err:
+                    # Safe to retry once because TCP connection was not established
+                    if attempt == 0:
+                        logger.warning(f"DigitalCore connection error on {ep}, retrying once: {conn_err}")
+                        await asyncio.sleep(1.5)
+                        continue
+                    raise Exception(f"Cannot connect to provider: {conn_err}")
+                except (aiohttp.ServerTimeoutError, asyncio.TimeoutError) as to_err:
+                    raise Exception(f"Provider request timed out: {to_err}")
+
+            raise Exception("Provider error: Unable to complete DigitalCore order")
+
+        if session:
+            return await _req(session)
+        else:
+            async with aiohttp.ClientSession() as s:
+                return await _req(s)
+
+
+# -------------------------------------------------------------------------
 # Provider Factory Function
 # -------------------------------------------------------------------------
 def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[Any] = None) -> BaseProviderAdapter:
@@ -3199,6 +3584,8 @@ def get_provider_adapter(base_url: str, api_key: str, field_mapping: Optional[An
         return VenteBotProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "canboso" in clean_url or "/api/v2/telegram-buyer" in clean_url:
         return CanbosoProviderAdapter(base_url, api_key, field_mapping=field_mapping)
+    elif "digitalcore" in clean_url or "/api/user" in clean_url:
+        return DigitalCoreProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     elif "roboticvn" in clean_url:
         return RoboticvnProviderAdapter(base_url, api_key, field_mapping=field_mapping)
     else:
