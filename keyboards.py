@@ -42,9 +42,9 @@ def get_main_menu(lang='en', is_admin=False, button_emojis=None, global_web_enab
         builder.button(**kwargs)
     
     if global_web_enabled:
-        builder.adjust(2, 2, 2, 2, 1)
+        builder.adjust(1, 2, 2, 2, 2)
     else:
-        builder.adjust(2, 2, 2, 2)
+        builder.adjust(1, 2, 2, 3)
     
     if is_admin:
         # Add admin panel on its own line
