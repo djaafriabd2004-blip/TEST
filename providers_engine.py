@@ -20,6 +20,19 @@ _PROVIDER_QUOTE_ENDPOINT_CACHE: Dict[str, Tuple[Optional[str], float]] = {}  # {
 _QUOTE_CACHE_TTL = 600.0
 
 
+def parse_customer_emails(customer_email: Optional[Any]) -> List[str]:
+    """Normalize customer_email (list/tuple or comma/newline-separated string) into clean stripped entries."""
+    if not customer_email:
+        return []
+    raw_items: List[str] = []
+    if isinstance(customer_email, (list, tuple)):
+        for entry in customer_email:
+            raw_items.extend(str(entry).replace(',', '\n').split('\n'))
+    else:
+        raw_items.extend(str(customer_email).replace(',', '\n').split('\n'))
+    return [e.strip() for e in raw_items if e and e.strip()]
+
+
 class BaseProviderAdapter:
     """
     Abstract base class defining standardized methods for all API providers.
@@ -332,8 +345,7 @@ class BaseProviderAdapter:
         }
         self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            email_list = parse_customer_emails(customer_email)
             if email_list:
                 if int(quantity) == 1:
                     payload["email"] = email_list[0]
@@ -1200,8 +1212,7 @@ class ProdSellerProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            email_list = parse_customer_emails(customer_email)
             if email_list:
                 if int(quantity) == 1:
                     payload["email"] = email_list[0]
@@ -1382,8 +1393,7 @@ class SupabaseProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, prov_pid, prov_pid, quantity)
         if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            email_list = parse_customer_emails(customer_email)
             if email_list:
                 payload["email"] = email_list[0]
                 if int(quantity) > 1:
@@ -1636,8 +1646,7 @@ class VenteBotProviderAdapter(BaseProviderAdapter):
         }
         self._apply_order_mapping(payload, item_id, prov_pid, quantity)
         if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            email_list = parse_customer_emails(customer_email)
             if email_list:
                 payload["email"] = email_list[0]
                 if int(quantity) > 1:
@@ -2195,8 +2204,7 @@ class RoboticvnProviderAdapter(BaseProviderAdapter):
                 "quantity": int(quantity)
             }
             if customer_email:
-                email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-                email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+                email_list = parse_customer_emails(customer_email)
                 if email_list:
                     if len(email_list) < int(quantity):
                         email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
@@ -2543,8 +2551,7 @@ class AitoolifyProviderAdapter(BaseProviderAdapter):
             payload[custom_pid] = item_id
 
         if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', chr(10)).split(chr(10)) if e.strip()]
+            email_list = parse_customer_emails(customer_email)
             if email_list:
                 if len(email_list) < int(quantity):
                     email_list = email_list + [email_list[-1]] * (int(quantity) - len(email_list))
@@ -3021,58 +3028,24 @@ class CanbosoProviderAdapter(BaseProviderAdapter):
         if not isinstance(reqs, dict):
             reqs = {}
 
-        payload: Dict[str, Any] = {
-            "key": self.api_key,
-            "product_id": prov_pid,
-            "quantity": qty
-        }
-
-        email_list: List[str] = []
-        if customer_email:
-            email_str = customer_email if isinstance(customer_email, str) else str(customer_email)
-            email_list = [e.strip() for e in email_str.replace(',', '\n').split('\n') if e.strip()]
-
-        if prov_pid == "slot_chatgpt_business":
-            payload["quantity"] = 1
-            if not email_list:
-                raise Exception("Provider requires email: customer_email is required for ChatGPT Business Slot")
-            payload["customer_email"] = email_list[0]
-            allowed_months = reqs.get("allowedMonths") or [1, 3, 6, 12]
-            cfg_months = self.field_mapping.get("slot_months")
-            try:
-                slot_months = int(cfg_months) if cfg_months else (1 if 1 in allowed_months else int(allowed_months[0]))
-            except Exception:
-                slot_months = int(allowed_months[0]) if allowed_months else 1
-            if allowed_months and slot_months not in allowed_months:
-                slot_months = int(allowed_months[0])
-            payload["slot_months"] = slot_months
-        elif prod_type == "slot" or (reqs.get("customerEmail") and not reqs.get("customerAccounts")):
-            payload["quantity"] = 1
-            if not email_list:
-                raise Exception("Provider requires email: customer_email is required for slot product")
-            payload["customer_email"] = email_list[0]
-        elif prod_type == "upgrade_account" or reqs.get("customerAccounts"):
-            if not email_list:
-                raise Exception("Provider requires email: customer_accounts is required for upgrade product")
-            if qty == 1 and len(email_list) == 1:
-                payload["customer_accounts"] = [email_list[0]]
-            else:
-                if len(email_list) < qty:
-                    raise Exception(f"Provider requires {qty} unique account identifiers (customer_accounts), got {len(email_list)}")
-                payload["customer_accounts"] = email_list[:qty]
-        elif email_list:
-            payload["customer_email"] = email_list[0]
+        is_slot_flow = (
+            prov_pid == "slot_chatgpt_business"
+            or prod_type == "slot"
+            or (reqs.get("customerEmail") and not reqs.get("customerAccounts"))
+        )
+        is_upgrade_flow = (prod_type == "upgrade_account" or bool(reqs.get("customerAccounts")))
+        email_list = parse_customer_emails(customer_email)
 
         ep = f"{self.api_v2_url}/purchase"
-        headers = self.get_headers({"Idempotency-Key": idempotency_key})
 
-        async def _req(s: aiohttp.ClientSession):
+        async def _send_single_purchase(s: aiohttp.ClientSession, req_payload: Dict[str, Any], idem_key: str) -> List[str]:
+            headers = self.get_headers({"Idempotency-Key": idem_key})
             last_err = "No response from Canboso"
             for attempt in range(2):
                 try:
-                    safe_log_payload = {k: ("***" if k == "key" else v) for k, v in payload.items()}
+                    safe_log_payload = {k: ("***" if k == "key" else v) for k, v in req_payload.items()}
                     logger.info(f"Executing Canboso order on {ep} with payload: {safe_log_payload}")
-                    async with s.post(ep, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=45, connect=10)) as resp:
+                    async with s.post(ep, headers=headers, json=req_payload, timeout=aiohttp.ClientTimeout(total=45, connect=10)) as resp:
                         if resp.status in [200, 201]:
                             data = await resp.json(content_type=None)
                             if not isinstance(data, dict):
@@ -3086,9 +3059,9 @@ class CanbosoProviderAdapter(BaseProviderAdapter):
                                     return formatted
 
                             order = data.get("order") or {}
-                            order_code = order.get("orderCode") or idempotency_key
+                            order_code = order.get("orderCode") or idem_key
                             fulfillment = str(order.get("fulfillmentStatus") or order.get("status") or "completed").strip()
-                            target = payload.get("customer_email") or (", ".join(payload.get("customer_accounts") or []))
+                            target = req_payload.get("customer_email") or (", ".join(req_payload.get("customer_accounts") or []))
                             if target:
                                 return [f"✅ Canboso Order #{order_code} ({fulfillment}) | Account: {target}"]
                             return [f"✅ Canboso Order #{order_code} ({fulfillment})"]
@@ -3139,6 +3112,60 @@ class CanbosoProviderAdapter(BaseProviderAdapter):
                 except Exception as ex:
                     raise ex
             raise Exception(f"Provider error: {last_err}")
+
+        async def _req(s: aiohttp.ClientSession):
+            if is_slot_flow:
+                if not email_list:
+                    raise Exception("Provider requires email: customer_email is required for slot product")
+
+                allowed_months = reqs.get("allowedMonths") or [1, 3, 6, 12]
+                slot_months = None
+                if prov_pid == "slot_chatgpt_business":
+                    cfg_months = self.field_mapping.get("slot_months")
+                    try:
+                        slot_months = int(cfg_months) if cfg_months else (1 if 1 in allowed_months else int(allowed_months[0]))
+                    except Exception:
+                        slot_months = int(allowed_months[0]) if allowed_months else 1
+                    if allowed_months and slot_months not in allowed_months:
+                        slot_months = int(allowed_months[0])
+
+                all_delivered: List[str] = []
+                for idx in range(qty):
+                    target_email = email_list[idx] if idx < len(email_list) else email_list[-1]
+                    req_payload: Dict[str, Any] = {
+                        "key": self.api_key,
+                        "product_id": prov_pid,
+                        "quantity": 1,
+                        "customer_email": target_email,
+                    }
+                    if slot_months is not None:
+                        req_payload["slot_months"] = slot_months
+                    sub_idem = idempotency_key if qty == 1 else f"{idempotency_key[:115]}-{idx + 1}"
+                    try:
+                        items = await _send_single_purchase(s, req_payload, sub_idem)
+                        all_delivered.extend(items)
+                    except Exception as slot_err:
+                        if all_delivered:
+                            logger.warning(f"Canboso partial slot loop stopped at {idx + 1}/{qty}: {slot_err}")
+                            break
+                        raise slot_err
+                return all_delivered
+
+            payload: Dict[str, Any] = {
+                "key": self.api_key,
+                "product_id": prov_pid,
+                "quantity": qty
+            }
+            if is_upgrade_flow:
+                if not email_list:
+                    raise Exception("Provider requires email: customer_accounts is required for upgrade product")
+                if len(email_list) < qty:
+                    raise Exception(f"Provider requires email: Please provide {qty} unique account emails (got {len(email_list)})")
+                payload["customer_accounts"] = email_list[:qty]
+            elif email_list:
+                payload["customer_email"] = email_list[0]
+
+            return await _send_single_purchase(s, payload, idempotency_key)
 
         if session:
             return await _req(session)
